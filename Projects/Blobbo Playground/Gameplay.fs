@@ -50,8 +50,6 @@ type GameplayDispatcher () =
         World.doTileMap "Background"
             [Entity.TileMap .= Assets.Gameplay.Background] world |> ignore
             
-        // Code that's not needed to repro the bug
-#if FALSE
         // The Process method is run even for unselected screens because the entity hierarchyAdd a comment on line R71Add diff commentMarkdown input:  edit mode selected.WritePreviewAdd a suggestionHeadingBoldItalicQuoteCodeLinkUnordered listNumbered listTask listMentionReferenceSaved repliesAdd FilesPaste, drop, or click to add filesCancelCommentStart a reviewReturn to code
         // defined in code still needs to be preserved across screen switching.
         // This allows entities in one screen to modify entities in another screen.
@@ -253,6 +251,18 @@ type GameplayDispatcher () =
                         let boxSize = toPhysics boxSize
                         DistanceJoint (a, b, new _(0f, 0f), new _(0f, 0f), false, Length = toPhysics spawnScale + boxSize, DampingRatio = 1f, Frequency = 5f) }] world
             ()
-#endif
+
+        World.doEntity<RewindableDispatcher> "Box"
+            [Entity.FacetNames .= Set.ofList [nameof StaticSpriteFacet]
+             Entity.Position .= v3 0f 0f 0f
+             Entity.Size .= v3Dup 16f
+             Entity.BodyType .= Dynamic
+             Entity.StaticImage .= Assets.Default.StaticSprite
+             Entity.BodyShape .= BoxShape { Size = v3 1f 1f 0f; PropertiesOpt = None; TransformOpt = None }
+             Entity.Substance .= Mass 1f
+             Entity.CollisionDetection .= Continuous] world |> ignore
+
+        if World.isKeyboardKeyPressed KeyboardKey.Space world then
+            world.DeclaredEntity.Signal (RewindCommand 120) world
 
         World.endGroup world
