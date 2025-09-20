@@ -1,7 +1,7 @@
 {
   "$schema": "http://json.schemastore.org/template",
   "author": "Bryan Edds",
-  "classifications": ["Nu", "Template"],
+  "classifications": [ "Nu", "Template" ],
   "identity": "Nu Template MMCC Empty",
   "name": "Nu Template MMCC Empty",
   "shortName": "nu-template-mmcc-empty",
@@ -51,11 +51,11 @@
     },
     "moduleForm": {
       "identifier": "chain",
-      "steps": ["cleanNameForm", "avoidNumberInFrontForm", "firstUpperCaseInvariantForm"] 
+      "steps": [ "cleanNameForm", "avoidNumberInFrontForm", "firstUpperCaseInvariantForm" ]
     },
     "localForm": {
       "identifier": "chain",
-      "steps": ["cleanNameForm", "avoidNumberInFrontForm", "firstLowerCaseInvariantForm"] 
+      "steps": [ "cleanNameForm", "avoidNumberInFrontForm", "firstLowerCaseInvariantForm" ]
     },
     "titleForm": {
       "identifier": "replace",

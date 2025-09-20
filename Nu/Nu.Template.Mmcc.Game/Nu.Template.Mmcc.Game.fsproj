@@ -29,9 +29,8 @@
 	</Target>
 
 	<ItemGroup>
-		<Content Include="AssetGraph.nuag">
-			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-		</Content>
+        <None Include="Assets\*" />
+        <None Include="Assets\*\*" />
 		<Compile Include="Assets.fs" />
 		<Compile Include="Simulants.fs" />
 		<Compile Include="Events.fs" />
