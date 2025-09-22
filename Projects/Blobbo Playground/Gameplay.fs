@@ -46,6 +46,7 @@ type GameplayDispatcher () =
 
     // here we define the behavior of our gameplay
     override this.Process (_, screen, world) =
+
         World.beginGroup "Group" [] world
         World.doTileMap "Background"
             [Entity.TileMap .= Assets.Gameplay.Background] world |> ignore
@@ -263,6 +264,6 @@ type GameplayDispatcher () =
              Entity.CollisionDetection .= Continuous] world |> ignore
 
         if World.isKeyboardKeyPressed KeyboardKey.Space world then
-            world.DeclaredEntity.Signal (RewindCommand 120) world
+            world.DeclaredEntity.Signal (RewindCommand (world.GameTime - GameTime.ofSeconds 2f)) world
 
         World.endGroup world

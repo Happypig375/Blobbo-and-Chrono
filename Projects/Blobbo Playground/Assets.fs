@@ -1,5 +1,4 @@
 ﻿namespace BlobboPlayground
-open System
 open Prime
 open Nu
 
