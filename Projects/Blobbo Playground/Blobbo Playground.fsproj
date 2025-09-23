@@ -29,6 +29,8 @@
 	</Target>
 
 	<ItemGroup>
+		<None Include="Assets/*"/>
+		<None Include="Assets/*/*"/>
 		<Content Include="AssetGraph.nuag">
 			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
 		</Content>

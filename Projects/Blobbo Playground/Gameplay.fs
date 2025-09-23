@@ -264,6 +264,11 @@ type GameplayDispatcher () =
              Entity.CollisionDetection .= Continuous] world |> ignore
 
         if World.isKeyboardKeyPressed KeyboardKey.Space world then
-            world.DeclaredEntity.Signal (RewindCommand (world.GameTime - GameTime.ofSeconds 2f)) world
-
+            world.DeclaredEntity.SetRewindPreview world.GameTime world
+        if World.isKeyboardKeyDown KeyboardKey.Space world then
+            world.DeclaredEntity.RewindPreview.Map (fun r -> r - world.GameDelta - world.GameDelta) world
+        let rewindPreview = world.DeclaredEntity.GetRewindPreview world
+        if GameTime.notZero rewindPreview && World.isKeyboardKeyUp KeyboardKey.Space world then
+            World.publish rewindPreview world.DeclaredEntity.RewindEvent world.DeclaredEntity world
+            world.DeclaredEntity.SetRewindPreview GameTime.zero world
         World.endGroup world
