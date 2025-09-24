@@ -253,8 +253,8 @@ type GameplayDispatcher () =
                         DistanceJoint (a, b, new _(0f, 0f), new _(0f, 0f), false, Length = toPhysics spawnScale + boxSize, DampingRatio = 1f, Frequency = 5f) }] world
             ()
 
-        World.doEntity<RewindableDispatcher> "Box"
-            [Entity.FacetNames .= Set.ofList [nameof StaticSpriteFacet]
+        World.doBox2d "Box"
+            [Entity.FacetNames .= Set.ofList [nameof StaticSpriteFacet; nameof RewindableFacet]
              Entity.Position .= v3 0f 0f 0f
              Entity.Size .= v3Dup 16f
              Entity.BodyType .= Dynamic
@@ -264,11 +264,12 @@ type GameplayDispatcher () =
              Entity.CollisionDetection .= Continuous] world |> ignore
 
         if World.isKeyboardKeyPressed KeyboardKey.Space world then
-            world.DeclaredEntity.SetRewindPreview world.GameTime world
+            world.DeclaredEntity.SetRewindPreview (Some world.GameTime) world
         if World.isKeyboardKeyDown KeyboardKey.Space world then
-            world.DeclaredEntity.RewindPreview.Map (fun r -> r - world.GameDelta - world.GameDelta) world
-        let rewindPreview = world.DeclaredEntity.GetRewindPreview world
-        if GameTime.notZero rewindPreview && World.isKeyboardKeyUp KeyboardKey.Space world then
+            world.DeclaredEntity.RewindPreview.Map (Option.map (fun r -> r - world.GameDelta - world.GameDelta)) world
+        match world.DeclaredEntity.GetRewindPreview world with
+        | Some rewindPreview when World.isKeyboardKeyUp KeyboardKey.Space world ->
             World.publish rewindPreview world.DeclaredEntity.RewindEvent world.DeclaredEntity world
-            world.DeclaredEntity.SetRewindPreview GameTime.zero world
+            world.DeclaredEntity.SetRewindPreview None world
+        | _ -> ()
         World.endGroup world
