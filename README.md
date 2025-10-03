@@ -1,12 +1,12 @@
-# Blobbo
+# Blobbo and Chrono
 
-All code are in branch [`blobbo`](https://github.com/Happypig375/Blobbo/tree/blobbo). Do not clone this `main` branch!
+All code are in branch [`blobbo`](https://github.com/Happypig375/Blobbo-and-Chrono/tree/blobbo). Do not clone this `main` branch!
 
 ---
 
 # How to Contribute
 
-1. [Fork the repository](https://github.com/happypig375/Blobbo/fork) and create your branch from `blobbo`.
+1. [Fork the repository](https://github.com/happypig375/Blobbo-and-Chrono/fork) and create your branch from `blobbo`.
 2. Describe your changes clearly in your pull request.
 3. Write clear, concise commit messages.
 4. Test your code before submitting. Don't rely on AI!
@@ -14,7 +14,7 @@ All code are in branch [`blobbo`](https://github.com/Happypig375/Blobbo/tree/blo
 
 ## Reporting Issues
 
-- Use the [issue tracker](https://github.com/happypig375/Blobbo/issues) to report bugs or request features.
+- Use the [issue tracker](https://github.com/happypig375/Blobbo-and-Chrono/issues) to report bugs or request features.
 - Provide as much detail as possible, including steps to reproduce.
 
 ## Pull Requests
