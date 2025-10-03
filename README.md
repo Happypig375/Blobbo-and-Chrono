@@ -27,7 +27,7 @@ All code are in branch [`blobbo`](https://github.com/Happypig375/Blobbo-and-Chro
 
 # License
 
-All assets (i.e. files under a folder named `Assets` but not under `Assets/Default`) are provided for non-commercial use only except with explicit written permission in this file. Also, you may not use, distribute, or monetize these assets on any digital distribution platform (including but not limited to Steam, Epic Games Store, Google Play, Apple App Store, or itch.io) without explicit written permission in this file.
+All assets (i.e. files under a folder named `Assets` but not already provided upstream in the [Nu game engine](https://github.com/bryanedds/Nu)) are provided for non-commercial use only except with explicit written permission in this file. Also, you may not use, distribute, or monetize these assets on any digital distribution platform (including but not limited to Steam, Epic Games Store, Google Play, Apple App Store, or itch.io) without explicit written permission in this file.
 
 All non-assets in this repository are licensed under the [MIT License](https://choosealicense.com/licenses/mit/).
 
