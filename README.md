@@ -1,4 +1,4 @@
-# Blobbo and Chrono
+# Blobbo and Chrono [![Discord](https://img.shields.io/discord/1421554405609570459?logo=discord)](https://discord.gg/QFp6B74ASr)
 
 All code are in branch [`blobbo`](https://github.com/Happypig375/Blobbo-and-Chrono/tree/blobbo). Do not clone this `main` branch!
 
