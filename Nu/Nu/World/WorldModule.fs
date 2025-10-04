@@ -496,11 +496,11 @@ module WorldModule =
             let worldExtension = { world.WorldExtension with GeometryViewport = viewport }
             world.WorldState <- { world.WorldState with WorldExtension = worldExtension }
 
-        /// Get the inner viewport.
+        /// Get the raster viewport.
         static member getRasterViewport (world : World) =
             world.RasterViewport
 
-        /// Set the inner viewport.
+        /// Set the raster viewport.
         static member setRasterViewport viewport (world : World) =
             let worldExtension = { world.WorldExtension with RasterViewport = viewport }
             world.WorldState <- { world.WorldState with WorldExtension = worldExtension }
@@ -600,6 +600,7 @@ module WorldModule =
 
         static member internal cleanUpSubsystems world =
             World.mapSubsystems (fun subsystems ->
+                subsystems.CursorClient.CleanUp ()
                 subsystems.AudioPlayer.CleanUp ()
                 match subsystems.RendererPhysics3dOpt with Some renderer -> renderer.Dispose () | None -> ()
                 subsystems.RendererProcess.Terminate ()

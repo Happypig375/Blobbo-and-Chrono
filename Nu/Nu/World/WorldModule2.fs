@@ -892,7 +892,7 @@ module WorldModule2 =
             let windowSize = World.getWindowSize world
             let outerViewport = Viewport.makeOuter windowSize
             World.setOuterViewport outerViewport world
-            World.setRasterViewport (Viewport.makeRaster outerViewport.Bounds) world
+            World.setRasterViewport (Viewport.makeRaster outerViewport.Inset outerViewport.Bounds) world
             World.setGeometryViewport (Viewport.makeGeometry windowSize) world
 
         /// Try to reload the overlayer currently in use by the world.
@@ -929,6 +929,7 @@ module WorldModule2 =
             World.reloadRenderAssets3d world
             World.reloadRenderAssetsImGui world
             World.reloadAudioAssets world
+            World.reloadCursorAssets world
             World.reloadSymbols world
 
         /// Attempt to reload asset graph, build assets, then reload built assets.
@@ -1260,7 +1261,7 @@ module WorldModule2 =
                             let center = bodyTransformMessage.Center
                             if not (Single.IsNaN center.X) then
                                 entity.SetXtensionPropertyWithoutEvent "AwakeTimeStamp" world.UpdateTime world
-                                if  entity.GetPhysicsMotion world = ManualMotion ||
+                                if  (entity.GetPhysicsMotion world).IsManualMotion ||
                                     bodyId.BodyIndex <> Constants.Physics.InternalIndex then
                                     let transformData =
                                         { BodyCenter = center
@@ -1283,6 +1284,14 @@ module WorldModule2 =
                                   BreakingOverflow = bodyJointBreakMessage.BreakingOverflow }
                             let eventTrace = EventTrace.debug "World" "processIntegrationMessage" "" EventTrace.empty
                             World.publishPlus breakData entity.BodyJointBreakEvent eventTrace entity false false world
+                    | _ -> ()
+                | FluidEmitterMessage fluidEmitterMessage ->
+                    match fluidEmitterMessage.FluidEmitterId.FluidEmitterSource with
+                    | :? Entity as entity ->
+                        if entity.GetExists world && entity.GetSelected world then
+                            entity.SetXtensionPropertyWithoutEvent "FluidParticles" fluidEmitterMessage.FluidParticles world
+                            let eventTrace = EventTrace.debug "World" "processIntegrationMessage" "" EventTrace.empty
+                            World.publishPlus fluidEmitterMessage entity.FluidEmitterUpdateEvent eventTrace entity false false world
                     | _ -> ()
 
         /// Sweep the quadtree clean of all empty nodes.
