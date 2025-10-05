@@ -152,7 +152,7 @@ type GameplayDispatcher () =
                      // Though, in code, we usually can just specify the absolute address directly.
                      Entity.BodyJointTarget2Opt .= Some mouseSensor.EntityAddress
                      Entity.BreakingPoint .= infinityf // never drop the entity while dragging
-                     Entity.BodyJoint .= TwoBodyJoint2d
+                     Entity.BodyJoint |= TwoBodyJoint2d
                         { CreateTwoBodyJoint = fun _ toPhysicsV2 a b ->
                             // Convert mouse position (Vector2) to world position (Vector3) to physics engine position (Aether.Physics2D Vector2)
                             let mousePosition = toPhysicsV2 mousePosition
@@ -191,12 +191,12 @@ type GameplayDispatcher () =
         // but small enough to not spawn individual boxes outside the border.
         // The body joints will pull individual boxes together no matter how far apart the boxes spawn.
         let spawnScale = boxSize * boxCount / 8f
-        let spawnCenter = v3 0f 0f 0f
+        let spawnCenter = v3 -30f 0f 0f
         
         // define center for stabilizing the contour shape and for mouse dragging
         let _ =
             World.doBall2d "Blobbo Center"
-                [Entity.Position .= spawnCenter
+                [Entity.Position |= spawnCenter
                  Entity.Size .= v3Dup 16f
                  Entity.Visible .= false] world
         let center = world.DeclaredEntity
@@ -208,7 +208,7 @@ type GameplayDispatcher () =
             let y = sin boxAngle * spawnScale
             let (declaredBodyId, _) =
                 World.doBox2d boxNames[i]
-                    [Entity.Position .= spawnCenter + v3 x y 0f
+                    [Entity.Position |= spawnCenter + v3 x y 0f
                      Entity.Restitution .= 0.333f
                      Entity.Size .= v3 boxSize boxSize 0f
                      Entity.Substance .= Mass (0.1f / boxCount) // Make mass evenly distributed between the contour and the center
@@ -229,7 +229,7 @@ type GameplayDispatcher () =
                      Entity.BodyJointTarget2Opt .= Some (Address.makeFromString $"^/{n2}")
                      Entity.CollideConnected .= true // Each box linked should collide with each other
                      Entity.BreakingPoint .= infinityf
-                     Entity.BodyJoint .= TwoBodyJoint2d
+                     Entity.BodyJoint |= TwoBodyJoint2d
                         { CreateTwoBodyJoint = fun toPhysics _ a b ->
                             // Local coordinates are used here which centers at the body coordinates,
                             // but we still have to convert from world scale to physics engine scale ourselves.
@@ -245,7 +245,7 @@ type GameplayDispatcher () =
                     [Entity.BodyJointTarget .= center.EntityAddress
                      Entity.BodyJointTarget2Opt .= Some (Address.makeFromString $"^/{n}")
                      Entity.BreakingPoint .= infinityf
-                     Entity.BodyJoint .= TwoBodyJoint2d
+                     Entity.BodyJoint |= TwoBodyJoint2d
                     { CreateTwoBodyJoint = fun toPhysics _ a b ->
                         // Local coordinates are used here which centers at the body coordinates,
                         // but we still have to convert from world scale to physics engine scale ourselves.
@@ -255,7 +255,7 @@ type GameplayDispatcher () =
 
         World.doBox2d "Box"
             [Entity.FacetNames .= Set.ofList [nameof StaticSpriteFacet; nameof RewindableFacet]
-             Entity.Position .= v3 0f 0f 0f
+             Entity.Position |= v3 0f 0f 0f
              Entity.Size .= v3Dup 16f
              Entity.BodyType .= Dynamic
              Entity.StaticImage .= Assets.Default.StaticSprite
