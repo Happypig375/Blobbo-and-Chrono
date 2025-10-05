@@ -373,7 +373,7 @@ module WorldEntityModule =
             World.setEntityXtensionValue<'a> propertyName value this world
 
         /// Set an xtension property value without publishing an event.
-        member internal this.SetXtensionPropertyWithoutEvent<'a> propertyName (value : 'a) world =
+        member this.SetXtensionPropertyWithoutEvent<'a> propertyName (value : 'a) world =
             let property = { PropertyType = typeof<'a>; PropertyValue = value }
             World.setEntityXtensionPropertyWithoutEvent propertyName property this world |> ignore<struct (bool * bool)>
 

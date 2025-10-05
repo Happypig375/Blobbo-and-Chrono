@@ -29,14 +29,16 @@
 	</Target>
 
 	<ItemGroup>
-		<None Include="Assets/*"/>
-		<None Include="Assets/*/*"/>
+		<None Include="Assets/*" />
+		<None Include="Assets/*/*" />
 		<Content Include="AssetGraph.nuag">
 			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
 		</Content>
 		<Compile Include="Assets.fs" />
 		<Compile Include="Simulants.fs" />
+		<Compile Include="SArray.fs" />
 		<Compile Include="Rewindable.fs" />
+		<Compile Include="Blobbo.fs" />
 		<Compile Include="Gameplay.fs" />
 		<Compile Include="BlobboPlayground.fs" />
 		<Compile Include="BlobboPlaygroundPlugin.fs" />
