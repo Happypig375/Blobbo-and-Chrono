@@ -31,16 +31,17 @@ type BlobboDispatcher () =
         let position = blobbo.GetPosition world
         let mutable newPosition = v3Zero
         let mutable particleCount = 0
-        World.mapFluidParticles (fun p ->
+        World.chooseFluidParticles (fun p ->
             newPosition <- newPosition + p.FluidParticlePosition
             particleCount <- inc particleCount
-            { p with
-                FluidParticleVelocity =
-                    p.FluidParticleVelocity +
-                    //(0.001f * v3 (position - p.FluidParticlePosition).Magnitude 0f 0f).Transform
-                    //    (Quaternion.CreateLookAt2d (position - p.FluidParticlePosition).V2) +
-                    (if World.isKeyboardKeyDown KeyboardKey.A world then v3 -0.01f 0f 0f else v3Zero) +
-                    (if World.isKeyboardKeyDown KeyboardKey.D world then v3 0.01f 0f 0f else v3Zero)
+            ValueSome {
+                p with
+                    FluidParticleVelocity =
+                        p.FluidParticleVelocity +
+                        //(0.001f * v3 (position - p.FluidParticlePosition).Magnitude 0f 0f).Transform
+                        //    (Quaternion.CreateLookAt2d (position - p.FluidParticlePosition).V2) +
+                        (if World.isKeyboardKeyDown KeyboardKey.A world then v3 -0.01f 0f 0f else v3Zero) +
+                        (if World.isKeyboardKeyDown KeyboardKey.D world then v3 0.01f 0f 0f else v3Zero)
                 })
             (blobbo.GetFluidEmitterId world) world
         blobbo.SetPosition (newPosition / single particleCount) world
