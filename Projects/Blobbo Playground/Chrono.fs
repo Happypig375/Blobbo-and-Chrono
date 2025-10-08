@@ -4,17 +4,33 @@ open System.Numerics
 open Prime
 open Nu
 
-type BlobboDispatcher () =
+[<AutoOpen>]
+module ChronoExtensions =
+    type Entity with
+        member this.GetHourglass world : Entity Address = this.Get (nameof this.Hourglass) world
+        member this.SetHourglass (value : Entity Address) world = this.Set (nameof this.Hourglass) value world
+        member this.Hourglass = lens (nameof this.Hourglass) this this.GetHourglass this.SetHourglass
+type ChronoDispatcher () =
     inherit FluidEmitter2dDispatcher ()
 
     static member Properties =
         [define Entity.Size (v3 320f 320f 0f)
          define Entity.FluidParticleRadius 10f
-         define Entity.GravityOverride (Some (v3 0f -1f 0f))
-         define Entity.StaticImage Assets.Default.Ball
+         define Entity.GravityOverride (Some (v3 0f -0.5f 0f))
+         define Entity.StaticImage Assets.Gameplay.Sand
          define Entity.Viscocity 1f
          define Entity.LinearDamping 0.5f
+         define Entity.Hourglass Address.empty
          ]
+
+    override _.Register (chrono, world) =
+        let hourglass = World.createEntity<StaticSpriteDispatcher> (Some chrono.EntityAddress) DefaultOverlay (Some (Array.add "Hourglass" chrono.Surnames)) chrono.Group world
+        chrono.SetHourglass hourglass.EntityAddress world
+        hourglass.SetStaticImage Assets.Gameplay.Hourglass world
+        hourglass.SetInsetOpt (Some (box2 (v2 80f 80f) (v2 160f 160f))) world
+
+    override _.Unregister (chrono, world) =
+        tryResolve (chrono.GetHourglass world) chrono |> Option.iter (fun e -> World.destroyEntity e world)
 
     override _.RegisterPhysics (blobbo, world) =
         base.RegisterPhysics (blobbo, world)
@@ -40,8 +56,8 @@ type BlobboDispatcher () =
                         p.FluidParticleVelocity +
                         (0.001f * v3 (position - p.FluidParticlePosition).Magnitude 0f 0f).Transform
                             (Quaternion.CreateLookAt2d (position - p.FluidParticlePosition).V2) +
-                        (if World.isKeyboardKeyDown KeyboardKey.A world then v3 -0.01f 0f 0f else v3Zero) +
-                        (if World.isKeyboardKeyDown KeyboardKey.D world then v3 0.01f 0f 0f else v3Zero)
+                        (if World.isKeyboardKeyDown KeyboardKey.J world then v3 -0.01f 0f 0f else v3Zero) +
+                        (if World.isKeyboardKeyDown KeyboardKey.L world then v3 0.01f 0f 0f else v3Zero)
                 })
             (blobbo.GetFluidEmitterId world) world
         blobbo.SetPosition (newPosition / single particleCount) world

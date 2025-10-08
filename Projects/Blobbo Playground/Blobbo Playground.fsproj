@@ -39,6 +39,7 @@
 		<Compile Include="SArray.fs" />
 		<Compile Include="Rewindable.fs" />
 		<Compile Include="Blobbo.fs" />
+		<Compile Include="Chrono.fs" />
 		<Compile Include="Gameplay.fs" />
 		<Compile Include="BlobboPlayground.fs" />
 		<Compile Include="BlobboPlaygroundPlugin.fs" />

@@ -5,7 +5,7 @@ open Nu
 // this module contains asset constants that are used by the game.
 // having an Assets module is optional, but can prevent you from duplicating string literals across the code base.
 [<RequireQualifiedAccess>]
-module rec Assets =
+module Assets =
 
     [<RequireQualifiedAccess>]
     module Gui =
@@ -16,5 +16,7 @@ module rec Assets =
     [<RequireQualifiedAccess>]
     module Gameplay =
 
-        let PackageName = nameof Gameplay
-        let Background = asset<TileMap> PackageName (nameof Background)
+        let PackageName = "Gameplay"
+        let Background = asset<TileMap> PackageName "Background"
+        let Hourglass = asset<Image> PackageName "Hourglass"
+        let Sand = asset<Image> PackageName "Sand"
