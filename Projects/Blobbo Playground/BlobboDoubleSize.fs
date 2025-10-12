@@ -4,27 +4,26 @@ open System.Numerics
 open Prime
 open Nu
 
-type BlobboDispatcher () =
+type BlobboDoubleSizeDispatcher () =
     inherit FluidEmitter2dDispatcher ()
 
     static member Properties =
         [define Entity.Size (v3 320f 320f 0f)
-         define Entity.FluidParticleRadius 5f
+         define Entity.FluidParticleRadius 10f
          define Entity.GravityOverride (Some (v3 0f -1f 0f))
          define Entity.StaticImage Assets.Default.Ball
          define Entity.FluidParticleImageSizeOverride (Some (v2 2f 2f))
          define Entity.Viscocity 1f
-         define Entity.LinearDamping 0.75f
+         define Entity.LinearDamping 0.5f
          ]
 
     override _.RegisterPhysics (blobbo, world) =
         base.RegisterPhysics (blobbo, world)
         let position = blobbo.GetPosition world
-        let sideLength = 20
         World.emitFluidParticles
-            (SArray.init (sideLength * sideLength) (fun i ->
-                let (x, y) = Math.DivRem (i, sideLength)
-                { FluidParticlePosition = position + 2f * v3 (single x) (single y) 0f
+            (SArray.init 400 (fun i ->
+                let (x, y) = Math.DivRem (i, 20)
+                { FluidParticlePosition = position + 4f * v3 (single x) (single y) 0f
                   FluidParticleVelocity = v3Zero
                   GravityOverride = ValueNone }))
             (blobbo.GetFluidEmitterId world) world

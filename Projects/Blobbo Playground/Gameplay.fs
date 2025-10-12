@@ -60,7 +60,7 @@ type GameplayDispatcher () =
 
             // Camera control
             let resolveCamera () =
-                match screen.GetCameraPosition world |> Option.defaultValue (CameraTracking (Address.makeFromString "~/Group/Blobbo Center")) with
+                match screen.GetCameraPosition world |> Option.defaultValue (CameraTracking (Address.makeFromString "~/Group/Blobbo Cente")) with
                 | CameraAbsolute position -> position
                 | CameraTracking relation ->
                     match tryResolve relation screen with
