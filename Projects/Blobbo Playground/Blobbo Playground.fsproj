@@ -38,8 +38,8 @@
 		<Compile Include="Simulants.fs" />
 		<Compile Include="SArray.fs" />
 		<Compile Include="Rewindable.fs" />
+		<Compile Include="Experiments\BlobboDoubleSize.fs" />
 		<Compile Include="Blobbo.fs" />
-		<Compile Include="BlobboDoubleSize.fs" />
 		<Compile Include="Chrono.fs" />
 		<Compile Include="Gameplay.fs" />
 		<Compile Include="BlobboPlayground.fs" />

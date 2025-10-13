@@ -1736,8 +1736,7 @@ type FluidEmitter2dFacet () =
               Viscosity = entity.GetViscocity world
               LinearDamping = entity.GetLinearDamping world
               SimulationBounds = (entity.GetBounds world).Box2
-              GravityOverride = entity.GetGravityOverride world |> Option.map (fun gravity -> gravity.V2)
-              CollisionDetection = entity.GetCollisionDetection world }
+              GravityOverride = entity.GetGravityOverride world |> Option.map (fun gravity -> gravity.V2) }
 
     static let updateCallback (event : Event<_, Entity>) (world : World) =
         let updateEmitter =
@@ -1759,7 +1758,6 @@ type FluidEmitter2dFacet () =
          define Entity.Viscocity 0.004f
          define Entity.LinearDamping 0.0f
          define Entity.GravityOverride None
-         define Entity.CollisionDetection Discrete
          computed Entity.FluidEmitterId (fun (entity : Entity) _ -> { FluidEmitterSource = entity }) None]
 
     override this.Register (emitter, world) =
@@ -1776,8 +1774,7 @@ type FluidEmitter2dFacet () =
              emitter.Viscocity.ChangeEvent
              emitter.LinearDamping.ChangeEvent
              emitter.Bounds.ChangeEvent
-             emitter.GravityOverride.ChangeEvent
-             emitter.CollisionDetection.ChangeEvent] do
+             emitter.GravityOverride.ChangeEvent] do
             World.sense updateCallback event emitter (nameof FluidEmitter2dFacet) world
 
         // set particles upon change
