@@ -311,6 +311,7 @@ type private FluidEmitter2d =
                 let toPixelV2 (v : Common.Vector2) = Vector2 (v.X, v.Y) * Constants.Engine.Meter2d
                 let toPhysicsV2 (v : Vector2) = Common.Vector2 (v.X, v.Y) / Constants.Engine.Meter2d
                 let toPhysicsV2Normal (v : Vector2) = Common.Vector2 (v.X, v.Y)
+                let toPixelV2Normal (v : Common.Vector2) = Vector2 (v.X, v.Y)
                 let state = &fluidEmitter.States.[i]
                 for i in 0 .. dec state.PotentialFixtureCount do
                     let fixture = state.PotentialFixtures.[i]
@@ -320,7 +321,7 @@ type private FluidEmitter2d =
                     let (|EdgeFromEdgeShape|) (shape : Shapes.EdgeShape) = (shape.Vertex1, shape.Vertex2)
                     let (|EdgeFromChainShape|) (lookup : _ array) index (shape : Shapes.ChainShape) = (shape.Vertices.[lookup.[index]], shape.Vertices.[inc lookup.[index]])
                     match fixture.Shape with
-                    | :? Shapes.PolygonShape as shape ->
+                    | :? Shapes.PolygonShape as shape when descriptor.CollisionDetection = Continuous ->
 
                         // NOTE: original code uses (Position + Velocity + Delta) for solid shape collision testing even though particle
                         // movement update uses (Position + Velocity + 2 Delta). If the latter is used here, it causes particles to tunnel
@@ -357,7 +358,55 @@ type private FluidEmitter2d =
                             normal <- toPhysicsV2 state.PositionUnscaled - center
                             normal.Normalize ()
                             nearest <- center + normal * shape.Radius
+                            
+                    | :? Shapes.PolygonShape as shape ->
+                        let positionUnscaled = toPhysicsV2 state.PositionUnscaled
+                        let mutable particleMovement = state.VelocityUnscaled + 2.0f * state.Delta |> toPhysicsV2
+                        let mutable tEnter = 0.0f // where the particle enters the polygon along particleMovement (0 to 1)
+                        let mutable tExit = 1.0f // where the particle exits the polygon along particleMovement (0 to 1)
+                        let mutable i = 0
+                        while i < shape.Vertices.Count do
+                            let mutable vertex = shape.Vertices.[i]
+                            let mutable polygonNormal = shape.Normals.[i]
+                            let mutable vertexDistance = positionUnscaled - vertex
+                            // Numerator: The signed distance from particle starting position to the polygon edge along the normal direction.
+                            // A negative value means the starting position is inside the half-plane defined by the edge and its normal.
+                            let numerator = Common.Vector2.Dot(&polygonNormal, &vertexDistance)
+                            // Denominator: The projection of particleMovement onto the edge's normal.
+                            // This indicates how much the particle is moving towards or away from the edge.
+                            let denominator = Common.Vector2.Dot(&polygonNormal, &particleMovement)
+                            if denominator <> 0.0f then
+                                let tIntersect = -numerator / denominator
+                                if denominator < 0.0f then
 
+                                    // Entering the polygon - choose the maximum tIntersect as this is the first point in time where the
+                                    // particle is simultaneously "inside" all the half-planes defined by the entering edges, which is
+                                    // the actual entry point into the convex polygon.
+                                    if tIntersect > tEnter then
+                                        tEnter <- tIntersect
+                                        normal <- polygonNormal
+                                else
+
+                                    // Exiting the polygon - choose the minimum tIntersect as this is the first point in time where
+                                    // the particle is no longer "inside" all the half-planes defined by the entering edges.
+                                    if tIntersect < tExit then
+                                        tExit <- tIntersect
+
+                            // Line segment is parallel to the edge and edge normal points from the edge to the particle movement - no collision.
+                            elif numerator < 0.0f then
+                                tExit <- 1.0f
+                                i <- shape.Vertices.Count // break
+
+                            // When tEnter <= tExit, a collision occurs within the segment's timeframe. Otherwise, no collision.
+                            if tEnter > tExit then
+                                tExit <- 1.0f
+                                i <- shape.Vertices.Count // break
+                            i <- inc i
+
+                        if tEnter > 0.0f && tEnter < 1.0f then
+                            // Collision occurred
+                            colliding <- true
+                            nearest <- positionUnscaled + particleMovement * tEnter
                     | (:? Shapes.EdgeShape as EdgeFromEdgeShape (edgeStart, edgeEnd))
                     | (:? Shapes.ChainShape as EdgeFromChainShape state.PotentialFixtureChildIndexes i (edgeStart, edgeEnd)) ->
 
@@ -434,7 +483,7 @@ type private FluidEmitter2d =
                             { FluidCollider = fromFluid fluidEmitter.FluidEmitterDescriptor.ParticleScale &state
                               FluidCollidee = fixture.Tag :?> BodyShapeIndex
                               Nearest = (toPixelV2 nearest).V3
-                              Normal = (toPixelV2 normal).V3 }
+                              Normal = (toPixelV2Normal normal).V3 }
                         if not fixture.IsSensor then
                             state.PositionUnscaled <- nearest + 0.05f * normal |> toPixelV2
                             let mutable dotResult = Unchecked.defaultof<_>

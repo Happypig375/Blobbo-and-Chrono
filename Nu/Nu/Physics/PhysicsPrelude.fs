@@ -505,7 +505,8 @@ type FluidEmitterDescriptor2d =
       Viscosity : single
       LinearDamping : single
       SimulationBounds : Box2
-      GravityOverride : Vector2 option }
+      GravityOverride : Vector2 option
+      CollisionDetection : CollisionDetection }
 
 /// Describes a particle-based fluid emitter.
 type FluidEmitterDescriptor =
