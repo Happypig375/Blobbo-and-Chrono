@@ -100,13 +100,13 @@ type BlobboDispatcher () =
                 World.emitFluidParticles (SArray.init absorbed.Count (fun i -> absorbed[i])) (blobbo.GetFluidEmitterId world) world
             | None -> ()
 
-        // shoot particles when at least 20 are in body and there is a shoot target
+        // shoot particles when at least 30 are in body and there is a shoot target
         match blobbo.GetShootTarget world with
         | Some target ->
             let mutable i = 0
             World.chooseFluidParticles (fun p ->
                 i <- inc i
-                if i = 20 then
+                if i = 30 then
                     ValueSome { p with FluidParticleVelocity = p.FluidParticleVelocity + (target - p.FluidParticlePosition) * 2f }
                 else ValueSome p) (blobbo.GetFluidEmitterId world) world
         | None -> ()
