@@ -101,5 +101,6 @@ type GameplayDispatcher () =
                  elif World.isKeyboardKeyDown KeyboardKey.Right world then Right
                  else Still) world
             world.DeclaredEntity.SetAbsorbing (World.isKeyboardKeyDown KeyboardKey.Up world) world
+            world.DeclaredEntity.SetShootTarget (if World.isMouseButtonPressed MouseLeft world then Some (World.getMousePosition2dWorld false world).V3 else None) world
 
         World.endGroup world

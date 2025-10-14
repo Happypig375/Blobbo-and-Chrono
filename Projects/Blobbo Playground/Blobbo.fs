@@ -16,6 +16,9 @@ module [<AutoOpen>] BlobboExtensions =
         member this.GetMovement world : BlobboMovement = this.Get (nameof this.Movement) world
         member this.SetMovement (value : BlobboMovement) world = this.Set (nameof this.Movement) value world
         member this.Movement = lens (nameof this.Movement) this this.GetMovement this.SetMovement
+        member this.GetShootTarget world : Vector3 option = this.Get (nameof this.ShootTarget) world
+        member this.SetShootTarget (value : Vector3 option) world = this.Set (nameof this.ShootTarget) value world
+        member this.ShootTarget = lens (nameof this.ShootTarget) this this.GetShootTarget this.SetShootTarget
 
 type BlobboDispatcher () =
     inherit FluidEmitter2dDispatcher ()
@@ -31,6 +34,7 @@ type BlobboDispatcher () =
          define Entity.WorldFluidEmitter Address.empty
          define Entity.Absorbing false
          define Entity.Movement Still
+         define Entity.ShootTarget None
          ]
 
     override _.Register (blobbo, world) =
@@ -79,18 +83,30 @@ type BlobboDispatcher () =
             (blobbo.GetFluidEmitterId world) world
 
         // update center to be average of particle positions
-        blobbo.SetPosition (newPosition / single particleCount) world
+        if particleCount > 0 then blobbo.SetPosition (newPosition / single particleCount) world
 
         // when absorbing, convert world fluid emitter particles to blobbo particles
         if blobbo.GetAbsorbing world then
             let bounds = blobbo.GetBounds world
-            let absorbed = ResizeArray 32
+            let maxParticles = 10
+            let absorbed = ResizeArray maxParticles
             match tryResolve (blobbo.GetWorldFluidEmitter world) blobbo with
             | Some (emitter : Entity) ->
                 World.chooseFluidParticles (fun p ->
-                    if bounds.Contains p.FluidParticlePosition <> ContainmentType.Disjoint then
+                    if bounds.Contains p.FluidParticlePosition <> ContainmentType.Disjoint && absorbed.Count < maxParticles then
                         absorbed.Add p
                         ValueNone
                     else ValueSome p) (emitter.GetFluidEmitterId world) world
                 World.emitFluidParticles (SArray.init absorbed.Count (fun i -> absorbed[i])) (blobbo.GetFluidEmitterId world) world
             | None -> ()
+
+        // shoot particles when at least 20 are in body and there is a shoot target
+        match blobbo.GetShootTarget world with
+        | Some target ->
+            let mutable i = 0
+            World.chooseFluidParticles (fun p ->
+                i <- inc i
+                if i = 20 then
+                    ValueSome { p with FluidParticleVelocity = p.FluidParticleVelocity + (target - p.FluidParticlePosition) * 2f }
+                else ValueSome p) (blobbo.GetFluidEmitterId world) world
+        | None -> ()
