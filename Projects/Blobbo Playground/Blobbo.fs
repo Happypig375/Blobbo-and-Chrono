@@ -70,7 +70,7 @@ type BlobboDispatcher () =
             let blobbo : Entity = event.Subscriber
             let movement = event.Data - blobbo.GetPosition world
             World.chooseFluidParticles (fun p ->
-                ValueSome { p with FluidParticleVelocity = p.FluidParticleVelocity + movement * 0.3f })
+                ValueSome { p with FluidParticleVelocity = p.FluidParticleVelocity + movement * 0.01f })
                 (blobbo.GetFluidEmitterId world) world
             Cascade) blobbo.LeapEvent blobbo world
 
