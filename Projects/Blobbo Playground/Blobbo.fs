@@ -5,14 +5,15 @@ open Prime
 open Nu
 
 type BlobboMovement = Left | Still | Right
+type Absorption = Absorbing | Equilibrium | Emitting
 module [<AutoOpen>] BlobboExtensions =
     type Entity with
         member this.GetWorldFluidEmitter world : Entity Address = this.Get (nameof this.WorldFluidEmitter) world
         member this.SetWorldFluidEmitter (value : Entity Address) world = this.Set (nameof this.WorldFluidEmitter) value world
         member this.WorldFluidEmitter = lens (nameof this.WorldFluidEmitter) this this.GetWorldFluidEmitter this.SetWorldFluidEmitter
-        member this.GetAbsorbing world : bool = this.Get (nameof this.Absorbing) world
-        member this.SetAbsorbing (value : bool) world = this.Set (nameof this.Absorbing) value world
-        member this.Absorbing = lens (nameof this.Absorbing) this this.GetAbsorbing this.SetAbsorbing
+        member this.GetAbsorption world : Absorption = this.Get (nameof this.Absorption) world
+        member this.SetAbsorption (value : Absorption) world = this.Set (nameof this.Absorption) value world
+        member this.Absorption = lens (nameof this.Absorption) this this.GetAbsorption this.SetAbsorption
         member this.GetMovement world : BlobboMovement = this.Get (nameof this.Movement) world
         member this.SetMovement (value : BlobboMovement) world = this.Set (nameof this.Movement) value world
         member this.Movement = lens (nameof this.Movement) this this.GetMovement this.SetMovement
@@ -32,7 +33,7 @@ type BlobboDispatcher () =
          define Entity.Viscocity 2f
          define Entity.LinearDamping 0.75f
          define Entity.WorldFluidEmitter Address.empty
-         define Entity.Absorbing false
+         define Entity.Absorption Equilibrium
          define Entity.Movement Still
          define Entity.ShootTarget None
          ]
@@ -85,8 +86,10 @@ type BlobboDispatcher () =
         // update center to be average of particle positions
         if particleCount > 0 then blobbo.SetPosition (newPosition / single particleCount) world
 
-        // when absorbing, convert world fluid emitter particles to blobbo particles
-        if blobbo.GetAbsorbing world then
+        let minBlobboSize = 30
+        match blobbo.GetAbsorption world with
+        | Absorbing ->
+            // when expanding, convert world fluid emitter particles to blobbo particles
             let bounds = blobbo.GetBounds world
             let maxParticles = 10
             let absorbed = ResizeArray maxParticles
@@ -99,6 +102,23 @@ type BlobboDispatcher () =
                     else ValueSome p) (emitter.GetFluidEmitterId world) world
                 World.emitFluidParticles (SArray.init absorbed.Count (fun i -> absorbed[i])) (blobbo.GetFluidEmitterId world) world
             | None -> ()
+        | Equilibrium -> ()
+        | Emitting ->
+            // when contracting, convert blobbo particles to world fluid emitter particles
+            let mutable i = 0
+            let bounds = blobbo.GetBounds world
+            let maxParticles = 10
+            let absorbed = ResizeArray maxParticles
+            match tryResolve (blobbo.GetWorldFluidEmitter world) blobbo with
+            | Some (emitter : Entity) ->
+                World.chooseFluidParticles (fun p ->
+                    i <- inc i
+                    if i >= minBlobboSize && bounds.Contains p.FluidParticlePosition <> ContainmentType.Disjoint && absorbed.Count < maxParticles then
+                        absorbed.Add p
+                        ValueNone
+                    else ValueSome p) (blobbo.GetFluidEmitterId world) world
+                World.emitFluidParticles (SArray.init absorbed.Count (fun i -> absorbed[i])) (emitter.GetFluidEmitterId world) world
+            | None -> ()
 
         // shoot particles when at least 30 are in body and there is a shoot target
         match blobbo.GetShootTarget world with
@@ -106,7 +126,7 @@ type BlobboDispatcher () =
             let mutable i = 0
             World.chooseFluidParticles (fun p ->
                 i <- inc i
-                if i = 30 then
+                if i = minBlobboSize then
                     ValueSome { p with FluidParticleVelocity = p.FluidParticleVelocity + (target - p.FluidParticlePosition) * 2f }
                 else ValueSome p) (blobbo.GetFluidEmitterId world) world
         | None -> ()
