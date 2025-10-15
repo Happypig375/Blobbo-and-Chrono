@@ -96,14 +96,30 @@ type GameplayDispatcher () =
             [Entity.Position |= v3 0f 0f 0f
              Entity.WorldFluidEmitter .= world.DeclaredEntity.EntityAddress] world
         if screen.GetSelected world then
-            world.DeclaredEntity.SetMovement
+            let blobbo = world.DeclaredEntity
+
+            blobbo.SetMovement
                 (if World.isKeyboardKeyDown KeyboardKey.Left world then Left
                  elif World.isKeyboardKeyDown KeyboardKey.Right world then Right
                  else Still) world
-            world.DeclaredEntity.SetAbsorption
+
+            blobbo.SetAbsorption
                 (if World.isKeyboardKeyDown KeyboardKey.Up world then Absorbing
                  elif World.isKeyboardKeyDown KeyboardKey.Down world then Emitting
                  else Equilibrium) world
-            world.DeclaredEntity.SetShootTarget (if World.isMouseButtonPressed MouseLeft world then Some (World.getMousePosition2dWorld false world).V3 else None) world
+
+            let mousePosition = (World.getMousePosition2dWorld false world).V3
+            if World.isMouseButtonPressed MouseLeft world then
+                if (blobbo.GetBounds world).Contains mousePosition <> ContainmentType.Disjoint then
+                    blobbo.SetChargeTarget (Some mousePosition) world
+                else World.publish mousePosition blobbo.ShootEvent screen world
+
+            match blobbo.GetChargeTarget world with
+            | Some _ ->
+                if World.isMouseButtonReleased MouseLeft world then
+                    blobbo.SetChargeTarget None world
+                    World.publish mousePosition blobbo.LeapEvent screen world
+                else blobbo.SetChargeTarget (Some mousePosition) world
+            | None -> ()
 
         World.endGroup world

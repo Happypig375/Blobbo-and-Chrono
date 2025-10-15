@@ -20,3 +20,5 @@ module Assets =
         let Background = asset<TileMap> PackageName "Background"
         let Hourglass = asset<Image> PackageName "Hourglass"
         let Sand = asset<Image> PackageName "Sand"
+        let WaterArrow = asset<Image> PackageName "WaterArrow"
+        let WaterCursor = asset<Cursor> PackageName "WaterCursor"

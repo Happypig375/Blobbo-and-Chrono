@@ -17,12 +17,16 @@ module [<AutoOpen>] BlobboExtensions =
         member this.GetMovement world : BlobboMovement = this.Get (nameof this.Movement) world
         member this.SetMovement (value : BlobboMovement) world = this.Set (nameof this.Movement) value world
         member this.Movement = lens (nameof this.Movement) this this.GetMovement this.SetMovement
-        member this.GetShootTarget world : Vector3 option = this.Get (nameof this.ShootTarget) world
-        member this.SetShootTarget (value : Vector3 option) world = this.Set (nameof this.ShootTarget) value world
-        member this.ShootTarget = lens (nameof this.ShootTarget) this this.GetShootTarget this.SetShootTarget
+        member this.GetChargeTarget world : Vector3 option = this.Get (nameof this.ChargeTarget) world
+        member this.SetChargeTarget (value : Vector3 option) world = this.Set (nameof this.ChargeTarget) value world
+        member this.ChargeTarget = lens (nameof this.ChargeTarget) this this.GetChargeTarget this.SetChargeTarget
+        member this.ShootEvent = stoa<Vector3> "Shoot/Event" --> this
+        member this.LeapEvent = stoa<Vector3> "Leap/Event" --> this
 
 type BlobboDispatcher () =
     inherit FluidEmitter2dDispatcher ()
+
+    static let minBlobboSize = 30
 
     static member Properties =
         [define Entity.Size (v3 60f 60f 0f)
@@ -35,7 +39,7 @@ type BlobboDispatcher () =
          define Entity.WorldFluidEmitter Address.empty
          define Entity.Absorption Equilibrium
          define Entity.Movement Still
-         define Entity.ShootTarget None
+         define Entity.ChargeTarget None
          ]
 
     override _.Register (blobbo, world) =
@@ -49,6 +53,26 @@ type BlobboDispatcher () =
                 World.emitFluidParticles event.Data.OutOfBoundsParticles (emitter.GetFluidEmitterId world) world
             | None -> ()
             Cascade) blobbo.FluidEmitterUpdateEvent blobbo world
+
+        // shoot particles when at least 30 are in body
+        World.monitor (fun event world ->
+            let blobbo : Entity = event.Subscriber
+            let mutable i = 0
+            World.chooseFluidParticles (fun p ->
+                i <- inc i
+                if i = minBlobboSize then
+                    ValueSome { p with FluidParticleVelocity = p.FluidParticleVelocity + (event.Data - p.FluidParticlePosition) * 2f }
+                else ValueSome p) (blobbo.GetFluidEmitterId world) world
+            Cascade) blobbo.ShootEvent blobbo world
+
+        // leap
+        World.monitor (fun event world ->
+            let blobbo : Entity = event.Subscriber
+            let movement = event.Data - blobbo.GetPosition world
+            World.chooseFluidParticles (fun p ->
+                ValueSome { p with FluidParticleVelocity = p.FluidParticleVelocity + movement * 0.3f })
+                (blobbo.GetFluidEmitterId world) world
+            Cascade) blobbo.LeapEvent blobbo world
 
         // initialize with 400 particles
         let position = blobbo.GetPosition world
@@ -86,7 +110,6 @@ type BlobboDispatcher () =
         // update center to be average of particle positions
         if particleCount > 0 then blobbo.SetPosition (newPosition / single particleCount) world
 
-        let minBlobboSize = 30
         match blobbo.GetAbsorption world with
         | Absorbing ->
             // when expanding, convert world fluid emitter particles to blobbo particles
@@ -120,13 +143,19 @@ type BlobboDispatcher () =
                 World.emitFluidParticles (SArray.init absorbed.Count (fun i -> absorbed[i])) (emitter.GetFluidEmitterId world) world
             | None -> ()
 
-        // shoot particles when at least 30 are in body and there is a shoot target
-        match blobbo.GetShootTarget world with
-        | Some target ->
-            let mutable i = 0
-            World.chooseFluidParticles (fun p ->
-                i <- inc i
-                if i = minBlobboSize then
-                    ValueSome { p with FluidParticleVelocity = p.FluidParticleVelocity + (target - p.FluidParticlePosition) * 2f }
-                else ValueSome p) (blobbo.GetFluidEmitterId world) world
+    override _.Render (pass, blobbo, world) =
+        base.Render (pass, blobbo, world)
+
+        // display charge arrow
+        match blobbo.GetChargeTarget world with
+        | Some p2 ->
+            let p1 = blobbo.GetPosition world
+            let arrowRatio = 70f / 177f
+            let difference = p2 - p1
+            let distance = difference.Magnitude
+            let mutable transform = Transform.makeIntuitive false ((p1 + p2) / 2f) v3One v3Zero (v3 distance (distance * arrowRatio) 0f) (v3 0f 0f (atan2 difference.Y difference.X)) (blobbo.GetElevation world)
+            let mutable insetClipOpt = ValueNone
+            let mutable color = colorOne
+            let mutable emission = colorZero
+            World.renderLayeredSpriteFast (transform.Elevation, transform.Horizon, Assets.Gameplay.WaterArrow, &transform, &insetClipOpt, &insetClipOpt, Assets.Gameplay.WaterArrow, &color, Transparent, &emission, FlipNone, world)
         | None -> ()
