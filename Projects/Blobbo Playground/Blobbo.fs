@@ -20,6 +20,9 @@ module [<AutoOpen>] BlobboExtensions =
         member this.GetChargeTarget world : Vector3 option = this.Get (nameof this.ChargeTarget) world
         member this.SetChargeTarget (value : Vector3 option) world = this.Set (nameof this.ChargeTarget) value world
         member this.ChargeTarget = lens (nameof this.ChargeTarget) this this.GetChargeTarget this.SetChargeTarget
+        member this.GetOnGround world : bool = this.Get (nameof this.OnGround) world
+        member this.SetOnGround (value : bool) world = this.Set (nameof this.OnGround) value world
+        member this.OnGround = lens (nameof this.OnGround) this this.GetOnGround this.SetOnGround
         member this.ShootEvent = stoa<Vector3> "Shoot/Event" --> this
         member this.LeapEvent = stoa<Vector3> "Leap/Event" --> this
 
@@ -40,18 +43,29 @@ type BlobboDispatcher () =
          define Entity.Absorption Equilibrium
          define Entity.Movement Still
          define Entity.ChargeTarget None
+         define Entity.OnGround false
          ]
 
     override _.Register (blobbo, world) =
         base.Register (blobbo, world)
 
-        // eject out of bounds particles to the world fluid emitter
         World.monitor (fun event world ->
+            // eject out of bounds particles to the world fluid emitter
             let blobbo : Entity = event.Subscriber
             match tryResolve (blobbo.GetWorldFluidEmitter world) blobbo with
             | Some (emitter : Entity) ->
                 World.emitFluidParticles event.Data.OutOfBoundsParticles (emitter.GetFluidEmitterId world) world
             | None -> ()
+            
+            // detect ground for allowing leaping
+            let groundDirection = blobbo.GetGravityOverride world |> Option.defaultWith (fun () -> World.getGravity2d world) |> _.Normalized
+            let up = -groundDirection
+            blobbo.SetOnGround
+                (event.Data.FluidCollisions
+                |> Seq.exists (fun c ->
+                    let projectionToUp = c.Normal.Dot up
+                    let theta = acos projectionToUp
+                    theta <= Constants.Physics.GroundAngleMax)) world
             Cascade) blobbo.FluidEmitterUpdateEvent blobbo world
 
         // shoot particles when at least 30 are in body
@@ -65,13 +79,14 @@ type BlobboDispatcher () =
                 else ValueSome p) (blobbo.GetFluidEmitterId world) world
             Cascade) blobbo.ShootEvent blobbo world
 
-        // leap
+        // leap when on ground
         World.monitor (fun event world ->
-            let blobbo : Entity = event.Subscriber
-            let movement = event.Data - blobbo.GetPosition world
-            World.chooseFluidParticles (fun p ->
-                ValueSome { p with FluidParticleVelocity = p.FluidParticleVelocity + movement * 0.01f })
-                (blobbo.GetFluidEmitterId world) world
+            if blobbo.GetOnGround world then
+                let blobbo : Entity = event.Subscriber
+                let movement = (event.Data - blobbo.GetPosition world : Vector3) * 0.015f
+                World.chooseFluidParticles (fun p ->
+                    ValueSome { p with FluidParticleVelocity = p.FluidParticleVelocity + movement })
+                    (blobbo.GetFluidEmitterId world) world
             Cascade) blobbo.LeapEvent blobbo world
 
         // initialize with 400 particles
