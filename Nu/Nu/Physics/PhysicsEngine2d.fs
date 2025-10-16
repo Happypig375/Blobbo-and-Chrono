@@ -106,8 +106,11 @@ type private FluidEmitter2d =
             FluidEmitter2d.clearParticles fluidEmitter
             { fluidEmitter with FluidEmitterDescriptor = descriptor } // clear all particles if disabled
         elif fluidEmitter.FluidEmitterDescriptor.ParticlesMax <> descriptor.ParticlesMax then
-            let newEmitter = FluidEmitter2d.make descriptor // re-add all particles
-            FluidEmitter2d.addParticles (fluidEmitter.ActiveIndices |> Seq.map (fun i -> fromFluid descriptor.ParticleScale &fluidEmitter.States[i])) newEmitter
+            let newEmitter = FluidEmitter2d.make descriptor
+            let newParticles = SArray.zeroCreate fluidEmitter.ActiveIndices.Count
+            for i in 0 .. dec newParticles.Length do
+                newParticles.[i] <- fromFluid fluidEmitter.FluidEmitterDescriptor.ParticleScale &fluidEmitter.States.[i]
+            FluidEmitter2d.addParticles newParticles newEmitter
             newEmitter
         elif fluidEmitter.FluidEmitterDescriptor.CellSize <> descriptor.CellSize then
             let newEmitter = { fluidEmitter with FluidEmitterDescriptor = descriptor }
@@ -115,7 +118,7 @@ type private FluidEmitter2d =
             newEmitter
         else { fluidEmitter with FluidEmitterDescriptor = descriptor } // minimal updates
 
-    static member addParticles (particles : FluidParticle seq) (fluidEmitter : FluidEmitter2d) =
+    static member addParticles (particles : FluidParticle SArray) (fluidEmitter : FluidEmitter2d) =
         let mutable i = 0
         let descriptor = fluidEmitter.FluidEmitterDescriptor
         let particleEnr = particles.GetEnumerator ()
@@ -145,7 +148,7 @@ type private FluidEmitter2d =
                 i <- inc i
                 if i = descriptor.ParticlesMax then continued <- false
 
-    static member setParticles (particles : FluidParticle seq) (fluidEmitter : FluidEmitter2d) =
+    static member setParticles (particles : FluidParticle SArray) (fluidEmitter : FluidEmitter2d) =
         FluidEmitter2d.clearParticles fluidEmitter
         FluidEmitter2d.addParticles particles fluidEmitter
 
@@ -162,17 +165,6 @@ type private FluidEmitter2d =
                 cell.Remove i |> ignore
                 if cell.Count = 0 then fluidEmitter.Grid.Remove state.Cell |> ignore
                 true)
-        |> ignore
-
-    static member filterParticles (filter : FluidParticle -> bool) (fluidEmitter : FluidEmitter2d) =
-        fluidEmitter.ActiveIndices.RemoveWhere (fun i ->
-            let state = &fluidEmitter.States.[i]
-            let removed = not (filter (fromFluid fluidEmitter.FluidEmitterDescriptor.ParticleScale &state))
-            if removed then
-                let cell = fluidEmitter.Grid.[state.Cell]
-                cell.Remove i |> ignore
-                if cell.Count = 0 then fluidEmitter.Grid.Remove state.Cell |> ignore
-            removed)
         |> ignore
 
     static member clearParticles (fluidEmitter : FluidEmitter2d) =
@@ -310,6 +302,7 @@ type private FluidEmitter2d =
                 // Sand Box 2d would either lose particles at corners when the fluid tank is filled, or the particles will be too jumpy
                 let toPixelV2 (v : Common.Vector2) = Vector2 (v.X, v.Y) * Constants.Engine.Meter2d
                 let toPhysicsV2 (v : Vector2) = Common.Vector2 (v.X, v.Y) / Constants.Engine.Meter2d
+                let toPixelV2Normal (v : Common.Vector2) = Vector2 (v.X, v.Y)
                 let toPhysicsV2Normal (v : Vector2) = Common.Vector2 (v.X, v.Y)
                 let state = &fluidEmitter.States.[i]
                 for i in 0 .. dec state.PotentialFixtureCount do
@@ -434,7 +427,7 @@ type private FluidEmitter2d =
                             { FluidCollider = fromFluid fluidEmitter.FluidEmitterDescriptor.ParticleScale &state
                               FluidCollidee = fixture.Tag :?> BodyShapeIndex
                               Nearest = (toPixelV2 nearest).V3
-                              Normal = (toPixelV2 normal).V3 }
+                              Normal = (toPixelV2Normal normal).V3 }
                         if not fixture.IsSensor then
                             state.PositionUnscaled <- nearest + 0.05f * normal |> toPixelV2
                             let mutable dotResult = Unchecked.defaultof<_>
