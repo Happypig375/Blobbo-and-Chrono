@@ -15,7 +15,7 @@ type ChronoDispatcher () =
 
     static member Properties =
         [define Entity.Size (v3 320f 320f 0f)
-         define Entity.FluidParticleRadius 10f
+         define Entity.FluidParticleRadius 2f
          define Entity.GravityOverride (Some (v3 0f -0.5f 0f))
          define Entity.StaticImage Assets.Gameplay.Sand
          define Entity.Viscocity 1f
@@ -24,10 +24,10 @@ type ChronoDispatcher () =
          ]
 
     override _.Register (chrono, world) =
-        let hourglass = World.createEntity<StaticSpriteDispatcher> (Some chrono.EntityAddress) DefaultOverlay (Some (Array.add "Hourglass" chrono.Surnames)) chrono.Group world
+        let hourglass = World.createEntity<Box2dDispatcher> (Some chrono.EntityAddress) DefaultOverlay (Some (Array.add "Hourglass" chrono.Surnames)) chrono.Group world
         chrono.SetHourglass hourglass.EntityAddress world
         hourglass.SetStaticImage Assets.Gameplay.Hourglass world
-        hourglass.SetInsetOpt (Some (box2 (v2 80f 80f) (v2 160f 160f))) world
+        hourglass.SetScale (v3 0.5f 0.5f 1f) world
 
     override _.Unregister (chrono, world) =
         tryResolve (chrono.GetHourglass world) chrono |> Option.iter (fun e -> World.destroyEntity e world)
@@ -54,7 +54,7 @@ type ChronoDispatcher () =
                 p with
                     FluidParticleVelocity =
                         p.FluidParticleVelocity +
-                        (0.001f * v3 (position - p.FluidParticlePosition).Magnitude 0f 0f).Transform
+                        (0.1f * v3 (position - p.FluidParticlePosition).Magnitude 0f 0f).Transform
                             (Quaternion.CreateLookAt2d (position - p.FluidParticlePosition).V2) +
                         (if World.isKeyboardKeyDown KeyboardKey.J world then v3 -0.01f 0f 0f else v3Zero) +
                         (if World.isKeyboardKeyDown KeyboardKey.L world then v3 0.01f 0f 0f else v3Zero)
