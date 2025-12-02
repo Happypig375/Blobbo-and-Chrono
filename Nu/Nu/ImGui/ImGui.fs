@@ -179,8 +179,8 @@ type ImGui (stub : bool, displaySize : Vector2i) =
         colors.[int ImGuiCol.ScrollbarGrabHovered] <- Vector4 (0.407843142747879f, 0.407843142747879f, 0.407843142747879f, 1.0f)
         colors.[int ImGuiCol.ScrollbarGrabActive] <- Vector4 (0.5098039507865906f, 0.5098039507865906f, 0.5098039507865906f, 1.0f)
         colors.[int ImGuiCol.CheckMark] <- Vector4 (1.0f, 1.0f, 1.0f, 1.0f)
-        colors.[int ImGuiCol.SliderGrab] <- Vector4 (0.8784313797950745f, 0.8784313797950745f, 0.8784313797950745f, 1.0f)
-        colors.[int ImGuiCol.SliderGrabActive] <- Vector4 (0.9803921580314636f, 0.9803921580314636f, 0.9803921580314636f, 1.0f)
+        colors.[int ImGuiCol.SliderGrab] <- Vector4 (0.8784313797950745f, 0.8784313797950745f, 0.8784313797950745f, 0.3499999940395355f)
+        colors.[int ImGuiCol.SliderGrabActive] <- Vector4 (0.9803921580314636f, 0.9803921580314636f, 0.9803921580314636f, 0.3098039329051971f)
         colors.[int ImGuiCol.Button] <- Vector4 (0.2980392277240754f, 0.2980392277240754f, 0.2980392277240754f, 0.6015625f)
         colors.[int ImGuiCol.ButtonHovered] <- Vector4 (0.494117647409439f, 0.494117647409439f, 0.494117647409439f, 0.6015625f)
         colors.[int ImGuiCol.ButtonActive] <- Vector4 (0.658823549747467f, 0.658823549747467f, 0.658823549747467f, 0.6015625f)
@@ -250,7 +250,7 @@ type ImGui (stub : bool, displaySize : Vector2i) =
         ImGui.IsCtrlDown () && ImGui.IsKeyPressed key
 
     static member Position2dToInner (absolute, eyeCenter, eyeSize : Vector2, viewport, position) =
-        let virtualScalar = (v2iDup viewport.DisplayScalar).V2
+        let virtualScalar = v2Dup (single viewport.DisplayScalar)
         let invertY = v2 1.0f -1.0f
         let positionWindow =
             if absolute
@@ -264,7 +264,7 @@ type ImGui (stub : bool, displaySize : Vector2i) =
         positionInner
 
     static member Size2dToInner (viewport, size) =
-        let virtualScalar = (v2iDup viewport.DisplayScalar).V2
+        let virtualScalar = v2Dup (single viewport.DisplayScalar)
         let sizeVirtual = size * virtualScalar
         let boundsRatio = viewport.Bounds.Size.V2 / viewport.Inner.Size.V2
         let sizeInner = sizeVirtual / boundsRatio
@@ -273,7 +273,7 @@ type ImGui (stub : bool, displaySize : Vector2i) =
     // NOTE: I lazily dummied out this code until I feel like navigating through the metaphorical hedge maze required
     // to convert its output to inner space.
     //static member WindowToPosition2d (absolute, eyeCenter, eyeSize : Vector2, viewport, position) =
-    //    let virtualScalar = (v2iDup viewport.DisplayScalar).V2
+    //    let virtualScalar = v2Dup (single viewport.DisplayScalar)
     //    let invertY = v2 1.0f -1.0f
     //    if absolute
     //    then position / virtualScalar * invertY - eyeSize * 0.5f * virtualScalar

@@ -34,7 +34,7 @@ type BlobboDispatcher () =
     static member Properties =
         [define Entity.Size (v3 60f 60f 0f)
          define Entity.FluidParticleRadius 5f
-         define Entity.GravityOverride (Some (v3 0f -1f 0f))
+         define Entity.Gravity (GravityOverride (v3 0f -1f 0f))
          define Entity.StaticImage Assets.Default.Fluid
          define Entity.Color (colorDup 0.8f)
          define Entity.Viscocity 2f
@@ -58,7 +58,7 @@ type BlobboDispatcher () =
             | None -> ()
             
             // detect ground for allowing leaping
-            let groundDirection = blobbo.GetGravityOverride world |> Option.defaultWith (fun () -> World.getGravity2d world) |> _.Normalized
+            let groundDirection = blobbo.GetGravity world |> Gravity.localize (World.getGravity2d world) |> _.Normalized
             let up = -groundDirection
             blobbo.SetOnGround
                 (event.Data.FluidCollisions
@@ -97,7 +97,7 @@ type BlobboDispatcher () =
                 let (x, y) = Math.DivRem (i, sideLength)
                 { FluidParticlePosition = position + 2f * v3 (x - sideLength / 2 |> single) (y - sideLength / 2 |> single) 0f
                   FluidParticleVelocity = v3Zero
-                  GravityOverride = ValueNone })) world
+                  Gravity = GravityWorld })) world
 
     override _.Update (blobbo, world) =
         let position = blobbo.GetPosition world

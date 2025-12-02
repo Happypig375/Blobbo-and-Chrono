@@ -29,7 +29,7 @@ type RewindableFacet () =
         [typeof<RigidBodyFacet>]
 
     static member Properties =
-        [define Entity.TraversalHistoryMax (GameTime.ofSeconds 10f)
+        [define Entity.TraversalHistoryMax (GameTime.ofSeconds 10)
          define Entity.RewindPreview None
          define Entity.BodyHistory FQueue.empty]
 

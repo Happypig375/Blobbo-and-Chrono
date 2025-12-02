@@ -211,8 +211,8 @@ module Render =
     let [<Literal>] LightsMaxForward = 9 // NOTE: remember to update LIGHTS_MAX in forward shaders when changing this!
     let [<Uniform>] mutable ShadowVirtualResolution = match ConfigurationManager.AppSettings.["ShadowVirtualResolution"] with null -> 256 | value -> scvalue value
     let [<Uniform>] mutable ShadowDisplayScalarMax = match ConfigurationManager.AppSettings.["ShadowDisplayScalarMax"] with null -> 4 | value -> scvalue value
-    let [<Literal>] ShadowTexturesMax = 8 // NOTE: remember to update SHADOW_TEXTURES_MAX in shaders when changing this!
-    let [<Literal>] ShadowMapsMax = 7 // NOTE: remember to update SHADOW_MAPS_MAX in shaders when changing this!
+    let [<Literal>] ShadowTexturesMax = 12 // NOTE: remember to update SHADOW_TEXTURES_MAX in shaders when changing this!
+    let [<Literal>] ShadowMapsMax = 12 // NOTE: remember to update SHADOW_MAPS_MAX in shaders when changing this!
     let [<Uniform>] mutable ShadowDirectionalMarginRatioCull = match ConfigurationManager.AppSettings.["ShadowDirectionalMarginRatioCull"] with null -> 0.5f | value -> scvalue value
     let [<Literal>] ShadowCascadesMax = 2 // NOTE: remember to update SHADOW_CASCADES_MAX in shaders when changing this!
     let [<Literal>] ShadowCascadeLevels = 3 // NOTE: remember to update SHADOW_CASCADE_LEVELS_SIZE in shaders when changing this!
@@ -261,9 +261,9 @@ module Render =
     let [<Literal>] SsaoDistanceMaxDefault = 0.125f
     let [<Literal>] SsvfEnabledGlobalDefault = true
     let [<Literal>] SsvfEnabledLocalDefault = true
+    let [<Literal>] SsvfIntensityDefault = 1.0f
     let [<Literal>] SsvfStepsDefault = 16
     let [<Literal>] SsvfAsymmetryDefault = 0.25f
-    let [<Literal>] SsvfIntensityDefault = 1.0f
     let [<Literal>] SsrlEnabledGlobalDefault = true
     let [<Literal>] SsrlEnabledLocalDefault = true
     let [<Literal>] SsrlIntensityDefault = 4.0f
@@ -295,10 +295,10 @@ module Render =
     let [<Literal>] SsrrEdgeVerticalMarginDefault = 0.05f
     let [<Literal>] BloomEnabledGlobalDefault = true
     let [<Literal>] BloomEnabledLocalDefault = true
+    let [<Literal>] BloomStrengthDefault = 0.03f
     let [<Literal>] BloomThresholdDefault = 0.5f
     let [<Literal>] BloomKarisAverageEnabledDefault = true
     let [<Literal>] BloomFilterRadiusDefault = 0.004f
-    let [<Literal>] BloomStrengthDefault = 0.03f
     let [<Literal>] FxaaEnabledDefault = false
     let [<Literal>] LightProbeSizeDefault = 3.0f
     let [<Literal>] BrightnessDefault = 3.0f
@@ -330,11 +330,11 @@ module Audio =
     let [<Literal>] MasterSongVolumeDefault = 1.0f
     let [<Literal>] SoundVolumeDefault = 1.0f
     let [<Literal>] SongVolumeDefault = 1.0f
-    let [<Uniform>] FadeOutTimeDefault = GameTime.ofSeconds 0.5f
-    let [<Uniform>] SongResumptionMax = GameTime.ofSeconds 90.0f // HACK: prevents songs from starting over too often due to hack in SdlAudioPlayer.playSong.
+    let [<Uniform>] FadeOutTimeDefault = GameTime.ofSeconds 0.5
+    let [<Uniform>] SongResumptionMax = GameTime.ofSeconds 90.0 // HACK: prevents songs from starting over too often due to hack in SdlAudioPlayer.playSong.
     let [<Literal>] Frequency = 44100
-    let [<Literal>] BufferSizeDefault = 1024
-    let [<Literal>] FadeInSecondsMin = 0.1f // NOTE: Mix_FadeInMusicPos seems to sometimes cause audio 'popping' when starting a song, so a minimum fade is used instead.
+    let [<Literal>] BufferSize = 1024
+    let [<Literal>] FadeInSecondsMin = 0.1 // NOTE: Mix_FadeInMusicPos seems to sometimes cause audio 'popping' when starting a song, so a minimum fade is used instead.
 
 [<RequireQualifiedAccess>]
 module Physics =
@@ -342,8 +342,9 @@ module Physics =
     let [<Uniform>] GravityDefault = Vector3 (0.0f, -9.80665f, 0.0f)
     let [<Literal>] FrictionDefault = 0.5f
     let [<Literal>] AngularDampingDefault = 0.2f
-    let [<Literal>] BreakingPointDefault = 1000000.0f
     let [<Literal>] CollisionWildcard = "*"
+    let [<Uniform>] mutable Collision2dSteps = match ConfigurationManager.AppSettings.["Collision2dSteps"] with null -> 4 | value -> scvalue value
+    let [<Uniform>] mutable Collision2dFrameCompensation = match ConfigurationManager.AppSettings.["Collision2dFrameCompensation"] with null -> false | value -> scvalue value
     let [<Uniform>] mutable Collision3dBodiesMax = match ConfigurationManager.AppSettings.["Collision3dBodiesMax"] with null -> 65536 | value -> scvalue value
     let [<Uniform>] mutable Collision3dBodyPairsMax = match ConfigurationManager.AppSettings.["Collision3dBodyPairsMax"] with null -> 32768 | value -> scvalue value
     let [<Uniform>] mutable Collision3dContactConstraintsMax = match ConfigurationManager.AppSettings.["Collision3dContactConstraintsMax"] with null -> 16384 | value -> scvalue value
@@ -352,7 +353,7 @@ module Physics =
     let [<Uniform>] mutable Collision3dBarriersMax = match ConfigurationManager.AppSettings.["Collision3dBarriersMax"] with null -> max 1 (Environment.ProcessorCount - 2) | value -> scvalue value
     let [<Uniform>] mutable Collision3dJobsMax = match ConfigurationManager.AppSettings.["Collision3dJobsMax"] with null -> 128 | value -> scvalue value
     let [<Uniform>] mutable Collision3dBodyUnoptimizedCreationMax = 128 * 3 // NOTE: related to https://github.com/jrouwe/JoltPhysics/issues/1520#issuecomment-2667060129
-    let [<Uniform>] mutable GroundAngleMax = match ConfigurationManager.AppSettings.["GroundAngleMax"] with null -> single (Math.PI * 0.25) | value -> scvalue value
+    let [<Uniform>] mutable GroundAngleMax = match ConfigurationManager.AppSettings.["GroundAngleMax"] with null -> MathF.PI_OVER_4 | value -> scvalue value
     let [<Uniform>] internal BroadPhaseLayerNonMoving = byte 0
     let [<Uniform>] internal BroadPhaseLayerMoving = byte 1
     let [<Uniform>] internal ObjectLayerNonMoving = JoltPhysicsSharp.ObjectLayer 0u
@@ -375,10 +376,11 @@ module Physics =
               "AngularDamping"
               "AngularFactor"
               "Substance"
-              "GravityOverride"
+              "Gravity"
               "CharacterProperties"
               "VehicleProperties"
               "CollisionDetection"
+              "CollisionGroup"
               "CollisionCategories"
               "CollisionMask"
               "Sensor"],

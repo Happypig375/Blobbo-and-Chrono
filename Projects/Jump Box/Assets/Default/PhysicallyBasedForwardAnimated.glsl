@@ -87,8 +87,8 @@ const float ATTENUATION_CONSTANT = 1.0f;
 const float ENVIRONMENT_FILTER_REFRACTED_SATURATION = 2.0;
 const int LIGHT_MAPS_MAX = 2;
 const int LIGHTS_MAX = 9;
-const int SHADOW_TEXTURES_MAX = 8;
-const int SHADOW_MAPS_MAX = 7;
+const int SHADOW_TEXTURES_MAX = 12;
+const int SHADOW_MAPS_MAX = 12;
 const float SHADOW_DIRECTIONAL_SEAM_INSET = 0.05; // TODO: see if this should be proportionate to shadow texel size.
 const int SHADOW_CASCADES_MAX = 2;
 const int SHADOW_CASCADE_LEVELS = 3;
@@ -127,9 +127,9 @@ uniform float fogFinish;
 uniform float fogDensity;
 uniform vec4 fogColor;
 uniform int ssvfEnabled;
+uniform float ssvfIntensity;
 uniform int ssvfSteps;
 uniform float ssvfAsymmetry;
-uniform float ssvfIntensity;
 uniform int ssrrEnabled;
 uniform float ssrrIntensity;
 uniform float ssrrDetail;
@@ -155,7 +155,7 @@ uniform samplerCube irradianceMap;
 uniform samplerCube environmentFilterMap;
 uniform samplerCube irradianceMaps[LIGHT_MAPS_MAX];
 uniform samplerCube environmentFilterMaps[LIGHT_MAPS_MAX];
-uniform sampler2D shadowTextures[SHADOW_TEXTURES_MAX];
+uniform sampler2DArray shadowTextures;
 uniform samplerCube shadowMaps[SHADOW_MAPS_MAX];
 uniform sampler2DArray shadowCascades[SHADOW_CASCADES_MAX];
 uniform vec3 lightMapOrigins[LIGHT_MAPS_MAX];
@@ -340,7 +340,7 @@ float computeShadowScalarSpot(vec4 position, float lightConeOuter, int shadowInd
         vec3 shadowTexCoords = shadowTexCoordsProj * 0.5 + 0.5;
         float shadowZ = shadowTexCoords.z;
         float shadowZExp = exp(-lightShadowExponent * shadowZ);
-        float shadowDepthExp = texture(shadowTextures[shadowIndex], shadowTexCoords.xy).y;
+        float shadowDepthExp = texture(shadowTextures, vec3(shadowTexCoords.xy, float(shadowIndex))).y;
         float shadowScalar = clamp(shadowZExp * shadowDepthExp, 0.0, 1.0);
         shadowScalar = pow(shadowScalar, lightShadowDensity);
         shadowScalar = lightConeOuter > SHADOW_FOV_MAX ? fadeShadowScalar(shadowTexCoords.xy, shadowScalar) : shadowScalar;
@@ -361,7 +361,7 @@ float computeShadowScalarDirectional(vec4 position, int shadowIndex)
         vec3 shadowTexCoords = shadowTexCoordsProj * 0.5 + 0.5;
         float shadowZ = shadowTexCoords.z;
         float shadowZExp = exp(-lightShadowExponent * shadowZ);
-        float shadowDepthExp = texture(shadowTextures[shadowIndex], shadowTexCoords.xy).y;
+        float shadowDepthExp = texture(shadowTextures, vec3(shadowTexCoords.xy, float(shadowIndex))).y;
         float shadowScalar = clamp(shadowZExp * shadowDepthExp, 0.0, 1.0);
         shadowScalar = pow(shadowScalar, lightShadowDensity);
         return shadowScalar;
@@ -515,7 +515,7 @@ vec3 computeFogAccumSpot(vec4 position, int lightIndex)
             vec3 shadowTexCoords = shadowTexCoordsProj * 0.5 + 0.5;
             bool shadowTexCoordsInRange = shadowTexCoords.x >= 0.0 && shadowTexCoords.x < 1.0 && shadowTexCoords.y >= 0.0 && shadowTexCoords.y < 1.0;
             float shadowZ = shadowTexCoords.z;
-            float shadowDepth = shadowTexCoordsInRange ? texture(shadowTextures[shadowIndex], shadowTexCoords.xy).x : 1.0;
+            float shadowDepth = shadowTexCoordsInRange ? texture(shadowTextures, vec3(shadowTexCoords.xy, float(shadowIndex))).x : 1.0;
 
             // compute intensity inside light volume
             vec3 v = normalize(eyeCenter - currentPosition);
@@ -591,7 +591,7 @@ vec3 computeFogAccumDirectional(vec4 position, int lightIndex)
             vec3 shadowTexCoords = shadowTexCoordsProj * 0.5 + 0.5;
             bool shadowTexCoordsInRange = shadowTexCoords.x >= 0.0 && shadowTexCoords.x < 1.0 && shadowTexCoords.y >= 0.0 && shadowTexCoords.y < 1.0;
             float shadowZ = shadowTexCoords.z;
-            float shadowDepth = shadowTexCoordsInRange ? texture(shadowTextures[shadowIndex], shadowTexCoords.xy).x : 1.0;
+            float shadowDepth = shadowTexCoordsInRange ? texture(shadowTextures, vec3(shadowTexCoords.xy, float(shadowIndex))).x : 1.0;
 
             // step through ray, accumulating fog light moment
             if (shadowZ <= shadowDepth || shadowZ >= 1.0f)
@@ -862,10 +862,10 @@ void main()
         vec3 lightOrigin = lightOrigins[i];
         float lightCutoff = lightCutoffs[i];
         int lightType = lightTypes[i];
-        bool lightDirectional = lightType == 2;
-        bool lightCascaded = lightType == 3;
+        bool lightPoint = lightType == 0;
+        bool lightSpot = lightType == 1;
         vec3 l, h, radiance;
-        if (!lightDirectional && !lightCascaded)
+        if (lightPoint || lightSpot)
         {
             vec3 d = lightOrigin - position.xyz;
             l = normalize(d);
@@ -914,7 +914,7 @@ void main()
         vec3 numerator = ndf * g * f;
         float nDotL = max(dot(n, l), 0.0);
         float denominator = 4.0 * nDotV * nDotL + 0.0001; // add epsilon to prevent division by zero
-        vec3 specular = numerator / denominator;
+        vec3 specular = clamp(numerator / denominator, 0.0, 10000.0);
 
         // compute diffusion
         vec3 kS = f;
@@ -1049,7 +1049,7 @@ void main()
     // compute color composition
     vec3 color = lightAccumDiffuse + diffuse + emission * albedo.rgb + lightAccumSpecular + specular + fogAccum;
 
-    // compute and apply global fog when enabled
+    // compute and apply distance fog when enabled
     if (fogEnabled == 1)
     {
         switch (fogType)

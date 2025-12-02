@@ -10,7 +10,7 @@ type BlobboDoubleSizeDispatcher () =
     static member Properties =
         [define Entity.Size (v3 320f 320f 0f)
          define Entity.FluidParticleRadius 10f
-         define Entity.GravityOverride (Some (v3 0f -1f 0f))
+         define Entity.Gravity (GravityOverride (v3 0f -1f 0f))
          define Entity.StaticImage Assets.Default.Ball
          define Entity.FluidParticleImageSizeOverride (Some (v2 2f 2f))
          define Entity.Viscocity 1f
@@ -25,7 +25,7 @@ type BlobboDoubleSizeDispatcher () =
                 let (x, y) = Math.DivRem (i, 20)
                 { FluidParticlePosition = position + 4f * v3 (single x) (single y) 0f
                   FluidParticleVelocity = v3Zero
-                  GravityOverride = ValueNone }))
+                  Gravity = GravityWorld }))
             (blobbo.GetFluidEmitterId world) world
 
     override _.Update (blobbo, world) =

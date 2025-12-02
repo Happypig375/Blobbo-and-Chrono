@@ -50,6 +50,8 @@ module Configure =
                 | nameof Constants.Render.ShadowCascadeLimits -> Constants.Render.ShadowCascadeLimits <- scvalue value
                 | nameof Constants.Render.ShadowCascadeMarginRatio -> Constants.Render.ShadowCascadeMarginRatio <- scvalue value
                 | nameof Constants.Render.ShadowCascadeMarginRatioCull -> Constants.Render.ShadowCascadeMarginRatioCull <- scvalue value
+                | nameof Constants.Physics.Collision2dSteps -> Constants.Physics.Collision2dSteps <- scvalue value
+                | nameof Constants.Physics.Collision2dFrameCompensation -> Constants.Physics.Collision2dFrameCompensation <- scvalue value
                 | nameof Constants.Physics.Collision3dBodiesMax -> Constants.Physics.Collision3dBodiesMax <- scvalue value
                 | nameof Constants.Physics.Collision3dBodyPairsMax -> Constants.Physics.Collision3dBodyPairsMax <- scvalue value
                 | nameof Constants.Physics.Collision3dContactConstraintsMax -> Constants.Physics.Collision3dContactConstraintsMax <- scvalue value
@@ -59,6 +61,7 @@ module Configure =
                 | nameof Constants.Physics.Collision3dJobsMax -> Constants.Physics.Collision3dJobsMax <- scvalue value
                 | nameof Constants.Physics.GroundAngleMax -> Constants.Physics.GroundAngleMax <- scvalue value
                 | nameof Constants.Gui.SliceMarginDefault -> Constants.Gui.SliceMarginDefault <- scvalue value
+                | nameof Globals.Log.LogSynchronously -> Log.setLogSynchronously (scvalue value)
                 | nameof Globals.Render.DisplayScalar -> Globals.Render.DisplayScalar <- scvalue value
                 | nameof Globals.Render.ShadowScalar -> Globals.Render.ShadowScalar <- scvalue value
                 | _ -> ()

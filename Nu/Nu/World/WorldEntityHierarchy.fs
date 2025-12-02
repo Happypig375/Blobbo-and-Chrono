@@ -96,7 +96,7 @@ module WorldEntityHierarchyExtensions =
                                     //let concave = OpenGL.PhysicallyBased.PhysicallyBasedSurfaceFns.extractConcave concave staticModelMetadata.SceneOpt surface
                                     let surfaceShape = { surfaceShape with Profile = profile }
                                     child.SetBodyShape (StaticModelSurfaceShape surfaceShape) world
-                                    let navShape = OpenGL.PhysicallyBased.PhysicallyBasedSurfaceFns.extractNavShape StaticModelSurfaceNavShape staticModelMetadata.SceneOpt surface
+                                    let navShape = OpenGL.PhysicallyBased.PhysicallyBasedSurfaceFns.extractNavShape ContourNavShape staticModelMetadata.SceneOpt surface
                                     child.SetNavShape navShape world
                                     child
                                 else World.createEntity<StaticModelSurfaceDispatcher> mountOpt DefaultOverlay (Some surnames) group world
@@ -328,7 +328,7 @@ module Permafreezer3dDispatcherExtensions =
             let frozenShapes = getFrozenShapes this world
             for (bounds, matrix, staticModel, surfaceIndex, navShape, _, _) in frozenShapes do
                 let navId = { NavIndex = index; NavEntity = this }
-                World.setNav3dBodyOpt (Some (bounds, matrix, staticModel, surfaceIndex, navShape)) navId world
+                World.setNav3dBodyOpt (Some (bounds, matrix, StaticModelSurfaceNavBody (staticModel, surfaceIndex), navShape)) navId world
                 index <- inc index
 
         member internal this.RegisterFrozenShapesPhysics getFrozenShapes world =
@@ -352,12 +352,13 @@ module Permafreezer3dDispatcherExtensions =
                       AngularDamping = 0.0f
                       AngularFactor = v3Zero
                       Substance = Mass 0.0f
-                      GravityOverride = None
+                      Gravity = GravityWorld
                       CharacterProperties = CharacterProperties.defaultProperties
                       VehicleProperties = VehiclePropertiesAbsent
+                      CollisionGroup = 0
                       CollisionDetection = Discrete
-                      CollisionCategories = 1
-                      CollisionMask = -1
+                      CollisionCategories = 1UL
+                      CollisionMask = UInt64.MaxValue
                       Sensor = false
                       Awake = false
                       BodyIndex = index }

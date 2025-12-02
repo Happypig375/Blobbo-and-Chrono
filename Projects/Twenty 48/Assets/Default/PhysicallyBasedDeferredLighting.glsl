@@ -19,8 +19,8 @@ const float PI = 3.141592654;
 const float PI_OVER_2 = PI / 2.0;
 const float ATTENUATION_CONSTANT = 1.0;
 const int LIGHTS_MAX = 64;
-const int SHADOW_TEXTURES_MAX = 8;
-const int SHADOW_MAPS_MAX = 7;
+const int SHADOW_TEXTURES_MAX = 12;
+const int SHADOW_MAPS_MAX = 12;
 const float SHADOW_DIRECTIONAL_SEAM_INSET = 0.05; // TODO: see if this should be proportionate to shadow texel size.
 const int SHADOW_CASCADES_MAX = 2;
 const int SHADOW_CASCADE_LEVELS = 3;
@@ -29,11 +29,11 @@ const float SHADOW_CASCADE_DENSITY_BONUS = 0.5;
 const float SHADOW_FOV_MAX = 2.1;
 
 const vec4 SSVF_DITHERING[4] =
-vec4[](
-    vec4(0.0, 0.5, 0.125, 0.625),
-    vec4(0.75, 0.22, 0.875, 0.375),
-    vec4(0.1875, 0.6875, 0.0625, 0.5625),
-    vec4(0.9375, 0.4375, 0.8125, 0.3125));
+    vec4[](
+        vec4(0.0, 0.5, 0.125, 0.625),
+        vec4(0.75, 0.22, 0.875, 0.375),
+        vec4(0.1875, 0.6875, 0.0625, 0.5625),
+        vec4(0.9375, 0.4375, 0.8125, 0.3125));
 
 uniform vec3 eyeCenter;
 uniform mat4 view;
@@ -48,16 +48,16 @@ uniform float lightShadowExponent;
 uniform float lightShadowDensity;
 uniform int sssEnabled;
 uniform int ssvfEnabled;
+uniform float ssvfIntensity;
 uniform int ssvfSteps;
 uniform float ssvfAsymmetry;
-uniform float ssvfIntensity;
 uniform sampler2D depthTexture;
 uniform sampler2D albedoTexture;
 uniform sampler2D materialTexture;
 uniform sampler2D normalPlusTexture;
 uniform sampler2D subdermalPlusTexture;
 uniform sampler2D scatterPlusTexture;
-uniform sampler2D shadowTextures[SHADOW_TEXTURES_MAX];
+uniform sampler2DArray shadowTextures;
 uniform samplerCube shadowMaps[SHADOW_MAPS_MAX];
 uniform sampler2DArray shadowCascades[SHADOW_CASCADES_MAX];
 uniform vec3 lightOrigins[LIGHTS_MAX];
@@ -221,7 +221,7 @@ float computeShadowScalarSpot(vec4 position, float lightConeOuter, int shadowInd
         vec3 shadowTexCoords = shadowTexCoordsProj * 0.5 + 0.5;
         float shadowZ = shadowTexCoords.z;
         float shadowZExp = exp(-lightShadowExponent * shadowZ);
-        float shadowDepthExp = texture(shadowTextures[shadowIndex], shadowTexCoords.xy).y;
+        float shadowDepthExp = texture(shadowTextures, vec3(shadowTexCoords.xy, float(shadowIndex))).y;
         float shadowScalar = clamp(shadowZExp * shadowDepthExp, 0.0, 1.0);
         shadowScalar = pow(shadowScalar, lightShadowDensity);
         shadowScalar = lightConeOuter > SHADOW_FOV_MAX ? fadeShadowScalar(shadowTexCoords.xy, shadowScalar) : shadowScalar;
@@ -242,7 +242,7 @@ float computeShadowScalarDirectional(vec4 position, int shadowIndex)
         vec3 shadowTexCoords = shadowTexCoordsProj * 0.5 + 0.5;
         float shadowZ = shadowTexCoords.z;
         float shadowZExp = exp(-lightShadowExponent * shadowZ);
-        float shadowDepthExp = texture(shadowTextures[shadowIndex], shadowTexCoords.xy).y;
+        float shadowDepthExp = texture(shadowTextures, vec3(shadowTexCoords.xy, float(shadowIndex))).y;
         float shadowScalar = clamp(shadowZExp * shadowDepthExp, 0.0, 1.0);
         shadowScalar = pow(shadowScalar, lightShadowDensity);
         return shadowScalar;
@@ -314,13 +314,13 @@ float geometryTravelSpot(vec4 position, int lightIndex, int shadowIndex)
         // compute light distance travel through surface (not accounting for incidental surface concavity)
         float travel = 0.0;
         vec2 shadowTexCoords = shadowTexCoordsProj.xy * 0.5 + 0.5; // adj-ndc space
-        vec2 shadowTextureSize = textureSize(shadowTextures[shadowIndex], 0);
+        vec2 shadowTextureSize = textureSize(shadowTextures, 0).xy;
         vec2 shadowTexelSize = 1.0 / shadowTextureSize;
         for (int i = -1; i <= 1; ++i)
         {
             for (int j = -1; j <= 1; ++j)
             {
-                float shadowDepthScreen = texture(shadowTextures[shadowIndex], shadowTexCoords + vec2(i, j) * shadowTexelSize).x;
+                float shadowDepthScreen = texture(shadowTextures, vec3(shadowTexCoords.xy + vec2(i, j) * shadowTexelSize, float(shadowIndex))).x;
                 float shadowDepth = depthScreenToDepthView(shadowNear, shadowFar, shadowDepthScreen);
                 float delta = shadowZ - shadowDepth;
                 travel += max(0.0, delta);
@@ -346,9 +346,9 @@ float geometryTravelDirectional(vec4 position, int lightIndex, int shadowIndex)
         // compute light distance travel through surface (not accounting for incidental surface concavity)
         vec3 shadowTexCoords = shadowTexCoordsProj * 0.5 + 0.5;
         float shadowZScreen = shadowTexCoords.z; // linear, screen space
-        vec2 shadowTextureSize = textureSize(shadowTextures[shadowIndex], 0);
+        vec2 shadowTextureSize = textureSize(shadowTextures, 0).xy;
         vec2 shadowTexelSize = 1.0 / shadowTextureSize;
-        float shadowDepthScreen = texture(shadowTextures[shadowIndex], shadowTexCoords.xy).x; // linear, screen space
+        float shadowDepthScreen = texture(shadowTextures, vec3(shadowTexCoords.xy, float(shadowIndex))).x; // linear, screen space
         float delta = shadowZScreen - shadowDepthScreen;
         float shadowFar = lightCutoffs[lightIndex];
         return max(0.0, delta * shadowFar);
@@ -583,7 +583,7 @@ vec3 computeFogAccumSpot(vec4 position, int lightIndex)
             vec3 shadowTexCoords = shadowTexCoordsProj * 0.5 + 0.5;
             bool shadowTexCoordsInRange = shadowTexCoords.x >= 0.0 && shadowTexCoords.x < 1.0 && shadowTexCoords.y >= 0.0 && shadowTexCoords.y < 1.0;
             float shadowZ = shadowTexCoords.z;
-            float shadowDepth = shadowTexCoordsInRange ? texture(shadowTextures[shadowIndex], shadowTexCoords.xy).x : 1.0;
+            float shadowDepth = shadowTexCoordsInRange ? texture(shadowTextures, vec3(shadowTexCoords.xy, float(shadowIndex))).x : 1.0;
 
             // compute intensity inside light volume
             vec3 v = normalize(eyeCenter - currentPosition);
@@ -659,7 +659,7 @@ vec3 computeFogAccumDirectional(vec4 position, int lightIndex)
             vec3 shadowTexCoords = shadowTexCoordsProj * 0.5 + 0.5;
             bool shadowTexCoordsInRange = shadowTexCoords.x >= 0.0 && shadowTexCoords.x < 1.0 && shadowTexCoords.y >= 0.0 && shadowTexCoords.y < 1.0;
             float shadowZ = shadowTexCoords.z;
-            float shadowDepth = shadowTexCoordsInRange ? texture(shadowTextures[shadowIndex], shadowTexCoords.xy).x : 1.0;
+            float shadowDepth = shadowTexCoordsInRange ? texture(shadowTextures, vec3(shadowTexCoords.xy, float(shadowIndex))).x : 1.0;
 
             // step through ray, accumulating fog light moment
             if (shadowZ <= shadowDepth || shadowZ >= 1.0f)
@@ -778,11 +778,11 @@ void main()
         vec3 lightOrigin = lightOrigins[i];
         float lightCutoff = lightCutoffs[i];
         int lightType = lightTypes[i];
-        bool lightDirectional = lightType == 2;
-        bool lightCascaded = lightType == 3;
+        bool lightPoint = lightType == 0;
+        bool lightSpot = lightType == 1;
         vec3 l, h, radiance;
         float intensity = 0.0;
-        if (!lightDirectional && !lightCascaded)
+        if (lightPoint || lightSpot)
         {
             vec3 d = lightOrigin - position.xyz;
             l = normalize(d);
@@ -832,7 +832,7 @@ void main()
         vec3 numerator = ndf * g * f;
         float nDotL = max(dot(normal, l), 0.0);
         float denominator = 4.0 * nDotV * nDotL + 0.0001; // add epsilon to prevent division by zero
-        vec3 specular = numerator / denominator;
+        vec3 specular = clamp(numerator / denominator, 0.0, 10000.0);
 
         // compute diffusion
         vec3 kS = f;
@@ -842,8 +842,8 @@ void main()
         // compute burley diffusion approximation (unlike lambert, this is NOT energy-preserving!)
         float lDotH = max(dot(l, h), 0.0);
         float f90 = 0.5 + 2.0 * roughness * lDotH * lDotH; // retroreflection term
-        float lightScatter = pow(1.0 - nDotL, 5.0) * (f90 - 1.0) + 1.0;
-        float viewScatter  = pow(1.0 - nDotV, 5.0) * (f90 - 1.0) + 1.0;
+        float lightScatter = pow(1.0 - min(1.0, nDotL), 5.0) * (f90 - 1.0) + 1.0;
+        float viewScatter = pow(1.0 - min(1.0, nDotV), 5.0) * (f90 - 1.0) + 1.0;
         float burley = lightScatter * viewScatter;
 
         // accumulate light

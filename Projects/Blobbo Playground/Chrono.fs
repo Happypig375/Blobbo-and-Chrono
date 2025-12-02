@@ -16,7 +16,7 @@ type ChronoDispatcher () =
     static member Properties =
         [define Entity.Size (v3 320f 320f 0f)
          define Entity.FluidParticleRadius 2f
-         define Entity.GravityOverride (Some (v3 0f -0.5f 0f))
+         define Entity.Gravity (GravityOverride (v3 0f -0.5f 0f))
          define Entity.StaticImage Assets.Gameplay.Sand
          define Entity.Viscocity 1f
          define Entity.LinearDamping 0.5f
@@ -40,7 +40,7 @@ type ChronoDispatcher () =
                 let (x, y) = Math.DivRem (i, 20)
                 { FluidParticlePosition = position + 4f * v3 (single x) (single y) 0f
                   FluidParticleVelocity = v3Zero
-                  GravityOverride = ValueNone }))
+                  Gravity = GravityWorld }))
             (blobbo.GetFluidEmitterId world) world
 
     override _.Update (blobbo, world) =
