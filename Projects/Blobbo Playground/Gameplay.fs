@@ -3,7 +3,6 @@ open System
 open System.Numerics
 open Prime
 open Nu
-open nkast.Aether.Physics2D.Dynamics.Joints
 open BlobboPlayground
 
 // this represents the state of gameplay simulation.

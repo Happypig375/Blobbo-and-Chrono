@@ -8,12 +8,32 @@
  </tile>
  <tile id="1">
   <properties>
-   <property name="C" value="Top"/>
+   <property name="C" value="[PointsShape [[[-0.5 -0.5 0] [0.5 -0.5 0] [-0.5 0.5 0]] Convex None None]]"/>
   </properties>
  </tile>
  <tile id="2">
   <properties>
-   <property name="C" value="Bottom"/>
+   <property name="C" value="[PointsShape [[[0.5 0.5 0] [0.5 -0.5 0] [-0.5 0.5 0]] Convex None None]]"/>
+  </properties>
+ </tile>
+ <tile id="37">
+  <properties>
+   <property name="C" value="[PointsShape [[[-0.5 -0.5 0] [0.5 -0.5 0] [-0.5 0.5 0]] Convex None None]]"/>
+  </properties>
+ </tile>
+ <tile id="38">
+  <properties>
+   <property name="C" value="[PointsShape [[[-0.5 -0.5 0] [0.5 0.5 0] [0.5 -0.5 0]] Convex None None]]"/>
+  </properties>
+ </tile>
+ <tile id="39">
+  <properties>
+   <property name="C" value="[PointsShape [[[-0.5 -0.5 0] [-0.5 0.5 0] [0.5 0.5 0]] Convex None None]]"/>
+  </properties>
+ </tile>
+ <tile id="40">
+  <properties>
+   <property name="C" value="[PointsShape [[[-0.5 0.5 0] [0.5 -0.5 0] [0.5 0.5 0]] Convex None None]]"/>
   </properties>
  </tile>
 </tileset>
