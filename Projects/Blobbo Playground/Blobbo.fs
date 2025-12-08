@@ -29,16 +29,15 @@ module [<AutoOpen>] BlobboExtensions =
 type BlobboDispatcher () =
     inherit FluidEmitter2dDispatcher ()
 
-    static let minBlobboSize = 30
+    static let minBlobboSize = 3
 
     static member Properties =
         [define Entity.Size (v3 60f 60f 0f)
-         define Entity.FluidParticleRadius 5f
-         define Entity.Gravity (GravityOverride (v3 0f -1f 0f))
+         //define Entity.FluidParticleRadius 5f
+         //define Entity.Gravity (GravityOverride (v3 0f -1f 0f))
          define Entity.StaticImage Assets.Default.Fluid
          define Entity.Color (colorDup 0.8f)
-         define Entity.Viscocity 2f
-         define Entity.LinearDamping 0.75f
+         //define Entity.LinearDamping 0.75f
          define Entity.WorldFluidEmitter Address.empty
          define Entity.Absorption Equilibrium
          define Entity.Movement Still
@@ -52,10 +51,8 @@ type BlobboDispatcher () =
         World.monitor (fun event world ->
             // eject out of bounds particles to the world fluid emitter
             let blobbo : Entity = event.Subscriber
-            match tryResolve (blobbo.GetWorldFluidEmitter world) blobbo with
-            | Some (emitter : Entity) ->
-                World.emitFluidParticles event.Data.OutOfBoundsParticles (emitter.GetFluidEmitterId world) world
-            | None -> ()
+            let emitter = tryResolve (blobbo.GetWorldFluidEmitter world) blobbo |> Option.get
+            World.emitFluidParticles (event.Data.OutOfBoundsParticles |> SArray.map (fun p -> { p with FluidParticleConfig = "Water" })) (emitter.GetFluidEmitterId world) world
             
             // detect ground for allowing leaping
             let groundDirection = blobbo.GetGravity world |> Gravity.localize (World.getGravity2d world) |> _.Normalized
@@ -68,15 +65,22 @@ type BlobboDispatcher () =
                     theta <= Constants.Physics.GroundAngleMax)) world
             Cascade) blobbo.FluidEmitterUpdateEvent blobbo world
 
-        // shoot particles when at least 30 are in body
+        // shoot particles when at least 3 are in body
         World.monitor (fun event world ->
             let blobbo : Entity = event.Subscriber
             let mutable i = 0
+            let mutable shoot = ValueNone
             World.chooseFluidParticles (fun p ->
                 i <- inc i
                 if i = minBlobboSize then
-                    ValueSome { p with FluidParticleVelocity = p.FluidParticleVelocity + (event.Data - p.FluidParticlePosition) * 2f }
+                    shoot <- ValueSome { p with FluidParticleVelocity = p.FluidParticleVelocity + (event.Data - p.FluidParticlePosition) * 2f; FluidParticleConfig = "Water" }
+                    ValueNone
                 else ValueSome p) (blobbo.GetFluidEmitterId world) world
+            match shoot with
+            | ValueSome p ->
+                let emitter = tryResolve (blobbo.GetWorldFluidEmitter world) blobbo |> Option.get
+                World.emitFluidParticles (SArray.singleton p) (emitter.GetFluidEmitterId world) world
+            | ValueNone -> ()
             Cascade) blobbo.ShootEvent blobbo world
 
         // leap when on ground
@@ -89,37 +93,30 @@ type BlobboDispatcher () =
                     (blobbo.GetFluidEmitterId world) world
             Cascade) blobbo.LeapEvent blobbo world
 
-        // initialize with 400 particles
+        // initialize with 100 particles
         let position = blobbo.GetPosition world
-        let sideLength = 20
+        let sideLength = 10
         blobbo.SetFluidParticles
             (SArray.init (sideLength * sideLength) (fun i ->
                 let (x, y) = Math.DivRem (i, sideLength)
                 { FluidParticlePosition = position + 2f * v3 (x - sideLength / 2 |> single) (y - sideLength / 2 |> single) 0f
                   FluidParticleVelocity = v3Zero
-                  Gravity = GravityWorld })) world
+                  FluidParticleConfig = "Oil" })) world
 
     override _.Update (blobbo, world) =
-        let position = blobbo.GetPosition world
         let mutable newPosition = v3Zero
         let mutable particleCount = 0
 
         // gravitate particles towards center for blob shape
         let movement =
             match blobbo.GetMovement world with
-            | Left -> v3 -0.01f 0f 0f
+            | Left -> v3 -1f 0f 0f
             | Still -> v3Zero
-            | Right -> v3 0.01f 0f 0f
+            | Right -> v3 1f 0f 0f
         World.chooseFluidParticles (fun p ->
             newPosition <- newPosition + p.FluidParticlePosition
             particleCount <- inc particleCount
-            ValueSome {
-                p with
-                    FluidParticleVelocity =
-                        p.FluidParticleVelocity +
-                        (0.001f * v3 (position - p.FluidParticlePosition).Magnitude 0f 0f).Transform
-                            (Quaternion.CreateLookAt2d (position - p.FluidParticlePosition).V2) + movement
-                })
+            ValueSome { p with FluidParticleVelocity = p.FluidParticleVelocity + movement })
             (blobbo.GetFluidEmitterId world) world
 
         // update center to be average of particle positions
@@ -138,7 +135,7 @@ type BlobboDispatcher () =
                         absorbed.Add p
                         ValueNone
                     else ValueSome p) (emitter.GetFluidEmitterId world) world
-                World.emitFluidParticles (SArray.init absorbed.Count (fun i -> absorbed[i])) (blobbo.GetFluidEmitterId world) world
+                World.emitFluidParticles (SArray.init absorbed.Count (fun i -> { absorbed[i] with FluidParticleConfig = "Oil" })) (blobbo.GetFluidEmitterId world) world
             | None -> ()
         | Equilibrium -> ()
         | Emitting ->

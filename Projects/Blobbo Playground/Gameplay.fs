@@ -80,20 +80,22 @@ type GameplayDispatcher () =
         World.doEntity<FluidEmitter2dDispatcher> "World fluid"
             [Entity.Position |= v3 -60f 0f 0f
              Entity.Size .= v3 640f 400f 0f
-             Entity.FluidParticleRadius .= 5f
-             Entity.Gravity .= GravityOverride (v3 0f -1f 0f)
-             Entity.LinearDamping .= 0.9f] world
+             //Entity.FluidParticleRadius .= 5f
+             //Entity.Gravity .= GravityOverride (v3 0f -1f 0f)
+             Entity.LinearDamping .= 0.0f
+             Entity.Elevation .= -2f] world
         if screen.GetSelected world then
             if World.isKeyboardKeyDown KeyboardKey.Grave world then
                 let spawn = v2 0f 0f
                 World.emitFluidParticles (SArray.init 32 (fun _ ->
                     let jitter = v2 (Gen.randomf * 2f - 1f) (Gen.randomf - 0.5f) * 32.0f
-                    { FluidParticlePosition = (spawn + jitter).V3; FluidParticleVelocity = v3Zero; Gravity = GravityWorld }))
+                    { FluidParticlePosition = (spawn + jitter).V3; FluidParticleVelocity = v3Zero; FluidParticleConfig = "Water" }))
                     (world.DeclaredEntity.GetFluidEmitterId world)
                     world
         World.doEntity<BlobboDispatcher> "Blobbo"
             [Entity.Position |= v3 0f 0f 0f
-             Entity.WorldFluidEmitter .= world.DeclaredEntity.EntityAddress] world
+             Entity.WorldFluidEmitter .= world.DeclaredEntity.EntityAddress
+             Entity.Elevation .= -1f] world
         if screen.GetSelected world then
             let blobbo = world.DeclaredEntity
 

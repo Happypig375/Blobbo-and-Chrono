@@ -25,7 +25,7 @@ type BlobboDoubleSizeDispatcher () =
                 let (x, y) = Math.DivRem (i, 20)
                 { FluidParticlePosition = position + 4f * v3 (single x) (single y) 0f
                   FluidParticleVelocity = v3Zero
-                  Gravity = GravityWorld }))
+                  FluidParticleConfig = "Water" }))
             (blobbo.GetFluidEmitterId world) world
 
     override _.Update (blobbo, world) =
