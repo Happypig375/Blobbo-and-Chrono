@@ -1903,7 +1903,7 @@ module WorldModuleEntity =
             let property = { PropertyType = typeof<'a>; PropertyValue = value }
             World.trySetEntityXtensionProperty propertyName property entity world
 
-        static member internal setEntityXtensionPropertyWithoutEvent propertyName property entity world =
+        static member setEntityXtensionPropertyWithoutEvent propertyName property entity world =
             let entityState = World.getEntityState entity world
             match World.trySetEntityXtensionPropertyWithoutEvent propertyName property entityState entity world with
             | struct (true, changed, _) -> struct (true, changed)

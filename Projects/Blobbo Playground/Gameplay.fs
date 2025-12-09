@@ -50,15 +50,16 @@ type GameplayDispatcher () =
         World.doTileMap "Background"
             [Entity.TileMap .= Assets.Gameplay.Background] world |> ignore
 
-        World.doBox2d "Box"
-            [Entity.FacetNames .= Set.ofList [nameof StaticSpriteFacet; nameof RewindableFacet]
-             Entity.Position |= v3 -90f 0f 0f
-             Entity.Size .= v3Dup 16f
-             Entity.BodyType .= Dynamic
-             Entity.StaticImage .= Assets.Default.StaticSprite
-             Entity.BodyShape .= BoxShape { Size = v3 1f 1f 0f; PropertiesOpt = None; TransformOpt = None }
-             Entity.Substance .= Mass 1f
-             Entity.CollisionDetection .= Continuous] world |> ignore
+        let (box, _) =
+            World.doBox2d "Box"
+                [Entity.Position |= v3 -90f 0f 0f
+                 Entity.Size .= v3Dup 16f
+                 Entity.BodyType .= Dynamic
+                 Entity.StaticImage .= Assets.Default.StaticSprite
+                 Entity.BodyShape .= BoxShape { Size = v3 1f 1f 0f; PropertiesOpt = None; TransformOpt = None }
+                 Entity.Substance .= Mass 1f
+                 Entity.CollisionDetection .= Continuous
+                 Entity.FacetNames .= Set.ofList [nameof RewindableFacet]] world
             
         // The Process method is run even for unselected screens because the entity hierarchy
         // defined in code still needs to be preserved across screen switching.
@@ -66,11 +67,18 @@ type GameplayDispatcher () =
         // We have to check if the current screen is selected,
         // otherwise we would run keyboard and mouse handlers even for unselected screens!
         if screen.GetSelected world then
+        
+            if World.isKeyboardKeyDown KeyboardKey.A world then
+                World.applyBodyForce (v3 -100f 0f 0f) None box world
+            if World.isKeyboardKeyDown KeyboardKey.D world then
+                World.applyBodyForce (v3 100f 0f 0f) None box world
+            if World.isKeyboardKeyDown KeyboardKey.W world then
+                World.applyBodyForce (v3 0f 500f 0f) None box world
 
             if World.isKeyboardKeyPressed KeyboardKey.Space world then
-                world.DeclaredEntity.SetRewindPreview (Some world.GameTime) world
+                world.DeclaredEntity.SetRewindPreview (Some GameTime.zero) world
             if World.isKeyboardKeyDown KeyboardKey.Space world then
-                world.DeclaredEntity.RewindPreview.Map (Option.map (fun r -> r - world.GameDelta - world.GameDelta)) world
+                world.DeclaredEntity.RewindPreview.Map (Option.map (fun r -> r + world.GameDelta + world.GameDelta)) world
             match world.DeclaredEntity.GetRewindPreview world with
             | Some rewindPreview when World.isKeyboardKeyUp KeyboardKey.Space world ->
                 World.publish rewindPreview world.DeclaredEntity.RewindEvent world.DeclaredEntity world
