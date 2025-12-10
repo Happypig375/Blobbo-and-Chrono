@@ -12,6 +12,9 @@ module [<AutoOpen>] RewindableExtensions =
         member this.GetRewindHistory world : (string * obj * GameTime) list = this.Get (nameof this.RewindHistory) world
         member this.SetRewindHistory (value : (string * obj * GameTime) list) world = this.Set (nameof this.RewindHistory) value world
         member this.RewindHistory = lens (nameof this.RewindHistory) this this.GetRewindHistory this.SetRewindHistory
+        member this.GetRewindHistoryTimeStamp world : GameTime = this.Get (nameof this.RewindHistoryTimeStamp) world
+        member this.SetRewindHistoryTimeStamp (value : GameTime) world = this.Set (nameof this.RewindHistoryTimeStamp) value world
+        member this.RewindHistoryTimeStamp = lens (nameof this.RewindHistoryTimeStamp) this this.GetRewindHistoryTimeStamp this.SetRewindHistoryTimeStamp
         member this.GetTimeSinceLastHistoryEntry world : GameTime = this.Get (nameof this.TimeSinceLastHistoryEntry) world
         member this.SetTimeSinceLastHistoryEntry (value : GameTime) world = this.Set (nameof this.TimeSinceLastHistoryEntry) value world
         member this.TimeSinceLastHistoryEntry = lens (nameof this.TimeSinceLastHistoryEntry) this this.GetTimeSinceLastHistoryEntry this.SetTimeSinceLastHistoryEntry
@@ -33,7 +36,8 @@ type RewindableFacet () =
          define Entity.RewindPreview None
          define Entity.RewindHistory []
          define Entity.TimeSinceLastHistoryEntry GameTime.zero
-         computed Entity.BodyId (fun (entity : Entity) _ -> { BodySource = entity; BodyIndex = 0 }) None
+         computed Entity.BodyId (fun (entity : Entity) _ -> { BodySource = entity; BodyIndex = 0 }) None // force body transform events to be published
+         nonPersistent Entity.RewindHistoryTimeStamp GameTime.zero
          nonPersistent Entity.RewindHistoryActive true]
 
     override _.Register (entity, world) =
@@ -84,7 +88,7 @@ type RewindableFacet () =
         senseChangeEvent entity.Scale
 
         // sense change events - body transform
-        // NOTE: assumes RigidBodyFacet BodyTransformEvent listeners are invoked after this
+        // NOTE: assumes BodyTransformEvent is fired at all, see the event firing criteria in WorldModule2.fs
         World.sense (fun event world ->
             let entity = event.Subscriber
             entity.RewindHistory.Map (fun rewindHistory ->
@@ -105,9 +109,12 @@ type RewindableFacet () =
             entity.SetPresence (if notRewinding then Exterior else Omnipresent) world
             Cascade) entity.RewindPreview.ChangeEvent entity (nameof RewindableFacet) world
 
-    override _.Update (entity, world) =
-        if (entity.GetRewindPreview world).IsNone then
-            entity.TimeSinceLastHistoryEntry.Map ((+) world.GameDelta) world
+        // increment time since last history entry (use group Update because entity Update only runs when entity is on screen - we don't skip rewind steps when entity is off screen!)
+        World.sense (fun event world ->
+            let entity : Entity = event.Subscriber
+            if (entity.GetRewindPreview world).IsNone then
+                entity.TimeSinceLastHistoryEntry.Map ((+) world.GameDelta) world
+            Cascade) entity.Group.UpdateEvent entity (nameof RewindableFacet) world
 
     override _.Render (_, entity, world) =
         match entity.GetRewindPreview world with
