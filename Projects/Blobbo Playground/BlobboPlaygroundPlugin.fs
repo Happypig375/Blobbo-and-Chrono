@@ -23,7 +23,7 @@ type BlobboPlaygroundPlugin () =
     override this.InitialPackages =
         [Assets.Gui.PackageName
          Assets.Gameplay.PackageName]
-    //override this.MakePhysicsEngine2d () = Box2dNetPhysicsEngine.make (Constants.Physics.GravityDefault * Constants.Engine.Meter2d)
+    override this.MakePhysicsEngine2d () = Box2dNetPhysicsEngine.make (Constants.Physics.GravityDefault * Constants.Engine.Meter2d)
     override this.MakePhysicsEngine2dRenderContext segments circles eyeBounds =
         { new Box2dNetPhysicsEngineRenderContext with
             override this.DrawLine (start, stop, color) =

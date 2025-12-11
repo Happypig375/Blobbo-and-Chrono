@@ -1583,7 +1583,6 @@ type RigidBodyFacet () =
                   CollisionCategories = Physics.categorizeCollisionMask (entity.GetCollisionCategories world)
                   CollisionMask = Physics.categorizeCollisionMask (entity.GetCollisionMask world)
                   Sensor = entity.GetSensor world
-                  Awake = entity.GetAwake world
                   BodyIndex = bodyId.BodyIndex }
             if entity.GetIs2d world
             then World.createBody2d bodyId bodyProperties world
@@ -3133,7 +3132,11 @@ type BasicStaticBillboardEmitterFacet () =
                               FinenessOffsetOpt = match emitterProperties.FinenessOffsetOpt with ValueSome finenessOffset -> ValueSome finenessOffset | ValueNone -> descriptor.MaterialProperties.FinenessOffsetOpt
                               ScatterTypeOpt = match emitterProperties.ScatterTypeOpt with ValueSome scatterType -> ValueSome scatterType | ValueNone -> descriptor.MaterialProperties.ScatterTypeOpt
                               SpecularScalarOpt = match emitterProperties.SpecularScalarOpt with ValueSome specularScalar -> ValueSome specularScalar | ValueNone -> descriptor.MaterialProperties.SpecularScalarOpt
-                              RefractiveIndexOpt = match emitterProperties.RefractiveIndexOpt with ValueSome refractiveIndex -> ValueSome refractiveIndex | ValueNone -> descriptor.MaterialProperties.RefractiveIndexOpt }
+                              SubsurfaceCutoffOpt = match emitterProperties.SubsurfaceCutoffOpt with ValueSome subsurfaceCutoff -> ValueSome subsurfaceCutoff | ValueNone -> descriptor.MaterialProperties.SubsurfaceCutoffOpt
+                              SubsurfaceCutoffMarginOpt = match emitterProperties.SubsurfaceCutoffMarginOpt with ValueSome subsurfaceCutoffMargin -> ValueSome subsurfaceCutoffMargin | ValueNone -> descriptor.MaterialProperties.SubsurfaceCutoffMarginOpt
+                              RefractiveIndexOpt = match emitterProperties.RefractiveIndexOpt with ValueSome refractiveIndex -> ValueSome refractiveIndex | ValueNone -> descriptor.MaterialProperties.RefractiveIndexOpt
+                              ClearCoatOpt = match emitterProperties.ClearCoatOpt with ValueSome clearCoat -> ValueSome clearCoat | ValueNone -> descriptor.MaterialProperties.ClearCoatOpt
+                              ClearCoatRoughnessOpt = match emitterProperties.ClearCoatRoughnessOpt with ValueSome clearCoatRoughness -> ValueSome clearCoatRoughness | ValueNone -> descriptor.MaterialProperties.ClearCoatRoughnessOpt }
                         let emitterMaterial = entity.GetEmitterMaterial world
                         let material =
                             { AlbedoImageOpt = match emitterMaterial.AlbedoImageOpt with ValueSome albedoImage -> ValueSome albedoImage | ValueNone -> descriptor.Material.AlbedoImageOpt
@@ -3146,6 +3149,9 @@ type BasicStaticBillboardEmitterFacet () =
                               SubdermalImageOpt = match emitterMaterial.SubdermalImageOpt with ValueSome subdermalImage -> ValueSome subdermalImage | ValueNone -> descriptor.Material.SubdermalImageOpt
                               FinenessImageOpt = match emitterMaterial.FinenessImageOpt with ValueSome finenessImage -> ValueSome finenessImage | ValueNone -> descriptor.Material.FinenessImageOpt
                               ScatterImageOpt = match emitterMaterial.ScatterImageOpt with ValueSome scatterImage -> ValueSome scatterImage | ValueNone -> descriptor.Material.ScatterImageOpt
+                              ClearCoatImageOpt = match emitterMaterial.ClearCoatImageOpt with ValueSome clearCoatImage -> ValueSome clearCoatImage | ValueNone -> descriptor.Material.ClearCoatImageOpt
+                              ClearCoatRoughnessImageOpt = match emitterMaterial.ClearCoatRoughnessImageOpt with ValueSome clearCoatRoughnessImage -> ValueSome clearCoatRoughnessImage | ValueNone -> descriptor.Material.ClearCoatRoughnessImageOpt
+                              ClearCoatNormalImageOpt = match emitterMaterial.ClearCoatNormalImageOpt with ValueSome clearCoatNormalImage -> ValueSome clearCoatNormalImage | ValueNone -> descriptor.Material.ClearCoatNormalImageOpt
                               TwoSidedOpt = match emitterMaterial.TwoSidedOpt with ValueSome twoSided -> ValueSome twoSided | ValueNone -> descriptor.Material.TwoSidedOpt
                               ClippedOpt = match emitterMaterial.ClippedOpt with ValueSome clipped -> ValueSome clipped | ValueNone -> descriptor.Material.ClippedOpt }
                         Some
@@ -3680,7 +3686,6 @@ type TerrainFacet () =
                   CollisionCategories = Physics.categorizeCollisionMask (entity.GetCollisionCategories world)
                   CollisionMask = Physics.categorizeCollisionMask (entity.GetCollisionMask world)
                   Sensor = false
-                  Awake = entity.GetAwake world
                   BodyIndex = bodyId.BodyIndex }
             World.createBody3d bodyId bodyProperties world
         | None -> ()
