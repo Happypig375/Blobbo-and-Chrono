@@ -14,8 +14,8 @@ module Simulants =
     // title screen
     let Title = Game / "Title"
 
-    // credits screen
-    let Credits = Game / "Credits"
+    // Scene01_Playground screen
+    let Scene01_Playground = Game / "Scene01_Playground"
 
-    // gameplay screen
-    let Gameplay = Game / "Gameplay"
+    // Scene02_BoxRewind screen
+    let Scene02_BoxRewind = Game / "Scene02_BoxRewind"

@@ -32,7 +32,7 @@ module GameplayExtensions =
         member this.SoftBodyContour = lens (nameof Screen.SoftBodyContour) this this.GetSoftBodyContour this.SetSoftBodyContour
 
 // this is the dispatcher that defines the behavior of the screen where gameplay takes place.
-type GameplayDispatcher () =
+type Scene01_PlaygroundDispatcher () =
     inherit ScreenDispatcherImSim ()
 
     // here we define default property values
@@ -48,7 +48,7 @@ type GameplayDispatcher () =
 
         World.beginGroup "Group" [] world
         World.doTileMap "Background"
-            [Entity.TileMap .= Assets.Gameplay.Background] world |> ignore
+            [Entity.TileMap .= Assets.Gameplay.Playground] world |> ignore
 
         let (box, _) =
             World.doBox2d "Box"
@@ -81,7 +81,7 @@ type GameplayDispatcher () =
                 world.DeclaredEntity.RewindPreview.Map (Option.map (fun r -> r + world.GameDelta + world.GameDelta)) world
             match world.DeclaredEntity.GetRewindPreview world with
             | Some rewindPreview when World.isKeyboardKeyUp KeyboardKey.Space world ->
-                World.publish rewindPreview world.DeclaredEntity.RewindEvent world.DeclaredEntity world
+                World.publish { RewindAnchorOpt = ValueNone; RewindTime = rewindPreview } world.DeclaredEntity.RewindEvent world.DeclaredEntity world
                 world.DeclaredEntity.SetRewindPreview None world
             | _ -> ()
 
@@ -130,5 +130,9 @@ type GameplayDispatcher () =
                     World.publish mousePosition blobbo.LeapEvent screen world
                 else blobbo.SetChargeTarget (Some mousePosition) world
             | None -> ()
+            
+        // declare quit button
+        if World.doButton "Quit" [Entity.Position .= v3 232.0f -144.0f 0.0f; Entity.Text .= "Quit"] world then
+            screen.SetGameplayState Quit world
 
         World.endGroup world

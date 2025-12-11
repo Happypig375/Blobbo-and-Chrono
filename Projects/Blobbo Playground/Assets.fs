@@ -17,7 +17,8 @@ module Assets =
     module Gameplay =
 
         let PackageName = "Gameplay"
-        let Background = asset<TileMap> PackageName "Background"
+        let Background = asset<Image> PackageName "Background"
+        let Playground = asset<TileMap> PackageName "Playground"
         let Hourglass = asset<Image> PackageName "Hourglass"
         let Sand = asset<Image> PackageName "Sand"
         let WaterArrow = asset<Image> PackageName "WaterArrow"

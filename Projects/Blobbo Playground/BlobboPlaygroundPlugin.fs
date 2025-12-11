@@ -12,16 +12,18 @@ type BlobboPlaygroundPlugin () =
         Map.ofList
             [("Splash", fun world -> Game.SetGameState Splash world)
              ("Title", fun world -> Game.SetGameState Title world)
-             ("Credits", fun world -> Game.SetGameState Credits world)
-             ("Gameplay", fun world ->
-                Simulants.Gameplay.SetGameplayState Playing world
-                Game.SetGameState Gameplay world)]
+             ("Scene01_Playground", fun world ->
+                Simulants.Scene01_Playground.SetGameplayState Playing world
+                Game.SetGameState Scene01_Playground world)
+             ("Scene02_BoxRewind", fun world ->
+                Simulants.Scene02_BoxRewind.SetGameplayState Playing world
+                Game.SetGameState Scene02_BoxRewind world)]
 
     // this specifies which packages are automatically loaded at game start-up.
     override this.InitialPackages =
         [Assets.Gui.PackageName
          Assets.Gameplay.PackageName]
-    override this.MakePhysicsEngine2d () = Box2dNetPhysicsEngine.make (Constants.Physics.GravityDefault * Constants.Engine.Meter2d)
+    //override this.MakePhysicsEngine2d () = Box2dNetPhysicsEngine.make (Constants.Physics.GravityDefault * Constants.Engine.Meter2d)
     override this.MakePhysicsEngine2dRenderContext segments circles eyeBounds =
         { new Box2dNetPhysicsEngineRenderContext with
             override this.DrawLine (start, stop, color) =

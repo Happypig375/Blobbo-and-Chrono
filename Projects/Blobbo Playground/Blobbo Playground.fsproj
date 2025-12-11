@@ -41,7 +41,8 @@
 		<Compile Include="Experiments\BlobboDoubleSize.fs" />
 		<Compile Include="Blobbo.fs" />
 		<Compile Include="Chrono.fs" />
-		<Compile Include="Gameplay.fs" />
+		<Compile Include="Scene01_Playground.fs" />
+		<Compile Include="Scene02_BoxRewind.fs" />
 		<Compile Include="BlobboPlayground.fs" />
 		<Compile Include="BlobboPlaygroundPlugin.fs" />
 		<Compile Include="Program.fs" />

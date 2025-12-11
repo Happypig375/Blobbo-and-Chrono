@@ -10,8 +10,8 @@ open BlobboPlayground
 type GameState =
     | Splash
     | Title
-    | Credits
-    | Gameplay
+    | Scene01_Playground
+    | Scene02_BoxRewind
 
 // this extends the Game API to expose the above ImSim model as a property.
 [<AutoOpen>]
@@ -40,28 +40,30 @@ type BlobboPlaygroundDispatcher () =
 
         // declare title screen
         let behavior = Dissolve (Constants.Dissolve.Default, None)
-        World.beginScreenWithGroupFromFile Simulants.Title.Name (game.GetGameState world = Title) behavior "Assets/Gui/Title.nugroup" [] world |> ignore
+        World.beginScreen Simulants.Title.Name (game.GetGameState world = Title) behavior [] world |> ignore
         World.beginGroup "Gui" [] world
-        if World.doButton "Play" [] world then game.SetGameState Gameplay world
-        if World.doButton "Credits" [] world then game.SetGameState Credits world
-        if World.doButton "Exit" [] world && world.Unaccompanied then World.exit world
+        World.beginPanel "Panel" [Entity.Size .= Constants.Render.DisplayVirtualResolution.V3; Entity.Layout .= Grid (v2i 8 8, Some FlowRightward, true)] world
+        if World.doButton "Scene01_Playground" [Entity.Text .= "01"] world then game.SetGameState Scene01_Playground world
+        if World.doButton "Scene02_BoxRewind" [Entity.Text .= "02"] world then game.SetGameState Scene02_BoxRewind world
+        if World.doButton "Exit" [Entity.Text .= "Exit"] world && world.Unaccompanied then World.exit world
+        World.endPanel world
         World.endGroup world
         World.endScreen world
 
-        // declare gameplay screen
+        // declare scene 01
         let behavior = Dissolve (Constants.Dissolve.Default, None)
-        let results = World.beginScreen<GameplayDispatcher> Simulants.Gameplay.Name (game.GetGameState world = Gameplay) behavior [] world
-        if FQueue.contains Select results then Simulants.Gameplay.SetGameplayState Playing world
-        if FQueue.contains Deselecting results then Simulants.Gameplay.SetGameplayState Quit world
-        if Simulants.Gameplay.GetSelected world && Simulants.Gameplay.GetGameplayState world = Quit then game.SetGameState Title world
+        let results = World.beginScreen<Scene01_PlaygroundDispatcher> Simulants.Scene01_Playground.Name (game.GetGameState world = Scene01_Playground) behavior [] world
+        if FQueue.contains Select results then Simulants.Scene01_Playground.SetGameplayState Playing world
+        if FQueue.contains Deselecting results then Simulants.Scene01_Playground.SetGameplayState Quit world
+        if Simulants.Scene01_Playground.GetSelected world && Simulants.Scene01_Playground.GetGameplayState world = Quit then game.SetGameState Title world
         World.endScreen world
 
-        // declare credits screen
+        // declare scene 02
         let behavior = Dissolve (Constants.Dissolve.Default, None)
-        World.beginScreenWithGroupFromFile Simulants.Credits.Name (game.GetGameState world = Credits) behavior "Assets/Gui/Credits.nugroup" [] world |> ignore
-        World.beginGroup "Gui" [] world
-        if World.doButton "Back" [] world then game.SetGameState Title world
-        World.endGroup world
+        let results = World.beginScreen<Scene02_BoxRewindDispatcher> Simulants.Scene02_BoxRewind.Name (game.GetGameState world = Scene02_BoxRewind) behavior [] world
+        if FQueue.contains Select results then Simulants.Scene02_BoxRewind.SetGameplayState Playing world
+        if FQueue.contains Deselecting results then Simulants.Scene02_BoxRewind.SetGameplayState Quit world
+        if Simulants.Scene02_BoxRewind.GetSelected world && Simulants.Scene02_BoxRewind.GetGameplayState world = Quit then game.SetGameState Title world
         World.endScreen world
 
         // handle Alt+F4 when not in editor
