@@ -147,7 +147,7 @@ type RewindableFacet () =
                 for KeyValue (name, xtension) in restoreXtensions do
                     World.setEntityXtensionPropertyWithoutEvent name xtension entity world |> ignore<struct (bool * bool)>
                 entity.SetTransformByRefWithoutEvent (&restoreTransform, world)
-            Cascade) entity.RewindEvent entity (nameof RewindableFacet) world
+            Cascade) entity.RewindPreviewEvent entity (nameof RewindableFacet) world
           
         // sense change events - property assignments
         let senseChangeEvent (changeProperty : Lens<'a, Entity>) =

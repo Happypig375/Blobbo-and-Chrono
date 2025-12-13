@@ -30,7 +30,8 @@ type Scene02_BoxRewindDispatcher () =
                    TransformOpt = None
                    PropertiesOpt = None }
              Entity.Elevation .= -1f
-             Entity.StaticImage .= Assets.Gameplay.Background] world |> ignore
+             Entity.StaticImage .= Assets.Gameplay.Background
+             Entity.LinearConveyorVelocity .= v3 200f 0f 0f] world |> ignore
 
         let (box, _) =
             World.doBox2d "Box"
@@ -47,11 +48,11 @@ type Scene02_BoxRewindDispatcher () =
                 world.DeclaredEntity.SetRewindPreview (Some GameTime.zero) world
             if World.isKeyboardKeyDown KeyboardKey.Space world then
                 world.DeclaredEntity.RewindPreview.Map (Option.map (fun r -> r + world.GameDelta + world.GameDelta)) world
-            //match world.DeclaredEntity.GetRewindPreview world with
-            //| Some rewindPreview when World.isKeyboardKeyUp KeyboardKey.Space world ->
-            //    World.publish { RewindAnchorOpt = ValueNone; RewindTime = rewindPreview } world.DeclaredEntity.RewindEvent world.DeclaredEntity world
-            //    world.DeclaredEntity.SetRewindPreview None world
-            //| _ -> ()
+            match world.DeclaredEntity.GetRewindPreview world with
+            | Some rewindPreview when World.isKeyboardKeyUp KeyboardKey.Space world ->
+                World.publish { RewindAnchorOpt = ValueNone; RewindTime = rewindPreview } world.DeclaredEntity.RewindEvent world.DeclaredEntity world
+                world.DeclaredEntity.SetRewindPreview None world
+            | _ -> ()
         let (box2, _) =
             World.doBox2d "Box2"
                 [Entity.Position |= v3 90f 0f 0f
