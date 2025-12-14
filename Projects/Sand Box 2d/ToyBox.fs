@@ -111,7 +111,7 @@ type ToyBoxDispatcher () =
             let mouseJoint = mouseSensor / "Mouse Joint"
             World.doBodyJoint2d mouseJoint.Name
                 [Entity.BodyJoint |= Box2dNetBodyJoint { CreateBodyJoint = fun _ toPhysicsV2 a b world ->
-                    let mousePosition = toPhysicsV2 mousePosition // convert mouse position (Vector2) to world position (Vector3) to physics engine position (Aether.ToyBox2d Vector2)
+                    let mousePosition = toPhysicsV2 mousePosition // convert mouse position (Vector2) to world position (Vector3) to physics engine position (B2Vec2)
                     if draggedBodyType = Dynamic // give dynamic bodies flick behavior, give static or kinematic bodies weld behavior.
                     then
                         // here is a first look at how to create 2D joints in Nu. each joint type is showcased later.
