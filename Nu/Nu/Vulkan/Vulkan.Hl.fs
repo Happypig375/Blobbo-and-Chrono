@@ -67,6 +67,14 @@ module Hl =
     type PixelFormat =
         | Rgba
         | Bgra
+        | Depth
+
+        /// The VkComponentSwizzles of a PixelFormat.
+        member this.VkComponentSwizzles =
+            match this with
+            | Rgba -> (VkComponentSwizzle.R, VkComponentSwizzle.G, VkComponentSwizzle.B, VkComponentSwizzle.A)
+            | Bgra -> (VkComponentSwizzle.B, VkComponentSwizzle.G, VkComponentSwizzle.R, VkComponentSwizzle.A)
+            | Depth -> (VkComponentSwizzle.R, VkComponentSwizzle.G, VkComponentSwizzle.B, VkComponentSwizzle.A) // doesn't matter
     
     /// An image layout in its access and pipeline stage context.
     type ImageLayout =
@@ -199,6 +207,35 @@ module Hl =
     let private getLayerName (layerProps : VkLayerProperties) =
         NativePtr.fixedBufferToString layerProps.layerName
 
+    /// Make a VkComponentMapping.
+    let makeComponentMapping (pixelFormat : PixelFormat) =
+        let (r, g, b, a) = pixelFormat.VkComponentSwizzles
+        let mutable componentMapping = VkComponentMapping ()
+        componentMapping.r <- r
+        componentMapping.g <- g
+        componentMapping.b <- b
+        componentMapping.a <- a
+        componentMapping
+    
+    /// Make a VkImageSubresourceRange representing a color image.
+    let makeSubresourceRange mipLevel mipCount layer layerCount imageAspect =
+        let mutable subresourceRange = VkImageSubresourceRange ()
+        subresourceRange.aspectMask <- imageAspect
+        subresourceRange.baseMipLevel <- uint mipLevel
+        subresourceRange.levelCount <- uint mipCount
+        subresourceRange.baseArrayLayer <- uint layer
+        subresourceRange.layerCount <- uint layerCount
+        subresourceRange
+
+    /// Make a VkImageSubresourceLayers representing a color image.
+    let makeSubresourceLayers (mipLevel : int) (layer : int) imageAspect =
+        let mutable subresourceLayers = VkImageSubresourceLayers ()
+        subresourceLayers.aspectMask <- imageAspect
+        subresourceLayers.mipLevel <- uint mipLevel
+        subresourceLayers.baseArrayLayer <- uint layer
+        subresourceLayers.layerCount <- 1u
+        subresourceLayers
+
     /// Make a VkViewport.
     let makeViewport invertY (rect : VkRect2D) =
         let mutable viewport = VkViewport ()
@@ -229,23 +266,6 @@ module Hl =
             VkColorComponentFlags.B |||
             VkColorComponentFlags.A
         blendAttachment
-
-    /// Make a VkImageSubresourceRange representing a color image.
-    let makeSubresourceRangeColor mips layers =
-        let mutable subresourceRange = VkImageSubresourceRange ()
-        subresourceRange.aspectMask <- VkImageAspectFlags.Color
-        subresourceRange.levelCount <- uint mips
-        subresourceRange.layerCount <- uint layers
-        subresourceRange
-
-    /// Make a VkImageSubresourceLayers representing a color image.
-    let makeSubresourceLayersColor (mipLevel : int) (layer : int) =
-        let mutable subresourceLayers = VkImageSubresourceLayers ()
-        subresourceLayers.aspectMask <- VkImageAspectFlags.Color
-        subresourceLayers.mipLevel <- uint mipLevel
-        subresourceLayers.baseArrayLayer <- uint layer
-        subresourceLayers.layerCount <- 1u
-        subresourceLayers
 
     /// Make a VkVertexInputBindingDescription with vertex input rate.
     let makeVertexBindingVertex (binding : int) (stride : int) =
@@ -288,9 +308,9 @@ module Hl =
         let srcOffsetMax = VkOffset3D (srcRect.offset.x + int srcRect.extent.width, srcRect.offset.y + int srcRect.extent.height, 1)
         let dstOffsetMax = VkOffset3D (dstRect.offset.x + int dstRect.extent.width, dstRect.offset.y + int dstRect.extent.height, 1)
         let mutable blit = VkImageBlit ()
-        blit.srcSubresource <- makeSubresourceLayersColor srcMipLevel srcLayer
+        blit.srcSubresource <- makeSubresourceLayers srcMipLevel srcLayer VkImageAspectFlags.Color
         blit.srcOffsets <- NativePtr.writeArrayToFixedBuffer [|srcOffsetMin; srcOffsetMax|] blit.srcOffsets
-        blit.dstSubresource <- makeSubresourceLayersColor dstMipLevel dstLayer
+        blit.dstSubresource <- makeSubresourceLayers dstMipLevel dstLayer VkImageAspectFlags.Color
         blit.dstOffsets <- NativePtr.writeArrayToFixedBuffer [|dstOffsetMin; dstOffsetMax|] blit.dstOffsets
         blit
     
@@ -402,7 +422,7 @@ module Hl =
         shaderModule
 
     /// Record command to transition image layout.
-    let recordTransitionLayout cb allLevels mipNumber layer (oldLayout : ImageLayout) (newLayout : ImageLayout) vkImage =
+    let recordTransitionLayout cb allLevels mipNumber layer imageAspect (oldLayout : ImageLayout) (newLayout : ImageLayout) vkImage =
         
         // mipNumber means total number of mips or the target mip depending on context
         let mipLevels = if allLevels then mipNumber else 1
@@ -417,9 +437,7 @@ module Hl =
         barrier.srcQueueFamilyIndex <- Vulkan.VK_QUEUE_FAMILY_IGNORED
         barrier.dstQueueFamilyIndex <- Vulkan.VK_QUEUE_FAMILY_IGNORED
         barrier.image <- vkImage
-        barrier.subresourceRange <- makeSubresourceRangeColor mipLevels 1
-        barrier.subresourceRange.baseArrayLayer <- uint layer
-        barrier.subresourceRange.baseMipLevel <- uint mipLevel
+        barrier.subresourceRange <- makeSubresourceRange mipLevel mipLevels layer 1 imageAspect
         Vulkan.vkCmdPipelineBarrier
             (cb,
              oldLayout.PipelineStage,
@@ -435,21 +453,14 @@ module Hl =
         capabilities
     
     /// Create an image view.
-    let createImageView reverseSwizzle format mips isCube image device =
+    let createImageView pixelFormat format mips isCube imageAspect image device =
         let mutable info = VkImageViewCreateInfo ()
         info.image <- image
         info.viewType <- if isCube then VkImageViewType.ImageCube else VkImageViewType.Image2D
         info.format <- format
-        
-        // rgba -> bgra
-        if reverseSwizzle then
-            let mutable components = VkComponentMapping ()
-            components.r <- VkComponentSwizzle.B
-            components.b <- VkComponentSwizzle.R
-            info.components <- components
-
+        info.components <- makeComponentMapping pixelFormat
         let layers = if isCube then 6 else 1
-        info.subresourceRange <- makeSubresourceRangeColor mips layers
+        info.subresourceRange <- makeSubresourceRange 0 mips 0 layers imageAspect
         let mutable imageView = Unchecked.defaultof<VkImageView>
         Vulkan.vkCreateImageView (device, &info, nullPtr, &imageView) |> check
         imageView
@@ -492,9 +503,15 @@ module Hl =
         Vulkan.vkWaitForFences (device, 1u, asPointer &fence, true, UInt64.MaxValue) |> check
         Vulkan.vkResetFences (device, 1u, asPointer &fence) |> check
 
-    /// Begin recording to a transient command buffer.
+    /// Init recording to a persistent command buffer.
+    let initCommandBuffer cb =
+        Vulkan.vkResetCommandBuffer (cb, VkCommandBufferResetFlags.None) |> check
+        let mutable cbInfo = VkCommandBufferBeginInfo ()
+        Vulkan.vkBeginCommandBuffer (cb, asPointer &cbInfo) |> check
+    
+    /// Init recording to a transient command buffer.
     /// TODO: DJL: review choice of transient command buffers over normal ones.
-    let beginTransientCommandBlock commandPool device =
+    let initCommandBufferTransient commandPool device =
         
         // create command buffer
         let cb = allocateCommandBuffer commandPool device
@@ -506,51 +523,6 @@ module Hl =
 
         // return command buffer
         cb
-    
-    /// End recording to a transient command buffer, execute and free.
-    let endTransientCommandBlock cb commandQueue commandPool finishFence device =
-        
-        // execute command
-        let mutable cb = cb
-        Vulkan.vkEndCommandBuffer cb |> check
-        let mutable sInfo = VkSubmitInfo ()
-        sInfo.commandBufferCount <- 1u
-        sInfo.pCommandBuffers <- asPointer &cb
-        Vulkan.vkQueueSubmit (commandQueue, 1u, asPointer &sInfo, finishFence) |> check
-        awaitFence finishFence device
-
-        // free command buffer
-        Vulkan.vkFreeCommandBuffers (device, commandPool, 1u, asPointer &cb)
-    
-    /// Begin persistent command buffer recording.
-    let beginPersistentCommandBlock cb =
-        Vulkan.vkResetCommandBuffer (cb, VkCommandBufferResetFlags.None) |> check
-        let mutable cbInfo = VkCommandBufferBeginInfo ()
-        Vulkan.vkBeginCommandBuffer (cb, asPointer &cbInfo) |> check
-    
-    /// End persistent command buffer recording and submit for execution.
-    let endPersistentCommandBlock cb commandQueue waitSemaphoresStages (signalSemaphores : VkSemaphore array) signalFence =
-
-        // end command buffer recording
-        Vulkan.vkEndCommandBuffer cb |> check
-
-        // unpack and pin arrays
-        let (waitSemaphores, waitStages) = Array.unzip waitSemaphoresStages
-        use waitSemaphoresPin = new ArrayPin<_> (waitSemaphores)
-        use waitStagesPin = new ArrayPin<_> (waitStages)
-        use signalSemaphoresPin = new ArrayPin<_> (signalSemaphores)
-
-        // submit commands
-        let mutable cb = cb
-        let mutable info = VkSubmitInfo ()
-        info.waitSemaphoreCount <- uint waitSemaphores.Length
-        info.pWaitSemaphores <- waitSemaphoresPin.Pointer
-        info.pWaitDstStageMask <- waitStagesPin.Pointer
-        info.commandBufferCount <- 1u
-        info.pCommandBuffers <- asPointer &cb
-        info.signalSemaphoreCount <- uint signalSemaphores.Length
-        info.pSignalSemaphores <- signalSemaphoresPin.Pointer
-        Vulkan.vkQueueSubmit (commandQueue, 1u, asPointer &info, signalFence) |> check
     
     /// A physical device and associated data.
     type private PhysicalDevice =
@@ -717,7 +689,7 @@ module Hl =
         /// Create the image views.
         static member private createImageViews format (images : VkImage array) device =
             let imageViews = Array.zeroCreate<VkImageView> images.Length
-            for i in 0 .. dec imageViews.Length do imageViews.[i] <- createImageView false format 1 false images.[i] device
+            for i in 0 .. dec imageViews.Length do imageViews.[i] <- createImageView Rgba format 1 false VkImageAspectFlags.Color images.[i] device
             imageViews
         
         /// Create a SwapchainInternal.
@@ -852,6 +824,91 @@ module Hl =
                 | Some swapchainInternal -> SwapchainInternal.destroy swapchainInternal device
                 | None -> ()
     
+    /// A command queue that internally synchronizes use across multiple threads.
+    type [<ReferenceEquality>] Queue =
+        private
+            { VkQueue : VkQueue
+              Lock : obj }
+
+        /// Create a Queue.
+        static member create queueFamilyIndex queueIndex device =
+            
+            // get VkQueue
+            let mutable vkQueue = Unchecked.defaultof<VkQueue>
+            Vulkan.vkGetDeviceQueue (device, queueFamilyIndex, queueIndex, &vkQueue)
+
+            // make Queue
+            let queue =
+                { VkQueue = vkQueue
+                  Lock = obj () }
+
+            // fin
+            queue
+
+        /// Submit persistent command buffer for execution.
+        static member submit cb waitSemaphoresStages (signalSemaphores : VkSemaphore array) signalFence (queue : Queue) =
+            lock queue.Lock (fun () ->
+
+                // end command buffer
+                Vulkan.vkEndCommandBuffer cb |> check
+                
+                // unpack and pin arrays
+                let (waitSemaphores, waitStages) = Array.unzip waitSemaphoresStages
+                use waitSemaphoresPin = new ArrayPin<_> (waitSemaphores)
+                use waitStagesPin = new ArrayPin<_> (waitStages)
+                use signalSemaphoresPin = new ArrayPin<_> (signalSemaphores)
+
+                // submit commands
+                let mutable cb = cb
+                let mutable info = VkSubmitInfo ()
+                info.waitSemaphoreCount <- uint waitSemaphores.Length
+                info.pWaitSemaphores <- waitSemaphoresPin.Pointer
+                info.pWaitDstStageMask <- waitStagesPin.Pointer
+                info.commandBufferCount <- 1u
+                info.pCommandBuffers <- asPointer &cb
+                info.signalSemaphoreCount <- uint signalSemaphores.Length
+                info.pSignalSemaphores <- signalSemaphoresPin.Pointer
+                Vulkan.vkQueueSubmit (queue.VkQueue, 1u, asPointer &info, signalFence) |> check)
+
+        /// Execute and free transient command buffer. Command pool and fence must NOT be shared between threads!
+        static member executeTransient cb commandPool finishFence (queue : Queue) device =
+            let mutable cb = cb
+            lock queue.Lock (fun () ->
+                
+                // end command buffer
+                Vulkan.vkEndCommandBuffer cb |> check
+
+                // submit commands
+                let mutable sInfo = VkSubmitInfo ()
+                sInfo.commandBufferCount <- 1u
+                sInfo.pCommandBuffers <- asPointer &cb
+                Vulkan.vkQueueSubmit (queue.VkQueue, 1u, asPointer &sInfo, finishFence) |> check)
+
+            // wait for execution to finish
+            awaitFence finishFence device
+
+            // free command buffer
+            Vulkan.vkFreeCommandBuffers (device, commandPool, 1u, asPointer &cb)
+
+        /// Present swapchain image.
+        static member present waitSemaphore vkSwapchain (queue : Queue) =
+
+            // try to present image
+            let result =
+                lock queue.Lock (fun () ->
+                    let mutable waitSemaphore = waitSemaphore
+                    let mutable vkSwapchain = vkSwapchain
+                    let mutable info = VkPresentInfoKHR ()
+                    info.waitSemaphoreCount <- 1u
+                    info.pWaitSemaphores <- asPointer &waitSemaphore
+                    info.swapchainCount <- 1u
+                    info.pSwapchains <- asPointer &vkSwapchain
+                    info.pImageIndices <- asPointer &ImageIndex
+                    Vulkan.vkQueuePresentKHR (queue.VkQueue, asPointer &info))
+            
+            // return result
+            result
+    
     [<UnmanagedFunctionPointer(CallingConvention.Cdecl)>]
     type private DebugDelegate =
         delegate of VkDebugUtilsMessageSeverityFlagsEXT * VkDebugUtilsMessageTypeFlagsEXT * nativeint * nativeint -> uint32
@@ -885,9 +942,9 @@ module Hl =
               TransientCommandPool_ : VkCommandPool
               TextureCommandPool_ : VkCommandPool
               RenderCommandBuffers_ : VkCommandBuffer array
-              RenderQueue_ : VkQueue
-              PresentQueue_ : VkQueue
-              TextureQueue_ : VkQueue
+              RenderQueue_ : Queue
+              PresentQueue_ : Queue
+              TextureQueue_ : Queue
               ImageAvailableSemaphores_ : VkSemaphore array
               RenderFinishedSemaphores_ : VkSemaphore array
               InFlightFences_ : VkFence array
@@ -1227,12 +1284,6 @@ module Hl =
             Vulkan.vkCreateCommandPool (device, &info, nullPtr, &commandPool) |> check
             commandPool
 
-        /// Get command queue.
-        static member private getQueue queueFamilyIndex queueIndex device =
-            let mutable queue = Unchecked.defaultof<VkQueue>
-            Vulkan.vkGetDeviceQueue (device, queueFamilyIndex, queueIndex, &queue)
-            queue
-
         /// Allocate an array of command buffers for each frame in flight.
         static member private allocateFifCommandBuffers commandPool device =
             allocateCommandBuffers Constants.Vulkan.MaxFramesInFlight commandPool device
@@ -1315,10 +1366,10 @@ module Hl =
                 Vulkan.vkResetFences (vkc.Device, 1u, asPointer &fence) |> check
 
                 // begin command recording
-                beginPersistentCommandBlock vkc.RenderCommandBuffer
+                initCommandBuffer vkc.RenderCommandBuffer
                 
                 // transition swapchain image layout to color attachment
-                recordTransitionLayout vkc.RenderCommandBuffer true 1 0 Undefined ColorAttachmentWrite vkc.Swapchain_.Image
+                recordTransitionLayout vkc.RenderCommandBuffer true 1 0 VkImageAspectFlags.Color Undefined ColorAttachmentWrite vkc.Swapchain_.Image
                 
                 // clear screen
                 let renderArea = VkRect2D (VkOffset2D.Zero, vkc.Swapchain_.SwapExtent_)
@@ -1343,24 +1394,16 @@ module Hl =
             if vkc.RenderDesired_ then
             
                 // transition swapchain image layout to presentation
-                recordTransitionLayout vkc.RenderCommandBuffer true 1 0 ColorAttachmentWrite Present vkc.Swapchain_.Image
+                recordTransitionLayout vkc.RenderCommandBuffer true 1 0 VkImageAspectFlags.Color ColorAttachmentWrite Present vkc.Swapchain_.Image
                 
                 // the *simple* solution: https://vulkan-tutorial.com/Drawing_a_triangle/Drawing/Rendering_and_presentation#page_Subpass-dependencies
                 let waitStage = VkPipelineStageFlags.TopOfPipe
                 
                 // flush commands
-                let mutable renderFinished = vkc.RenderFinishedSemaphore
-                endPersistentCommandBlock vkc.RenderCommandBuffer vkc.RenderQueue [|vkc.ImageAvailableSemaphore, waitStage|] [|renderFinished|] vkc.InFlightFence
+                Queue.submit vkc.RenderCommandBuffer [|vkc.ImageAvailableSemaphore, waitStage|] [|vkc.RenderFinishedSemaphore|] vkc.InFlightFence vkc.RenderQueue
                 
                 // try to present image
-                let mutable swapchain = vkc.Swapchain_.VkSwapchain
-                let mutable info = VkPresentInfoKHR ()
-                info.waitSemaphoreCount <- 1u
-                info.pWaitSemaphores <- asPointer &renderFinished
-                info.swapchainCount <- 1u
-                info.pSwapchains <- asPointer &swapchain
-                info.pImageIndices <- asPointer &ImageIndex
-                let result = Vulkan.vkQueuePresentKHR (vkc.PresentQueue_, asPointer &info)
+                let result = Queue.present vkc.RenderFinishedSemaphore vkc.Swapchain_.VkSwapchain vkc.PresentQueue_
 
                 // refresh swapchain if framebuffer out of date or suboptimal
                 if result = VkResult.ErrorOutOfDateKHR || result = VkResult.SuboptimalKHR then
@@ -1425,14 +1468,27 @@ module Hl =
                 // create vma allocator
                 let allocator = VulkanContext.createVmaAllocator physicalDevice device instance
 
+                // create render queue
+                let renderQueue = Queue.create physicalDevice.GraphicsQueueFamily 0u device
+                
+                // create seperate present queue if graphics queue family does not support presentation
+                let presentQueue =
+                    if physicalDevice.GraphicsQueueFamily <> physicalDevice.PresentQueueFamily
+                    then Queue.create physicalDevice.PresentQueueFamily 0u device
+                    else renderQueue
+                
+                // create seperate queue for texture server thread if available
+                let textureQueue =
+                    if physicalDevice.GraphicsQueueCount > 1u
+                    then Queue.create physicalDevice.GraphicsQueueFamily 1u device
+                    else renderQueue
+                
                 // setup execution for rendering on render thread
                 let renderCommandPool = VulkanContext.createCommandPool false physicalDevice.GraphicsQueueFamily device
                 let renderCommandBuffers = VulkanContext.allocateFifCommandBuffers renderCommandPool device
-                let renderQueue = VulkanContext.getQueue physicalDevice.GraphicsQueueFamily 0u device
                 let inFlightFences = VulkanContext.createInFlightFences device
                 
                 // setup execution for presentation on render thread
-                let presentQueue = VulkanContext.getQueue physicalDevice.PresentQueueFamily 0u device
                 let imageAvailableSemaphores = VulkanContext.createImageAvailableSemaphores device
                 
                 // setup transient (one time) execution on render thread
@@ -1441,7 +1497,6 @@ module Hl =
                 
                 // setup transient (one time) execution on texture server thread
                 let textureCommandPool = VulkanContext.createCommandPool true physicalDevice.GraphicsQueueFamily device
-                let textureQueue = VulkanContext.getQueue physicalDevice.GraphicsQueueFamily (min 1u (physicalDevice.GraphicsQueueCount - 1u)) device
                 let textureFence = createFence false device
 
                 // setup swapchain

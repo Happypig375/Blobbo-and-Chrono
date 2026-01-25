@@ -87,15 +87,15 @@ module Texture =
     
     /// Record command to copy buffer to image.
     let private RecordBufferToImageCopy (cb, width, height, mipLevel, layer, vkBuffer, vkImage) =
-        Hl.recordTransitionLayout cb false mipLevel layer Hl.UndefinedHost Hl.TransferDst vkImage
+        Hl.recordTransitionLayout cb false mipLevel layer VkImageAspectFlags.Color Hl.UndefinedHost Hl.TransferDst vkImage
         let mutable region = VkBufferImageCopy ()
-        region.imageSubresource <- Hl.makeSubresourceLayersColor mipLevel layer
+        region.imageSubresource <- Hl.makeSubresourceLayers mipLevel layer VkImageAspectFlags.Color
         region.imageExtent <- VkExtent3D (width, height, 1)
         Vulkan.vkCmdCopyBufferToImage
             (cb, vkBuffer, vkImage,
              Hl.TransferDst.VkImageLayout,
              1u, asPointer &region)
-        Hl.recordTransitionLayout cb false mipLevel layer Hl.TransferDst Hl.ShaderRead vkImage
+        Hl.recordTransitionLayout cb false mipLevel layer VkImageAspectFlags.Color Hl.TransferDst Hl.ShaderRead vkImage
     
     /// Record commands to generate mipmaps.
     let private RecordGenerateMipmaps (cb, width, height, mipLevels, layer, vkImage) =
@@ -111,9 +111,7 @@ module Texture =
         barrier.dstAccessMask <- Hl.TransferDst.Access
         barrier.oldLayout <- Hl.UndefinedHost.VkImageLayout
         barrier.newLayout <- Hl.TransferDst.VkImageLayout
-        barrier.subresourceRange <- Hl.makeSubresourceRangeColor (mipLevels - 1) 1
-        barrier.subresourceRange.baseArrayLayer <- uint layer
-        barrier.subresourceRange.baseMipLevel <- 1u
+        barrier.subresourceRange <- Hl.makeSubresourceRange 1 (mipLevels - 1) layer 1 VkImageAspectFlags.Color
         Vulkan.vkCmdPipelineBarrier
             (cb,
              Hl.UndefinedHost.PipelineStage,
@@ -496,7 +494,7 @@ module Texture =
                 let (image, allocation) = TextureInternal.createImage internalFormat.VkFormat extent mipLevels textureType vkc
                 images.[i] <- image
                 allocations.[i] <- allocation
-                imageViews.[i] <- Hl.createImageView pixelFormat.IsBgra internalFormat.VkFormat mipLevels textureType.IsTextureCubeMap image vkc.Device
+                imageViews.[i] <- Hl.createImageView pixelFormat internalFormat.VkFormat mipLevels textureType.IsTextureCubeMap VkImageAspectFlags.Color image vkc.Device
                 imageSizes.[i] <- metadata
             let sampler = TextureInternal.createSampler minFilter magFilter anisoFilter textureType vkc
             
@@ -504,12 +502,12 @@ module Texture =
             match textureType with
             | TextureAttachmentColor ->
                 let (queue, pool, fence) = TextureLoadThread.getResources RenderThread vkc
-                let cb = Hl.beginTransientCommandBlock pool vkc.Device
+                let cb = Hl.initCommandBufferTransient pool vkc.Device
                 for i in 0 .. dec length do
                     match textureType with
-                    | TextureAttachmentColor -> Hl.recordTransitionLayout cb true 1 0 Hl.Undefined Hl.ColorAttachmentWrite images.[i]
+                    | TextureAttachmentColor -> Hl.recordTransitionLayout cb true 1 0 VkImageAspectFlags.Color Hl.Undefined Hl.ColorAttachmentWrite images.[i]
                     | _ -> ()
-                Hl.endTransientCommandBlock cb queue pool fence vkc.Device
+                Hl.Queue.executeTransient cb pool fence queue vkc.Device
             | _ -> ()
             
             // make TextureInternal
@@ -537,15 +535,23 @@ module Texture =
                 let (image, allocation) = TextureInternal.createImage textureInternal.Format extent textureInternal.MipLevels textureInternal.TextureType_ vkc
                 textureInternal.Images_.[i] <- image
                 textureInternal.Allocations_.[i] <- allocation
-                textureInternal.ImageViews_.[i] <- Hl.createImageView textureInternal.PixelFormat_.IsBgra textureInternal.Format textureInternal.MipLevels textureInternal.TextureType_.IsTextureCubeMap image vkc.Device
+                textureInternal.ImageViews_.[i] <-
+                    Hl.createImageView
+                        textureInternal.PixelFormat_
+                        textureInternal.Format
+                        textureInternal.MipLevels
+                        textureInternal.TextureType_.IsTextureCubeMap
+                        VkImageAspectFlags.Color
+                        image
+                        vkc.Device
                 match textureInternal.TextureType_ with
                 | TextureAttachmentColor ->
                     let (queue, pool, fence) = TextureLoadThread.getResources RenderThread vkc
-                    let cb = Hl.beginTransientCommandBlock pool vkc.Device
+                    let cb = Hl.initCommandBufferTransient pool vkc.Device
                     match textureInternal.TextureType_ with
-                    | TextureAttachmentColor -> Hl.recordTransitionLayout cb true 1 0 Hl.Undefined Hl.ColorAttachmentWrite textureInternal.Images_.[i]
+                    | TextureAttachmentColor -> Hl.recordTransitionLayout cb true 1 0 VkImageAspectFlags.Color Hl.Undefined Hl.ColorAttachmentWrite textureInternal.Images_.[i]
                     | _ -> ()
-                    Hl.endTransientCommandBlock cb queue pool fence vkc.Device
+                    Hl.Queue.executeTransient cb pool fence queue vkc.Device
                 | _ -> ()
                 textureInternal.ImageSizes_.[i] <- metadata
         
@@ -556,9 +562,9 @@ module Texture =
                 let uploadSize = Hl.ImageFormat.getImageSize metadata.TextureWidth metadata.TextureHeight textureInternal.InternalFormat_
                 let stagingBuffer = Buffer.Buffer.stageData uploadSize pixels vkc
                 let (queue, pool, fence) = TextureLoadThread.getResources thread vkc
-                let cb = Hl.beginTransientCommandBlock pool vkc.Device
+                let cb = Hl.initCommandBufferTransient pool vkc.Device
                 RecordBufferToImageCopy (cb, metadata.TextureWidth, metadata.TextureHeight, mipLevel, layer, stagingBuffer.VkBuffer, textureInternal.Image)
-                Hl.endTransientCommandBlock cb queue pool fence vkc.Device
+                Hl.Queue.executeTransient cb pool fence queue vkc.Device
                 Buffer.Buffer.destroy stagingBuffer vkc
             | TextureAttachmentColor -> Log.warn "Upload not supported for attachment texture."
 
@@ -571,9 +577,9 @@ module Texture =
         static member generateMipmaps metadata layer thread (textureInternal : TextureInternal) (vkc : Hl.VulkanContext) =
             if textureInternal.MipLevels > 1 then
                 let (queue, pool, fence) = TextureLoadThread.getResources thread vkc
-                let cb = Hl.beginTransientCommandBlock pool vkc.Device
+                let cb = Hl.initCommandBufferTransient pool vkc.Device
                 RecordGenerateMipmaps (cb, metadata.TextureWidth, metadata.TextureHeight, textureInternal.MipLevels, layer, textureInternal.Image)
-                Hl.endTransientCommandBlock cb queue pool fence vkc.Device
+                Hl.Queue.executeTransient cb pool fence queue vkc.Device
             else Log.warn "Mipmap generation attempted on texture with only one mip level."
         
         /// Create an empty TextureInternal.
