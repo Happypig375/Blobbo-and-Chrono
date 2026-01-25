@@ -11,6 +11,10 @@ open SDL2
 open Prime
 open Nu
 
+module Vulkan =
+
+    let [<Literal>] MaxFramesInFlight = 2
+
 [<RequireQualifiedAccess>]
 module Runtime =
 
@@ -245,6 +249,7 @@ module Render =
     let [<Literal>] LightShadowSampleScalarDefault = 0.02f
     let [<Literal>] LightShadowExponentDefault = 40.0f
     let [<Literal>] LightShadowDensityDefault = 8.0f
+    let [<Literal>] LightMapSingletonBlendMarginDefault = 0.1f // meters
     let [<Literal>] LightExposureDefault = 1.0f
     let [<Uniform>] ToneMapTypeDefault = AgXToneMap
     let [<Uniform>] ToneMapSlopeDefault = v3One
@@ -262,7 +267,7 @@ module Render =
     let [<Literal>] SssEnabledLocalDefault = true
     let [<Literal>] SsaoEnabledGlobalDefault = true
     let [<Literal>] SsaoEnabledLocalDefault = true
-    let [<Literal>] SsaoSampleCountDefault = 16
+    let [<Literal>] SsaoSampleCountDefault = 12
     let [<Literal>] SsaoSampleCountMax = 128
     let [<Literal>] SsaoIntensityDefault = 1.5f
     let [<Literal>] SsaoBiasDefault = 0.025f
@@ -271,7 +276,7 @@ module Render =
     let [<Literal>] SsvfEnabledGlobalDefault = true
     let [<Literal>] SsvfEnabledLocalDefault = true
     let [<Literal>] SsvfIntensityDefault = 1.0f
-    let [<Literal>] SsvfStepsDefault = 16
+    let [<Literal>] SsvfStepsDefault = 12
     let [<Literal>] SsvfAsymmetryDefault = 0.25f
     let [<Literal>] SsrlEnabledGlobalDefault = true
     let [<Literal>] SsrlEnabledLocalDefault = true
@@ -308,8 +313,10 @@ module Render =
     let [<Literal>] BloomFilterRadiusDefault = 0.004f
     let [<Literal>] DepthOfFieldEnabledGlobalDefault = true
     let [<Literal>] DepthOfFieldEnabledLocalDefault = false
-    let [<Literal>] DepthOfFieldNearDistanceDefault = 8.0f
-    let [<Literal>] DepthOfFieldFarDistanceDefault = 24.0f
+    let [<Literal>] DepthOfFieldNearDistanceDefault = 0.0f
+    let [<Literal>] DepthOfFieldFarDistanceDefault = 64.0f
+    let [<Uniform>] DepthOfFieldFocalTypeDefault = StaticFocalDistance
+    let [<Literal>] DepthOfFieldFocalDistanceDefault = 1.0f
     let [<Uniform>] DepthOfFieldFocalPointDefault = Vector2.Zero
     let [<Literal>] ChromaticAberrationEnabledGlobalDefault = true
     let [<Literal>] ChromaticAberrationEnabledLocalDefault = false
@@ -395,10 +402,7 @@ module Physics =
               "SleepingAllowed"
               "Friction"
               "Restitution"
-              "RollingResistance"
-              "LinearConveyorVelocity"
               "LinearDamping"
-              "AngularConveyorVelocity"
               "AngularDamping"
               "AngularFactor"
               "Substance"
@@ -464,9 +468,11 @@ module Effects =
 module Paths =
 
     let [<Literal>] LogFilePath = "Log.txt"
-    let [<Literal>] SpriteShaderFilePath = "Assets/Default/Sprite.glsl"
-    let [<Literal>] SpriteBatchShaderFilePath = "Assets/Default/SpriteBatch.glsl"
-    let [<Literal>] SkyBoxShaderFilePath = "Assets/Default/SkyBox.glsl"
+    // TODO: DJL: review nomenclature for extensionless filepaths.
+    let [<Literal>] ImGuiShaderFilePath = "Assets/Default/ImGui"
+    let [<Literal>] SpriteShaderFilePath = "Assets/Default/Sprite"
+    let [<Literal>] SpriteBatchShaderFilePath = "Assets/Default/SpriteBatch"
+    let [<Literal>] SkyBoxShaderFilePath = "Assets/Default/SkyBox"
     let [<Literal>] IrradianceShaderFilePath = "Assets/Default/Irradiance.glsl"
     let [<Literal>] EnvironmentFilterShaderFilePath = "Assets/Default/EnvironmentFilter.glsl"
     let [<Literal>] FilterBox1dShaderFilePath = "Assets/Default/FilterBox1d.glsl"

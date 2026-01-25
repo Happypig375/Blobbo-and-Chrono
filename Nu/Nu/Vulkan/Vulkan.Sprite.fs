@@ -1,0 +1,204 @@
+﻿// Nu Game Engine.
+// Copyright (C) Bryan Edds.
+
+namespace Vortice.Vulkan
+open System
+open System.Numerics
+open System.Runtime.InteropServices
+open Prime
+open Nu
+
+[<RequireQualifiedAccess>]
+module Sprite =
+
+    let VertexSize = sizeof<single> * 2
+    
+    /// Create a sprite pipeline.
+    let CreateSpritePipeline (vkc : Hl.VulkanContext) =
+        
+        // create sprite pipeline
+        let pipeline =
+            Pipeline.Pipeline.create
+                Constants.Paths.SpriteShaderFilePath true true
+                [|Pipeline.Transparent|]
+                [|Pipeline.vertex 0 VertexSize
+                    [|Pipeline.attribute 0 Hl.Single2 0|]|]
+                [|Pipeline.descriptor 0 Hl.UniformBuffer Hl.VertexStage
+                  Pipeline.descriptor 1 Hl.UniformBuffer Hl.VertexStage
+                  Pipeline.descriptor 2 Hl.CombinedImageSampler Hl.FragmentStage
+                  Pipeline.descriptor 3 Hl.UniformBuffer Hl.FragmentStage|]
+                [|Pipeline.pushConstant 0 sizeof<int> Hl.VertexFragmentStage|]
+                vkc.SwapFormat vkc
+        
+        // create sprite uniform buffers
+        let modelViewProjectionUniform = Buffer.Buffer.create (sizeof<single> * 16) Buffer.Uniform vkc
+        let texCoords4Uniform = Buffer.Buffer.create (sizeof<single> * 4) Buffer.Uniform vkc
+        let colorUniform = Buffer.Buffer.create (sizeof<single> * 4) Buffer.Uniform vkc
+
+        // fin
+        (modelViewProjectionUniform, texCoords4Uniform, colorUniform, pipeline)
+    
+    /// Create a sprite quad for rendering to a pipeline matching the one created with CreateSpritePipeline.
+    let CreateSpriteQuad onlyUpperRightQuadrant vkc =
+
+        // build vertex data
+        let vertexData =
+            if onlyUpperRightQuadrant then
+                [|+0.0f; +0.0f
+                  +1.0f; +0.0f
+                  +1.0f; +1.0f
+                  +0.0f; +1.0f|]
+            else
+                [|-1.0f; -1.0f
+                  +1.0f; -1.0f
+                  +1.0f; +1.0f
+                  -1.0f; +1.0f|]
+
+        // build index data
+        let indexData = [|0u; 1u; 2u; 2u; 3u; 0u|]
+        
+        // create buffers
+        let vertexBuffer = Buffer.Buffer.createVertexStagedFromArray vertexData vkc
+        let indexBuffer = Buffer.Buffer.createIndexStagedFromArray indexData vkc
+        
+        // fin
+        (vertexBuffer, indexBuffer)
+
+    /// Draw a sprite whose indices and vertices were created by Vulkan.CreateSpriteQuad and whose uniforms and pipeline match those of CreateSpritePipeline.
+    let DrawSprite
+        (drawIndex : int,
+         vertices : Buffer.Buffer,
+         indices : Buffer.Buffer,
+         absolute,
+         viewProjectionClipAbsolute : Matrix4x4 inref,
+         viewProjectionClipRelative : Matrix4x4 inref,
+         modelViewProjection : single array,
+         insetOpt : Box2 voption inref,
+         clipOpt : Box2 voption inref,
+         color : Color inref,
+         flip,
+         textureWidth,
+         textureHeight,
+         texture : Texture.Texture,
+         viewport : Viewport,
+         modelViewProjectionUniform : Buffer.Buffer,
+         texCoords4Uniform : Buffer.Buffer,
+         colorUniform : Buffer.Buffer,
+         pipeline : Pipeline.Pipeline,
+         vkc : Hl.VulkanContext) =
+
+        // compute unflipped tex coords
+        let texCoordsUnflipped =
+            let texelWidth = 1.0f / single textureWidth
+            let texelHeight = 1.0f / single textureHeight
+            let borderWidth = texelWidth * Constants.Render.SpriteBorderTexelScalar
+            let borderHeight = texelHeight * Constants.Render.SpriteBorderTexelScalar
+            match insetOpt with
+            | ValueSome inset ->
+                let mx = inset.Min.X * texelWidth + borderWidth
+                let my = (inset.Min.Y + inset.Size.Y) * texelHeight - borderHeight
+                let sx = inset.Size.X * texelWidth - borderWidth * 2.0f
+                let sy = -inset.Size.Y * texelHeight + borderHeight * 2.0f
+                Box2 (mx, my, sx, sy)
+            | ValueNone ->
+                let mx = borderWidth
+                let my = 1.0f - borderHeight
+                let sx = 1.0f - borderWidth * 2.0f
+                let sy = -1.0f + borderHeight * 2.0f
+                Box2 (mx, my, sx, sy)
+        
+        // compute a flipping flags
+        let struct (flipH, flipV) =
+            match flip with
+            | FlipNone -> struct (false, false)
+            | FlipH -> struct (true, false)
+            | FlipV -> struct (false, true)
+            | FlipHV -> struct (true, true)
+
+        // compute tex coords
+        let texCoords =
+            box2
+                (v2
+                    (if flipH then texCoordsUnflipped.Min.X + texCoordsUnflipped.Size.X else texCoordsUnflipped.Min.X)
+                    (if flipV then texCoordsUnflipped.Min.Y + texCoordsUnflipped.Size.Y else texCoordsUnflipped.Min.Y))
+                (v2
+                    (if flipH then -texCoordsUnflipped.Size.X else texCoordsUnflipped.Size.X)
+                    (if flipV then -texCoordsUnflipped.Size.Y else texCoordsUnflipped.Size.Y))
+
+        // update uniform buffers
+        Buffer.Buffer.uploadArray drawIndex 0 modelViewProjection modelViewProjectionUniform vkc
+        Buffer.Buffer.uploadArray drawIndex 0 [|texCoords.Min.X; texCoords.Min.Y; texCoords.Size.X; texCoords.Size.Y|] texCoords4Uniform vkc
+        Buffer.Buffer.uploadArray drawIndex 0 [|color.R; color.G; color.B; color.A|] colorUniform vkc
+
+        // update descriptors
+        Pipeline.Pipeline.updateDescriptorsUniform 0 modelViewProjectionUniform pipeline vkc
+        Pipeline.Pipeline.updateDescriptorsUniform 1 texCoords4Uniform pipeline vkc
+        Pipeline.Pipeline.updateDescriptorsUniform 3 colorUniform pipeline vkc
+        Pipeline.Pipeline.writeDescriptorTexture 2 drawIndex texture pipeline vkc
+        
+        // make viewport and scissor
+        let mutable renderArea = VkRect2D (viewport.Inner.Min.X, viewport.Outer.Max.Y - viewport.Inner.Max.Y, uint viewport.Inner.Size.X, uint viewport.Inner.Size.Y)
+        let mutable vkViewport = Hl.makeViewport true renderArea
+        let mutable scissor = renderArea
+        match clipOpt with
+        | ValueSome clip ->
+            let viewProjection = if absolute then viewProjectionClipAbsolute else viewProjectionClipRelative
+            let minClip = Vector4.Transform(Vector4 (clip.Min.X, clip.Max.Y, 0.0f, 1.0f), viewProjection).V2
+            let minNdc = minClip * single viewport.DisplayScalar
+            let minScissor = (minNdc + v2One) * 0.5f * viewport.Inner.Size.V2
+            let sizeClip = Vector4.Transform(Vector4 (clip.Size, 0.0f, 1.0f), viewProjection).V2
+            let sizeNdc = sizeClip * single viewport.DisplayScalar
+            let sizeScissor = sizeNdc * 0.5f * viewport.Inner.Size.V2
+            let offset = v2i viewport.Inner.Min.X (viewport.Outer.Max.Y - viewport.Inner.Max.Y)
+            scissor <-
+                VkRect2D
+                    ((minScissor.X |> round |> int) + offset.X,
+                     (single renderArea.extent.height - minScissor.Y |> round |> int) + offset.Y,
+                     uint sizeScissor.X,
+                     uint sizeScissor.Y)
+            scissor <- Hl.clipRect renderArea scissor
+        | ValueNone -> ()
+        
+        // only draw if scissor (and therefore also viewport) is valid
+        if Hl.validateRect scissor then
+
+            // init render
+            let cb = vkc.RenderCommandBuffer
+            let mutable rendering = Hl.makeRenderingInfo vkc.SwapchainImageView renderArea None
+            Vulkan.vkCmdBeginRendering (cb, asPointer &rendering)
+            
+            // bind pipeline
+            let vkPipeline = Pipeline.Pipeline.getVkPipeline Pipeline.Transparent pipeline
+            Vulkan.vkCmdBindPipeline (cb, VkPipelineBindPoint.Graphics, vkPipeline)
+
+            // set viewport and scissor
+            Vulkan.vkCmdSetViewport (cb, 0u, 1u, asPointer &vkViewport)
+            Vulkan.vkCmdSetScissor (cb, 0u, 1u, asPointer &scissor)
+            
+            // bind vertex and index buffer
+            let mutable vertexBuffer = vertices.VkBuffer
+            let mutable vertexOffset = 0UL
+            Vulkan.vkCmdBindVertexBuffers (cb, 0u, 1u, asPointer &vertexBuffer, asPointer &vertexOffset)
+            Vulkan.vkCmdBindIndexBuffer (cb, indices.VkBuffer, 0UL, VkIndexType.Uint32)
+
+            // bind descriptor set
+            let mutable descriptorSet = pipeline.DescriptorSet
+            Vulkan.vkCmdBindDescriptorSets
+                (cb, VkPipelineBindPoint.Graphics,
+                 pipeline.PipelineLayout, 0u,
+                 1u, asPointer &descriptorSet,
+                 0u, nullPtr)
+            
+            // push draw index
+            let mutable drawIndex = drawIndex
+            Vulkan.vkCmdPushConstants
+                (cb, pipeline.PipelineLayout,
+                 Hl.VertexFragmentStage.VkShaderStageFlags,
+                 0u, 4u, asVoidPtr &drawIndex)
+            
+            // draw
+            Vulkan.vkCmdDrawIndexed (cb, 6u, 1u, 0u, 0, 0u)
+            Hl.reportDrawCall 1
+        
+            // end render
+            Vulkan.vkCmdEndRendering vkc.RenderCommandBuffer

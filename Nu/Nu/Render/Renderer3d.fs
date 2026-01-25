@@ -8,6 +8,7 @@ open System.Collections.Generic
 open System.IO
 open System.Numerics
 open System.Runtime.InteropServices
+open Vortice.Vulkan
 open SDL2
 open Prime
 
@@ -647,6 +648,7 @@ type [<SymbolicExpansion>] Lighting3dConfig =
       LightShadowSampleScalar : single
       LightShadowExponent : single
       LightShadowDensity : single
+      LightMapSingletonBlendMargin : single
       LightExposure : single
       ToneMapType : ToneMapType
       ToneMapSlope : Vector3
@@ -703,6 +705,8 @@ type [<SymbolicExpansion>] Lighting3dConfig =
       DepthOfFieldEnabled : bool
       DepthOfFieldNearDistance : single
       DepthOfFieldFarDistance : single
+      DepthOfFieldFocalType : FocalType
+      DepthOfFieldFocalDistance : single
       DepthOfFieldFocalPoint : Vector2
       ChromaticAberrationEnabled : bool
       ChromaticAberrationChannelOffsets : Vector3
@@ -717,6 +721,7 @@ type [<SymbolicExpansion>] Lighting3dConfig =
           LightShadowSampleScalar = Constants.Render.LightShadowSampleScalarDefault
           LightShadowExponent = Constants.Render.LightShadowExponentDefault
           LightShadowDensity = Constants.Render.LightShadowDensityDefault
+          LightMapSingletonBlendMargin = Constants.Render.LightMapSingletonBlendMarginDefault
           LightExposure = Constants.Render.LightExposureDefault
           ToneMapType = Constants.Render.ToneMapTypeDefault
           ToneMapSlope = Constants.Render.ToneMapSlopeDefault
@@ -773,6 +778,8 @@ type [<SymbolicExpansion>] Lighting3dConfig =
           DepthOfFieldEnabled = Constants.Render.DepthOfFieldEnabledLocalDefault
           DepthOfFieldNearDistance = Constants.Render.DepthOfFieldNearDistanceDefault
           DepthOfFieldFarDistance = Constants.Render.DepthOfFieldFarDistanceDefault
+          DepthOfFieldFocalType = Constants.Render.DepthOfFieldFocalTypeDefault
+          DepthOfFieldFocalDistance = Constants.Render.DepthOfFieldFocalDistanceDefault
           DepthOfFieldFocalPoint = Constants.Render.DepthOfFieldFocalPointDefault
           ChromaticAberrationEnabled = Constants.Render.ChromaticAberrationEnabledLocalDefault
           ChromaticAberrationChannelOffsets = Constants.Render.ChromaticAberrationChannelOffsetsDefault
@@ -1220,7 +1227,7 @@ type [<ReferenceEquality>] StubRenderer3d =
 
     static member make () =
         { StubRenderer3d = () }
-
+(*
 /// The OpenGL implementation of Renderer3d.
 type [<ReferenceEquality>] GlRenderer3d =
     private
@@ -1971,8 +1978,8 @@ type [<ReferenceEquality>] GlRenderer3d =
             if blendMaterial.TerrainLayers.Length > Constants.Render.TerrainLayersMax then
                 Log.infoOnce
                     ("Terrain has more than " +
-                        string Constants.Render.TerrainLayersMax +
-                        " layers which references more than the number of supported fragment shader textures.")
+                     string Constants.Render.TerrainLayersMax +
+                     " layers which references more than the number of supported fragment shader textures.")
             match blendMaterial.BlendMap with
             | RgbaMap rgbaMap ->
                 match GlRenderer3d.tryGetTextureData false rgbaMap renderer with
@@ -3163,7 +3170,7 @@ type [<ReferenceEquality>] GlRenderer3d =
 
     static member private renderPhysicallyBasedForwardSurfaces
         bonesArrays (parameters : struct (Matrix4x4 * Presence * Box2 * MaterialProperties) SList)
-        irradianceMaps environmentFilterMaps shadowTextureArray shadowMaps shadowCascades lightMapOrigins lightMapMins lightMapSizes lightMapAmbientColors lightMapAmbientBrightnesses lightMapsCount
+        irradianceMaps environmentFilterMaps shadowTextureArray shadowMaps shadowCascades lightMapOrigins lightMapMins lightMapSizes lightMapAmbientColors lightMapAmbientBrightnesses lightMapsCount lightMapSingletonBlendMargin
         lightOrigins lightDirections lightColors lightBrightnesses lightAttenuationLinears lightAttenuationQuadratics lightCutoffs lightTypes lightConeInners lightConeOuters lightDesireFogs lightShadowIndices lightsCount shadowMatrices
         (surface : OpenGL.PhysicallyBased.PhysicallyBasedSurface) depthTest blending shader vao vertexSize renderer =
 
@@ -3215,7 +3222,7 @@ type [<ReferenceEquality>] GlRenderer3d =
         // draw forward surfaces
         OpenGL.PhysicallyBased.DrawPhysicallyBasedForwardSurfaces
             (bonesArrays, parameters.Length, renderer.InstanceFields,
-             irradianceMaps, environmentFilterMaps, shadowTextureArray, shadowMaps, shadowCascades, lightMapOrigins, lightMapMins, lightMapSizes, lightMapAmbientColors, lightMapAmbientBrightnesses, lightMapsCount,
+             irradianceMaps, environmentFilterMaps, shadowTextureArray, shadowMaps, shadowCascades, lightMapOrigins, lightMapMins, lightMapSizes, lightMapAmbientColors, lightMapAmbientBrightnesses, lightMapsCount, lightMapSingletonBlendMargin,
              lightOrigins, lightDirections, lightColors, lightBrightnesses, lightAttenuationLinears, lightAttenuationQuadratics, lightCutoffs, lightTypes, lightConeInners, lightConeOuters, lightDesireFogs, lightShadowIndices, lightsCount, shadowMatrices,
              surface.SurfaceMaterial, surface.PhysicallyBasedGeometry, depthTest, blending, shader, vao, vertexSize)
 
@@ -3840,7 +3847,7 @@ type [<ReferenceEquality>] GlRenderer3d =
                 OpenGL.PhysicallyBased.DrawPhysicallyBasedDeferredLightMappingSurface
                     (eyeCenter, viewInverseArray, windowProjectionInverseArray,
                      depthTexture, normalPlusTexture,
-                     lightMapOrigins, lightMapMins, lightMapSizes, min lightMapEnvironmentFilterMaps.Length renderTasks.LightMaps.Count,
+                     lightMapOrigins, lightMapMins, lightMapSizes, min lightMapEnvironmentFilterMaps.Length renderTasks.LightMaps.Count, renderer.LightingConfig.LightMapSingletonBlendMargin,
                      renderer.PhysicallyBasedQuad, renderer.PhysicallyBasedShaders.DeferredLightMappingShader, renderer.PhysicallyBasedStaticVao)
                 OpenGL.Hl.Assert ()
                 lightMappingTexture
@@ -4089,7 +4096,7 @@ type [<ReferenceEquality>] GlRenderer3d =
                 | ValueNone -> ([||], renderer.PhysicallyBasedShaders.ForwardStaticShader, renderer.PhysicallyBasedStaticVao, OpenGL.PhysicallyBased.StaticVertexSize)
             GlRenderer3d.renderPhysicallyBasedForwardSurfaces
                 bonesArray (SList.singleton (model, presence, texCoordsOffset, properties))
-                lightMapIrradianceMaps lightMapEnvironmentFilterMaps shadowTextureArray shadowMaps shadowCascades lightMapOrigins lightMapMins lightMapSizes lightMapAmbientColors lightMapAmbientBrightnesses (min lightMapEnvironmentFilterMaps.Length renderTasks.LightMaps.Count)
+                lightMapIrradianceMaps lightMapEnvironmentFilterMaps shadowTextureArray shadowMaps shadowCascades lightMapOrigins lightMapMins lightMapSizes lightMapAmbientColors lightMapAmbientBrightnesses (min lightMapEnvironmentFilterMaps.Length renderTasks.LightMaps.Count) renderer.LightingConfig.LightMapSingletonBlendMargin
                 lightOrigins lightDirections lightColors lightBrightnesses lightAttenuationLinears lightAttenuationQuadratics lightCutoffs lightTypes lightConeInners lightConeOuters lightDesireFogs lightShadowIndices (min lightIds.Length renderTasks.Lights.Count) shadowMatrices
                 surface depthTest true shader vao vertexSize renderer
             OpenGL.Hl.Assert ()
@@ -4189,7 +4196,9 @@ type [<ReferenceEquality>] GlRenderer3d =
             OpenGL.Gl.BindRenderbuffer (OpenGL.RenderbufferTarget.Renderbuffer, full0Renderbuffer)
             OpenGL.Gl.BindFramebuffer (OpenGL.FramebufferTarget.Framebuffer, full0Framebuffer)
             OpenGL.Gl.Viewport (0, 0, geometryResolution.X, geometryResolution.Y)
-            OpenGL.PhysicallyBased.DrawFilterDepthOfFieldSurface (viewInverseArray, geometryProjectionInverseArray, renderer.LightingConfig.DepthOfFieldNearDistance, renderer.LightingConfig.DepthOfFieldFarDistance, renderer.LightingConfig.DepthOfFieldFocalPoint, depthTexture, half0Texture, compositionTexture, renderer.PhysicallyBasedQuad, renderer.FilterShaders.FilterDepthOfFieldShader, renderer.PhysicallyBasedStaticVao)
+            OpenGL.PhysicallyBased.DrawFilterDepthOfFieldSurface
+                (viewInverseArray, geometryProjectionInverseArray, renderer.LightingConfig.DepthOfFieldNearDistance, renderer.LightingConfig.DepthOfFieldFarDistance, renderer.LightingConfig.DepthOfFieldFocalType.Enumerate, renderer.LightingConfig.DepthOfFieldFocalDistance, renderer.LightingConfig.DepthOfFieldFocalPoint,
+                 depthTexture, half0Texture, compositionTexture, renderer.PhysicallyBasedQuad, renderer.FilterShaders.FilterDepthOfFieldShader, renderer.PhysicallyBasedStaticVao)
             OpenGL.Hl.Assert ()
 
             // blit full filter 0 buffer to composition buffer
@@ -5113,5 +5122,648 @@ type [<ReferenceEquality>] GlRenderer3d =
             for (_, _, asset) in renderAssets do GlRenderer3d.freeRenderAsset asset renderer
             renderer.RenderPackages.Clear ()
             OpenGL.Hl.Assert ()
+            
+            renderer.TextureServer.Terminate ()
+*)
 
+/// The Vulkan implementation of Renderer3d.
+type [<ReferenceEquality>] VulkanRenderer3d =
+    private
+        { VulkanContext : Hl.VulkanContext
+          mutable GeometryViewport : Viewport
+          mutable WindowViewport : Viewport
+          LazyTextureQueues : ConcurrentDictionary<Texture.LazyTexture ConcurrentQueue, Texture.LazyTexture ConcurrentQueue>
+          TextureServer : Texture.TextureServer
+          mutable SkyBoxPipeline : SkyBox.SkyBoxPipeline
+          CubeMapGeometry : CubeMap.CubeMapGeometry
+          PhysicallyBasedMaterial : PhysicallyBased.PhysicallyBasedMaterial
+          mutable PhysicallyBasedAttachments : PhysicallyBased.PhysicallyBasedAttachments
+          mutable RendererConfig : Renderer3dConfig
+          mutable RendererConfigChanged : bool
+          RenderPackages : Packages<RenderAsset, AssetClient>
+          mutable RenderPasses : Dictionary<RenderPass, RenderTasks>
+          mutable RenderPasses2 : Dictionary<RenderPass, RenderTasks>
+          mutable RenderPackageCachedOpt : RenderPackageCached
+          mutable RenderAssetCached : RenderAssetCached
+          mutable ReloadAssetsRequested : bool }
+
+    static member private logRenderAssetUnavailableOnce (assetTag : AssetTag) =
+        let message =
+            "Render asset " + assetTag.AssetName + " is not available from " + assetTag.PackageName + " package in a " + Constants.Associations.Render3d + " context. " +
+            "Note that images from a " + Constants.Associations.Render2d + " context are usually not available in a " + Constants.Associations.Render3d + " context."
+        Log.warnOnce message
+
+    static member private invalidateCaches renderer =
+        renderer.RenderPackageCachedOpt <- Unchecked.defaultof<_>
+        renderer.RenderAssetCached.CachedAssetTagOpt <- Unchecked.defaultof<_>
+        renderer.RenderAssetCached.CachedRenderAsset <- RawAsset
+
+    static member private clearRenderPasses renderer =
+        renderer.RenderPasses.Clear ()
+        renderer.RenderPasses2.Clear ()
+
+    static member private tryLoadTextureAsset (assetClient : AssetClient) (asset : Asset) renderer =
+        VulkanRenderer3d.invalidateCaches renderer
+        match assetClient.TextureClient.TryCreateTextureFiltered (true, Texture.InferCompression asset.FilePath, asset.FilePath, Texture.RenderThread, renderer.VulkanContext) with
+        | Right texture ->
+            Some texture
+        | Left error ->
+            Log.info ("Could not load texture '" + asset.FilePath + "' due to '" + error + "'.")
+            None
+
+    static member private tryLoadCubeMapAsset (assetClient : AssetClient) (asset : Asset) renderer =
+        VulkanRenderer3d.invalidateCaches renderer
+        match File.ReadAllLines asset.FilePath |> Array.filter (String.IsNullOrWhiteSpace >> not) with
+        | [|faceRightFilePath; faceLeftFilePath; faceTopFilePath; faceBottomFilePath; faceBackFilePath; faceFrontFilePath|] ->
+            let dirPath = PathF.GetDirectoryName asset.FilePath
+            let faceRightFilePath = dirPath + "/" + faceRightFilePath.Trim ()
+            let faceLeftFilePath = dirPath + "/" + faceLeftFilePath.Trim ()
+            let faceTopFilePath = dirPath + "/" + faceTopFilePath.Trim ()
+            let faceBottomFilePath = dirPath + "/" + faceBottomFilePath.Trim ()
+            let faceBackFilePath = dirPath + "/" + faceBackFilePath.Trim ()
+            let faceFrontFilePath = dirPath + "/" + faceFrontFilePath.Trim ()
+            let cubeMapKey = (faceRightFilePath, faceLeftFilePath, faceTopFilePath, faceBottomFilePath, faceBackFilePath, faceFrontFilePath)
+            match assetClient.CubeMapClient.TryCreateCubeMap cubeMapKey Texture.RenderThread renderer.VulkanContext with
+            | Right cubeMap -> Some (cubeMapKey, cubeMap, ref None)
+            | Left error -> Log.info ("Could not load cube map '" + asset.FilePath + "' due to: " + error); None
+        | _ -> Log.info ("Could not load cube map '" + asset.FilePath + "' due to requiring exactly 6 file paths with each file path on its own line."); None
+
+    static member private tryLoadModelAsset (assetClient : AssetClient) (asset : Asset) renderer =
+        VulkanRenderer3d.invalidateCaches renderer
+        match assetClient.SceneClient.TryCreatePhysicallyBasedModel (Some renderer.VulkanContext, asset.FilePath, renderer.PhysicallyBasedMaterial, assetClient.TextureClient) with
+        | Right model -> Some model
+        | Left error -> Log.info ("Could not load model '" + asset.FilePath + "' due to: " + error); None
+
+    static member private tryLoadRawAsset (asset : Asset) renderer =
+        VulkanRenderer3d.invalidateCaches renderer
+        if File.Exists asset.FilePath
+        then Some ()
+        else None
+
+    static member private tryLoadRenderAsset (assetClient : AssetClient) (asset : Asset) renderer =
+        VulkanRenderer3d.invalidateCaches renderer
+        match PathF.GetExtensionLower asset.FilePath with
+        | RawExtension _ ->
+            match VulkanRenderer3d.tryLoadRawAsset asset renderer with
+            | Some () -> Some RawAsset
+            | None -> None
+        | ImageExtension _ ->
+            match VulkanRenderer3d.tryLoadTextureAsset assetClient asset renderer with
+            | Some texture -> Some (TextureAsset texture)
+            | None -> None
+        | CubeMapExtension _ ->
+            match VulkanRenderer3d.tryLoadCubeMapAsset assetClient asset renderer with
+            | Some (cubeMapKey, cubeMap, opt) -> Some (CubeMapAsset (cubeMapKey, cubeMap, opt))
+            | None -> None
+        | ModelExtension _ ->
+            match VulkanRenderer3d.tryLoadModelAsset assetClient asset renderer with
+            | Some model ->
+                if model.Animated
+                then Some (AnimatedModelAsset model)
+                else Some (StaticModelAsset (false, model))
+            | None -> None
+        | _ -> None
+
+    static member private freeRenderAsset renderAsset renderer =
+        VulkanRenderer3d.invalidateCaches renderer
+        match renderAsset with
+        | RawAsset -> () // nothing to do
+        | TextureAsset texture -> texture.Destroy renderer.VulkanContext
+        | FontAsset (_, font) -> SDL_ttf.TTF_CloseFont font
+        | CubeMapAsset (_, cubeMap, _) -> cubeMap.Destroy renderer.VulkanContext
+        | StaticModelAsset (_, model) -> PhysicallyBased.DestroyPhysicallyBasedModel (model, renderer.VulkanContext)
+        | AnimatedModelAsset model -> PhysicallyBased.DestroyPhysicallyBasedModel (model, renderer.VulkanContext)
+
+    static member private tryLoadRenderPackage packageName renderer =
+
+        // make a new asset graph and load its assets
+        let assetGraph = AssetGraph.makeFromFileOpt Assets.Global.AssetGraphFilePath
+        match AssetGraph.tryCollectAssetsFromPackage (Some Constants.Associations.Render3d) packageName assetGraph with
+        | Right assetsCollected ->
+
+            // log when image assets are being shared between 2d and 3d renders
+            if List.exists (fun (asset : Asset) ->
+                let extension = PathF.GetExtensionLower asset.FilePath
+                match extension with
+                | ImageExtension _ ->
+                    asset.Associations.Contains Constants.Associations.Render2d &&
+                    asset.Associations.Contains Constants.Associations.Render3d
+                | _ -> false)
+                assetsCollected then
+                Log.warnOnce "Due to asset graph limitations, associating image assets with both Render2d and Render3d is not fully supported."
+
+            // find or create render package
+            let renderPackage =
+                match Dictionary.tryFind packageName renderer.RenderPackages with
+                | Some renderPackage -> renderPackage
+                | None ->
+                    let assetClient =
+                        AssetClient
+                            (Texture.TextureClient (Some renderer.LazyTextureQueues),
+                                CubeMap.CubeMapClient (),
+                                PhysicallyBased.PhysicallyBasedSceneClient ())
+                    let renderPackage = { Assets = dictPlus StringComparer.Ordinal []; PackageState = assetClient }
+                    renderer.RenderPackages.[packageName] <- renderPackage
+                    renderPackage
+
+            // categorize existing assets based on the required action
+            let assetsExisting = renderPackage.Assets
+            let assetsToFree = Dictionary ()
+            let assetsToKeep = Dictionary ()
+            for assetEntry in assetsExisting do
+                let assetName = assetEntry.Key
+                let (lastWriteTime, asset, renderAsset) = assetEntry.Value
+                let lastWriteTime' =
+                    try DateTimeOffset (File.GetLastWriteTime asset.FilePath)
+                    with exn -> Log.info ("Asset file write time read error due to: " + scstring exn); DateTimeOffset.MinValue.DateTime
+                if lastWriteTime < lastWriteTime'
+                then assetsToFree.Add (asset.FilePath, renderAsset)
+                else assetsToKeep.Add (assetName, (lastWriteTime, asset, renderAsset))
+
+            // free assets, including memo entries
+            for assetEntry in assetsToFree do
+                let filePath = assetEntry.Key
+                let renderAsset = assetEntry.Value
+                match renderAsset with
+                | RawAsset -> ()
+                | TextureAsset _ -> renderPackage.PackageState.TextureClient.Textures.Remove filePath |> ignore<bool>
+                | FontAsset _ -> ()
+                | CubeMapAsset (cubeMapKey, _, _) -> renderPackage.PackageState.CubeMapClient.CubeMaps.Remove cubeMapKey |> ignore<bool>
+                | StaticModelAsset _ | AnimatedModelAsset _ -> renderPackage.PackageState.SceneClient.Scenes.Remove filePath |> ignore<bool>
+                VulkanRenderer3d.freeRenderAsset renderAsset renderer
+
+            // categorize assets to load
+            let assetsToLoad = HashSet ()
+            for asset in assetsCollected do
+                if not (assetsToKeep.ContainsKey asset.AssetTag.AssetName) then
+                    assetsToLoad.Add asset |> ignore<bool>
+
+            // preload assets
+            renderPackage.PackageState.PreloadAssets (false, assetsToLoad, renderer.VulkanContext)
+
+            // load assets
+            let assetsLoaded = Dictionary ()
+            for asset in assetsToLoad do
+                match VulkanRenderer3d.tryLoadRenderAsset renderPackage.PackageState asset renderer with
+                | Some renderAsset ->
+                    let lastWriteTime =
+                        try DateTimeOffset (File.GetLastWriteTime asset.FilePath)
+                        with exn -> Log.info ("Asset file write time read error due to: " + scstring exn); DateTimeOffset.MinValue.DateTime
+                    assetsLoaded.[asset.AssetTag.AssetName] <- (lastWriteTime, asset, renderAsset)
+                | None -> ()
+
+            // update assets to keep
+            let assetsUpdated =
+                [|for assetEntry in assetsToKeep do
+                    let assetName = assetEntry.Key
+                    let (lastWriteTime, asset, renderAsset) = assetEntry.Value
+                    let dirPath = PathF.GetDirectoryName asset.FilePath
+                    let renderAsset =
+                        match renderAsset with
+                        | RawAsset | TextureAsset _ | FontAsset _ | CubeMapAsset _ ->
+                            renderAsset
+                        | StaticModelAsset (userDefined, staticModel) ->
+                            match staticModel.SceneOpt with
+                            | Some scene when not userDefined ->
+                                let surfaces =
+                                    [|for surface in staticModel.Surfaces do
+                                        let material = scene.Materials.[surface.SurfaceMaterialIndex]
+                                        let (_, material) = PhysicallyBased.CreatePhysicallyBasedMaterial (Some renderer.VulkanContext, dirPath, renderer.PhysicallyBasedMaterial, renderPackage.PackageState.TextureClient, material)
+                                        { surface with SurfaceMaterial = material }|]
+                                StaticModelAsset (userDefined, { staticModel with Surfaces = surfaces })
+                            | Some _ | None -> renderAsset
+                        | AnimatedModelAsset animatedModel ->
+                            match animatedModel.SceneOpt with
+                            | Some scene ->
+                                let surfaces =
+                                    [|for surface in animatedModel.Surfaces do
+                                        let material = scene.Materials.[surface.SurfaceMaterialIndex]
+                                        let (_, material) = PhysicallyBased.CreatePhysicallyBasedMaterial (Some renderer.VulkanContext, dirPath, renderer.PhysicallyBasedMaterial, renderPackage.PackageState.TextureClient, material)
+                                        { surface with SurfaceMaterial = material }|]
+                                AnimatedModelAsset { animatedModel with Surfaces = surfaces }
+                            | None -> renderAsset
+                    KeyValuePair (assetName, (lastWriteTime, asset, renderAsset))|]
+
+            // insert assets into package
+            for assetEntry in Seq.append assetsUpdated assetsLoaded do
+                let assetName = assetEntry.Key
+                let (lastWriteTime, asset, renderAsset) = assetEntry.Value
+                renderPackage.Assets.[assetName] <- (lastWriteTime, asset, renderAsset)
+
+        // handle error cases
+        | Left failedAssetNames ->
+            Log.info ("Render package load failed due to unloadable assets '" + failedAssetNames + "' for package '" + packageName + "'.")
+
+    static member private tryGetRenderAsset (assetTag : AssetTag) renderer =
+        let mutable assetInfo = Unchecked.defaultof<DateTimeOffset * Asset * RenderAsset> // OPTIMIZATION: seems like TryGetValue allocates here if we use the tupling idiom (this may only be the case in Debug builds tho).
+        if  renderer.RenderAssetCached.CachedAssetTagOpt :> obj |> notNull &&
+            assetTag = renderer.RenderAssetCached.CachedAssetTagOpt then
+            renderer.RenderAssetCached.CachedAssetTagOpt <- assetTag // NOTE: this isn't redundant because we want to trigger refEq early-out.
+            ValueSome renderer.RenderAssetCached.CachedRenderAsset
+        elif
+            renderer.RenderPackageCachedOpt :> obj |> notNull &&
+            renderer.RenderPackageCachedOpt.CachedPackageName = assetTag.PackageName then
+            let assets = renderer.RenderPackageCachedOpt.CachedPackageAssets
+            if assets.TryGetValue (assetTag.AssetName, &assetInfo) then
+                let asset = Triple.thd assetInfo
+                renderer.RenderAssetCached.CachedAssetTagOpt <- assetTag
+                renderer.RenderAssetCached.CachedRenderAsset <- asset
+                ValueSome asset
+            else VulkanRenderer3d.logRenderAssetUnavailableOnce assetTag; ValueNone
+        else
+            match Dictionary.tryFind assetTag.PackageName renderer.RenderPackages with
+            | Some package ->
+                renderer.RenderPackageCachedOpt <- { CachedPackageName = assetTag.PackageName; CachedPackageAssets = package.Assets }
+                if package.Assets.TryGetValue (assetTag.AssetName, &assetInfo) then
+                    let asset = Triple.thd assetInfo
+                    renderer.RenderAssetCached.CachedAssetTagOpt <- assetTag
+                    renderer.RenderAssetCached.CachedRenderAsset <- asset
+                    ValueSome asset
+                else VulkanRenderer3d.logRenderAssetUnavailableOnce assetTag; ValueNone
+            | None ->
+                Log.info ("Loading Render3d package '" + assetTag.PackageName + "' for asset '" + assetTag.AssetName + "' on the fly.")
+                VulkanRenderer3d.tryLoadRenderPackage assetTag.PackageName renderer
+                match renderer.RenderPackages.TryGetValue assetTag.PackageName with
+                | (true, package) ->
+                    renderer.RenderPackageCachedOpt <- { CachedPackageName = assetTag.PackageName; CachedPackageAssets = package.Assets }
+                    if package.Assets.TryGetValue (assetTag.AssetName, &assetInfo) then
+                        let asset = Triple.thd assetInfo
+                        renderer.RenderAssetCached.CachedAssetTagOpt <- assetTag
+                        renderer.RenderAssetCached.CachedRenderAsset <- asset
+                        ValueSome asset
+                    else VulkanRenderer3d.logRenderAssetUnavailableOnce assetTag; ValueNone
+                | (false, _) -> ValueNone
+
+    static member private getRenderTasks renderPass renderer =
+        let mutable renderTasks = Unchecked.defaultof<RenderTasks> // OPTIMIZATION: seems like TryGetValue allocates here if we use the tupling idiom (this may only be the case in Debug builds tho).
+        if renderer.RenderPasses.TryGetValue (renderPass, &renderTasks)
+        then renderTasks
+        else
+            let displacedPasses =
+                [for entry in renderer.RenderPasses do
+                    if RenderPass.displaces renderPass entry.Key then
+                        entry]
+            for displacedPass in displacedPasses do
+                renderer.RenderPasses.Remove displacedPass.Key |> ignore<bool>
+            let renderTasks =
+                match displacedPasses with
+                | head :: _ ->
+                    let recycledTasks = head.Value
+                    RenderTasks.clear recycledTasks
+                    recycledTasks
+                | _ -> RenderTasks.make ()
+            renderer.RenderPasses.Add (renderPass, renderTasks)
+            renderTasks
+
+    static member private getLastSkyBoxOpt renderPass renderer =
+        let renderTasks = VulkanRenderer3d.getRenderTasks renderPass renderer
+        match Seq.tryLast renderTasks.SkyBoxes with
+        | Some (lightAmbientColor, lightAmbientBrightness, cubeMapColor, cubeMapBrightness, cubeMapAsset) ->
+            match VulkanRenderer3d.tryGetRenderAsset cubeMapAsset renderer with
+            | ValueSome asset ->
+                match asset with
+                | CubeMapAsset (_, cubeMap, cubeMapIrradianceAndEnvironmentMapOptRef) ->
+                    let cubeMapOpt = Some (cubeMapColor, cubeMapBrightness, cubeMap, cubeMapIrradianceAndEnvironmentMapOptRef)
+                    (lightAmbientColor, lightAmbientBrightness, cubeMapOpt)
+                | _ ->
+                    Log.info "Could not utilize sky box due to mismatched cube map asset."
+                    (lightAmbientColor, lightAmbientBrightness, None)
+            | ValueNone ->
+                Log.info "Could not utilize sky box due to non-existent cube map asset."
+                (lightAmbientColor, lightAmbientBrightness, None)
+        | None -> (Color.White, 1.0f, None)
+    
+    static member private handleLoadRenderPackage hintPackageName renderer =
+        VulkanRenderer3d.tryLoadRenderPackage hintPackageName renderer
+
+    static member private handleUnloadRenderPackage hintPackageName renderer =
+        VulkanRenderer3d.invalidateCaches renderer
+        match Dictionary.tryFind hintPackageName renderer.RenderPackages with
+        | Some package ->
+            for (_, _, asset) in package.Assets.Values do VulkanRenderer3d.freeRenderAsset asset renderer
+            let mutable unused = Unchecked.defaultof<_>
+            renderer.LazyTextureQueues.Remove (package.PackageState.TextureClient.LazyTextureQueue, &unused) |> ignore<bool>
+            renderer.RenderPackages.Remove hintPackageName |> ignore
+        | None -> ()
+
+    static member private handleReloadRenderAssets renderer =
+        VulkanRenderer3d.invalidateCaches renderer
+        VulkanRenderer3d.clearRenderPasses renderer // invalidate render task keys that now contain potentially stale data
+        
+        // TODO: DJL: handle shader reload once applicable.
+        for packageName in renderer.RenderPackages |> Seq.map (fun entry -> entry.Key) |> Array.ofSeq do
+            VulkanRenderer3d.tryLoadRenderPackage packageName renderer
+    
+    static member private categorize
+        frustumInterior
+        frustumExterior
+        frustumImposter
+        lightBox
+        eyeCenter
+        eyeRotation
+        renderMessages
+        renderer =
+        let userDefinedStaticModelsToDestroy = SList.make ()
+        for message in renderMessages do
+            match message with
+            | RenderSkyBox rsb ->
+                let renderTasks = VulkanRenderer3d.getRenderTasks rsb.RenderPass renderer
+                renderTasks.SkyBoxes.Add (rsb.AmbientColor, rsb.AmbientBrightness, rsb.CubeMapColor, rsb.CubeMapBrightness, rsb.CubeMap)
+            | LoadRenderPackage3d packageName ->
+                VulkanRenderer3d.handleLoadRenderPackage packageName renderer
+            | UnloadRenderPackage3d packageName ->
+                VulkanRenderer3d.handleUnloadRenderPackage packageName renderer
+            | ReloadRenderAssets3d ->
+                renderer.ReloadAssetsRequested <- true
+            | _ -> () // TODO: DJL: get rid of this once not needed to draw sky box.
+        userDefinedStaticModelsToDestroy
+    
+    static member private renderGeometry
+        frustumInterior
+        frustumExterior
+        frustumImposter
+        lightBox
+        renderPass
+        renderTasks
+        renderer
+        topLevelRender
+        lightAmbientOverride
+        (eyeCenter : Vector3)
+        (view : Matrix4x4)
+        (viewSkyBox : Matrix4x4)
+        (geometryFrustum : Frustum)
+        (geometryProjection : Matrix4x4)
+        (geometryViewProjection : Matrix4x4)
+        (windowProjection : Matrix4x4) =
+
+        // compute matrix arrays
+        let viewArray = view.ToArray ()
+        let viewInverse = view.Inverted
+        let viewInverseArray = viewInverse.ToArray ()
+        let viewSkyBoxArray = viewSkyBox.ToArray ()
+        let geometryProjectionArray = geometryProjection.ToArray ()
+        let geometryProjectionInverse = geometryProjection.Inverted
+        let geometryProjectionInverseArray = geometryProjectionInverse.ToArray ()
+        let geometryViewProjectionArray = geometryViewProjection.ToArray ()
+        let windowProjectionArray = windowProjection.ToArray ()
+        let windowProjectionInverse = windowProjection.Inverted
+        let windowProjectionInverseArray = windowProjectionInverse.ToArray ()
+        let windowViewProjectionSkyBox = viewSkyBox * windowProjection
+        let windowViewProjectionSkyBoxArray = windowViewProjectionSkyBox.ToArray ()
+
+        // get ambient lighting, sky box opt, and fallback light map
+        let (lightAmbientColor, lightAmbientBrightness, skyBoxOpt) = VulkanRenderer3d.getLastSkyBoxOpt renderPass renderer
+        let (lightAmbientColor, lightAmbientBrightness) = Option.defaultValue (lightAmbientColor, lightAmbientBrightness) lightAmbientOverride
+        // TODO: DJL: complete block.
+        
+        // clear composition attachment
+        let vkc = renderer.VulkanContext
+        let cb = vkc.RenderCommandBuffer
+        let geometryResolution = renderer.GeometryViewport.Bounds.Size
+        let compositionAttachment = renderer.PhysicallyBasedAttachments.CompositionAttachment
+        let renderArea = VkRect2D (0, 0, uint geometryResolution.X, uint geometryResolution.Y)
+        let clearColor = VkClearValue (Constants.Render.ViewportClearColor.R, Constants.Render.ViewportClearColor.G, Constants.Render.ViewportClearColor.B, Constants.Render.ViewportClearColor.A)
+        let mutable rendering = Hl.makeRenderingInfo compositionAttachment.ImageView renderArea (Some clearColor)
+        Vulkan.vkCmdBeginRendering (cb, asPointer &rendering)
+        Vulkan.vkCmdEndRendering cb
+        
+        // attempt to render sky box to composition attachment
+        match skyBoxOpt with
+        | Some (cubeMapColor, cubeMapBrightness, cubeMap, _) ->
+            SkyBox.DrawSkyBox (viewSkyBoxArray, windowProjectionArray, windowViewProjectionSkyBoxArray, cubeMapColor, cubeMapBrightness, cubeMap, renderer.CubeMapGeometry, renderer.GeometryViewport, compositionAttachment, renderer.SkyBoxPipeline, vkc)
+        | None -> ()
+        
+        // blit from composition attachment to swapchain (just for now)
+        // TODO: DJL: blit from final attachment, not composition.
+        Hl.recordTransitionLayout cb true 1 0 Hl.ColorAttachmentWrite Hl.TransferSrc compositionAttachment.Image
+        Hl.recordTransitionLayout cb true 1 0 Hl.ColorAttachmentWrite Hl.TransferDst vkc.SwapchainImage
+        let mutable blit =
+            Hl.makeBlit
+                0 0 0 0
+                (VkRect2D (0, 0, uint geometryResolution.X, uint geometryResolution.Y))
+                (VkRect2D
+                    (renderer.WindowViewport.Inner.Min.X,
+                     renderer.WindowViewport.Outer.Max.Y - renderer.WindowViewport.Inner.Max.Y,
+                     uint renderer.WindowViewport.Inner.Size.X,
+                     uint renderer.WindowViewport.Inner.Size.Y))
+        Vulkan.vkCmdBlitImage (cb, compositionAttachment.Image, Hl.TransferSrc.VkImageLayout, vkc.SwapchainImage, Hl.TransferDst.VkImageLayout, 1u, asPointer &blit, VkFilter.Linear)
+        Hl.recordTransitionLayout cb true 1 0 Hl.TransferSrc Hl.ColorAttachmentWrite compositionAttachment.Image
+        Hl.recordTransitionLayout cb true 1 0 Hl.TransferDst Hl.ColorAttachmentWrite vkc.SwapchainImage
+        
+        ()
+    
+    /// Render 3d surfaces.
+    static member render
+        frustumInterior
+        frustumExterior
+        frustumImposter
+        lightBox
+        eyeCenter
+        eyeRotation
+        eyeFieldOfView
+        geometryViewport
+        windowViewport
+        (renderMessages : _ List)
+        renderer =
+
+        // updates viewports
+        if renderer.GeometryViewport <> geometryViewport then
+            VulkanRenderer3d.invalidateCaches renderer
+            VulkanRenderer3d.clearRenderPasses renderer // force shadows to rerender
+            renderer.GeometryViewport <- geometryViewport
+        renderer.WindowViewport <- windowViewport
+
+        // update attachment sizes (must happen every frame to cover all frames in flight)
+        PhysicallyBased.UpdatePhysicallyBasedAttachmentsSize (geometryViewport, renderer.PhysicallyBasedAttachments, renderer.VulkanContext)
+        
+        // categorize messages
+        let userDefinedStaticModelsToDestroy =
+            VulkanRenderer3d.categorize frustumInterior frustumExterior frustumImposter lightBox eyeCenter eyeRotation renderMessages renderer
+        
+        // sort spot and directional lights according to how they are utilized by shadows
+        let normalPass = NormalPass
+        let normalTasks = VulkanRenderer3d.getRenderTasks normalPass renderer
+        // TODO: DJL: complete block.
+        
+        // process top-level geometry pass
+        // OPTIMIZATION: we don't process rendering tasks if there are no render messages.
+        if renderer.VulkanContext.RenderDesired && renderMessages.Count > 0 then
+            let view = Viewport.getView3d eyeCenter eyeRotation
+            let viewSkyBox = Matrix4x4.CreateFromQuaternion eyeRotation.Inverted
+            let frustum = Viewport.getFrustum eyeCenter eyeRotation eyeFieldOfView geometryViewport
+            let geometryProjection = Viewport.getProjection3d eyeFieldOfView geometryViewport
+            let geometryViewProjection = view * geometryProjection
+            let windowProjection = Viewport.getProjection3d eyeFieldOfView windowViewport
+            
+            // TODO: DJL: not passing inner window bounds yet due to inverted y problem.
+            VulkanRenderer3d.renderGeometry
+                frustumInterior frustumExterior frustumImposter lightBox normalPass normalTasks renderer
+                true None eyeCenter view viewSkyBox frustum geometryProjection geometryViewProjection windowProjection
+        
+        // reload render assets upon request
+        if renderer.ReloadAssetsRequested then
+            VulkanRenderer3d.handleReloadRenderAssets renderer
+            renderer.ReloadAssetsRequested <- false
+
+        // swap render passes
+        for renderTasks in renderer.RenderPasses.Values do if renderTasks.ShadowBufferIndexOpt.IsNone then RenderTasks.clear renderTasks
+        for renderTasks in renderer.RenderPasses2.Values do RenderTasks.clear renderTasks
+        let renderPasses = renderer.RenderPasses
+        renderer.RenderPasses <- renderer.RenderPasses2
+        renderer.RenderPasses2 <- renderPasses
+    
+    /// Make a VulkanRenderer3d.
+    static member make geometryViewport windowViewport vkc =
+        
+        // start lazy texture server
+        let lazyTextureQueues = ConcurrentDictionary<Texture.LazyTexture ConcurrentQueue, Texture.LazyTexture ConcurrentQueue> HashIdentity.Reference
+        let textureServer = Texture.TextureServer (lazyTextureQueues, vkc)
+        textureServer.Start ()
+        
+        // create physically-based attachments using the geometry viewport
+        let physicallyBasedAttachments = PhysicallyBased.CreatePhysicallyBasedAttachments (geometryViewport, vkc)
+        
+        // create sky box pipeline
+        let skyBoxPipeline = SkyBox.CreateSkyBoxPipeline physicallyBasedAttachments.CompositionAttachment.Format vkc
+        
+        // create cube map geometry
+        let cubeMapGeometry = CubeMap.CreateCubeMapGeometry true vkc
+        
+        // get albedo metadata and texture
+        let albedoTexture =
+            match Texture.TryCreateTextureVulkan (false, VkFilter.Linear, VkFilter.Linear, true, true, Texture.ColorCompression, "Assets/Default/MaterialAlbedo.dds", Texture.RenderThread, vkc) with
+            | Right (metadata, vulkanTexture) -> Texture.EagerTexture { TextureMetadata = metadata; TextureInternal = vulkanTexture }
+            | Left error -> failwith ("Could not load albedo material texture due to: " + error)
+
+        // create default physically-based material
+        let physicallyBasedMaterial : PhysicallyBased.PhysicallyBasedMaterial =
+            let roughnessTexture =
+                match Texture.TryCreateTextureVulkan (false, VkFilter.Linear, VkFilter.Linear, true, true, Texture.ColorCompression, "Assets/Default/MaterialRoughness.dds", Texture.RenderThread, vkc) with
+                | Right (metadata, vulkanTexture) -> Texture.EagerTexture { TextureMetadata = metadata; TextureInternal = vulkanTexture }
+                | Left error -> failwith ("Could not load material roughness texture due to: " + error)
+            let metallicTexture =
+                match Texture.TryCreateTextureVulkan (false, VkFilter.Linear, VkFilter.Linear, true, true, Texture.ColorCompression, "Assets/Default/MaterialMetallic.dds", Texture.RenderThread, vkc) with
+                | Right (metadata, vulkanTexture) -> Texture.EagerTexture { TextureMetadata = metadata; TextureInternal = vulkanTexture }
+                | Left error -> failwith ("Could not load material metallic texture due to: " + error)
+            let ambientOcclusionTexture =
+                match Texture.TryCreateTextureVulkan (false, VkFilter.Linear, VkFilter.Linear, true, true, Texture.ColorCompression, "Assets/Default/MaterialAmbientOcclusion.dds", Texture.RenderThread, vkc) with
+                | Right (metadata, vulkanTexture) -> Texture.EagerTexture { TextureMetadata = metadata; TextureInternal = vulkanTexture }
+                | Left error -> failwith ("Could not load material ambient occlusion texture due to: " + error)
+            let emissionTexture =
+                match Texture.TryCreateTextureVulkan (false, VkFilter.Linear, VkFilter.Linear, true, true, Texture.ColorCompression, "Assets/Default/MaterialEmission.dds", Texture.RenderThread, vkc) with
+                | Right (metadata, vulkanTexture) -> Texture.EagerTexture { TextureMetadata = metadata; TextureInternal = vulkanTexture }
+                | Left error -> failwith ("Could not load material emission texture due to: " + error)
+            let normalTexture =
+                match Texture.TryCreateTextureVulkan (false, VkFilter.Linear, VkFilter.Linear, true, true, Texture.NormalCompression, "Assets/Default/MaterialNormal.dds", Texture.RenderThread, vkc) with
+                | Right (metadata, vulkanTexture) -> Texture.EagerTexture { TextureMetadata = metadata; TextureInternal = vulkanTexture }
+                | Left error -> failwith ("Could not load material normal texture due to: " + error)
+            let heightTexture =
+                match Texture.TryCreateTextureVulkan (false, VkFilter.Linear, VkFilter.Linear, true, true, Texture.ColorCompression, "Assets/Default/MaterialHeight.dds", Texture.RenderThread, vkc) with
+                | Right (metadata, vulkanTexture) -> Texture.EagerTexture { TextureMetadata = metadata; TextureInternal = vulkanTexture }
+                | Left error -> failwith ("Could not load material height texture due to: " + error)
+            let subdermalTexture =
+                match Texture.TryCreateTextureVulkan (false, VkFilter.Linear, VkFilter.Linear, true, true, Texture.ColorCompression, "Assets/Default/MaterialSubdermal.dds", Texture.RenderThread, vkc) with
+                | Right (metadata, vulkanTexture) -> Texture.EagerTexture { TextureMetadata = metadata; TextureInternal = vulkanTexture }
+                | Left error -> failwith ("Could not load material subdermal texture due to: " + error)
+            let finenessTexture =
+                match Texture.TryCreateTextureVulkan (false, VkFilter.Linear, VkFilter.Linear, true, true, Texture.ColorCompression, "Assets/Default/MaterialFineness.dds", Texture.RenderThread, vkc) with
+                | Right (metadata, vulkanTexture) -> Texture.EagerTexture { TextureMetadata = metadata; TextureInternal = vulkanTexture }
+                | Left error -> failwith ("Could not load material fineness texture due to: " + error)
+            let scatterTexture =
+                match Texture.TryCreateTextureVulkan (false, VkFilter.Linear, VkFilter.Linear, true, true, Texture.ColorCompression, "Assets/Default/MaterialSubdermal.dds", Texture.RenderThread, vkc) with
+                | Right (metadata, vulkanTexture) -> Texture.EagerTexture { TextureMetadata = metadata; TextureInternal = vulkanTexture }
+                | Left error -> failwith ("Could not load material scatter texture due to: " + error)
+            let clearCoatTexture =
+                match Texture.TryCreateTextureVulkan (false, VkFilter.Linear, VkFilter.Linear, true, true, Texture.ColorCompression, "Assets/Default/MaterialClearCoat.dds", Texture.RenderThread, vkc) with
+                | Right (metadata, vulkanTexture) -> Texture.EagerTexture { TextureMetadata = metadata; TextureInternal = vulkanTexture }
+                | Left error -> failwith ("Could not load material clear coat texture due to: " + error)
+            let clearCoatRoughnessTexture =
+                match Texture.TryCreateTextureVulkan (false, VkFilter.Linear, VkFilter.Linear, true, true, Texture.ColorCompression, "Assets/Default/MaterialClearCoatRoughness.dds", Texture.RenderThread, vkc) with
+                | Right (metadata, vulkanTexture) -> Texture.EagerTexture { TextureMetadata = metadata; TextureInternal = vulkanTexture }
+                | Left error -> failwith ("Could not load material clear coat roughness texture due to: " + error)
+            let clearCoatNormalTexture =
+                match Texture.TryCreateTextureVulkan (false, VkFilter.Linear, VkFilter.Linear, true, true, Texture.NormalCompression, "Assets/Default/MaterialClearCoatNormal.dds", Texture.RenderThread, vkc) with
+                | Right (metadata, vulkanTexture) -> Texture.EagerTexture { TextureMetadata = metadata; TextureInternal = vulkanTexture }
+                | Left error -> failwith ("Could not load material clear coat normal texture due to: " + error)
+            { AlbedoTexture = albedoTexture
+              RoughnessTexture = roughnessTexture
+              MetallicTexture = metallicTexture
+              AmbientOcclusionTexture = ambientOcclusionTexture
+              EmissionTexture = emissionTexture
+              NormalTexture = normalTexture
+              HeightTexture = heightTexture
+              SubdermalTexture = subdermalTexture
+              FinenessTexture = finenessTexture
+              ScatterTexture = scatterTexture
+              ClearCoatTexture = clearCoatTexture
+              ClearCoatRoughnessTexture = clearCoatRoughnessTexture
+              ClearCoatNormalTexture = clearCoatNormalTexture
+              TwoSided = false
+              Clipped = false
+              Names = "" }
+        
+        // make renderer
+        let renderer =
+            { VulkanContext = vkc
+              GeometryViewport = geometryViewport
+              WindowViewport = windowViewport
+              LazyTextureQueues = lazyTextureQueues
+              TextureServer = textureServer
+              SkyBoxPipeline = skyBoxPipeline
+              CubeMapGeometry = cubeMapGeometry
+              PhysicallyBasedMaterial = physicallyBasedMaterial
+              PhysicallyBasedAttachments = physicallyBasedAttachments
+              RendererConfig = Renderer3dConfig.defaultConfig
+              RendererConfigChanged = false
+              RenderPackages = dictPlus StringComparer.Ordinal []
+              RenderPasses = dictPlus HashIdentity.Structural [(NormalPass, RenderTasks.make ())]
+              RenderPasses2 = dictPlus HashIdentity.Structural [(NormalPass, RenderTasks.make ())]
+              RenderPackageCachedOpt = Unchecked.defaultof<_>
+              RenderAssetCached = { CachedAssetTagOpt = Unchecked.defaultof<_>; CachedRenderAsset = Unchecked.defaultof<_> }
+              ReloadAssetsRequested = false }
+
+        // fin
+        renderer
+
+    interface Renderer3d with
+        
+        member renderer.RendererConfig =
+            renderer.RendererConfig
+        
+        member renderer.Render frustumInterior frustumExterior frustumImposter lightBox eyeCenter eyeRotation eyeFieldOfView geometryViewport windowViewport renderMessages =
+            VulkanRenderer3d.render frustumInterior frustumExterior frustumImposter lightBox eyeCenter eyeRotation eyeFieldOfView geometryViewport windowViewport renderMessages renderer
+        
+        member renderer.CleanUp () =
+            
+            let vkc = renderer.VulkanContext
+            
+            SkyBox.DestroySkyBoxPipeline renderer.SkyBoxPipeline vkc
+            
+            CubeMap.DestroyCubeMapGeometry renderer.CubeMapGeometry vkc
+            
+            // destroy default physically-based material
+            renderer.PhysicallyBasedMaterial.AlbedoTexture.Destroy vkc
+            renderer.PhysicallyBasedMaterial.RoughnessTexture.Destroy vkc
+            renderer.PhysicallyBasedMaterial.MetallicTexture.Destroy vkc
+            renderer.PhysicallyBasedMaterial.AmbientOcclusionTexture.Destroy vkc
+            renderer.PhysicallyBasedMaterial.EmissionTexture.Destroy vkc
+            renderer.PhysicallyBasedMaterial.NormalTexture.Destroy vkc
+            renderer.PhysicallyBasedMaterial.HeightTexture.Destroy vkc
+            renderer.PhysicallyBasedMaterial.SubdermalTexture.Destroy vkc
+            renderer.PhysicallyBasedMaterial.FinenessTexture.Destroy vkc
+            renderer.PhysicallyBasedMaterial.ScatterTexture.Destroy vkc
+            renderer.PhysicallyBasedMaterial.ClearCoatTexture.Destroy vkc
+            renderer.PhysicallyBasedMaterial.ClearCoatRoughnessTexture.Destroy vkc
+            renderer.PhysicallyBasedMaterial.ClearCoatNormalTexture.Destroy vkc
+            
+            PhysicallyBased.DestroyPhysicallyBasedAttachments (renderer.PhysicallyBasedAttachments, vkc)
+            
+            // free assets
+            // TODO: DJL: do we need to consider textures only loaded via model?
+            let renderPackages = renderer.RenderPackages |> Seq.map (fun entry -> entry.Value)
+            let renderAssets = renderPackages |> Seq.map (fun package -> package.Assets.Values) |> Seq.concat
+            for (_, _, asset) in renderAssets do VulkanRenderer3d.freeRenderAsset asset renderer
+            renderer.RenderPackages.Clear ()
+            
+            // terminate lazy texture server
             renderer.TextureServer.Terminate ()

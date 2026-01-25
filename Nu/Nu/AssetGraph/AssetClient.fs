@@ -5,11 +5,12 @@ namespace Nu
 open System
 open System.Collections.Generic
 open System.IO
+open Vortice.Vulkan
 open Prime
 open Nu
 
 /// Provides asset clients for direct usage.
-type AssetClient (textureClient : OpenGL.Texture.TextureClient, cubeMapClient : OpenGL.CubeMap.CubeMapClient, sceneClient : OpenGL.PhysicallyBased.PhysicallyBasedSceneClient) =
+type AssetClient (textureClient : Texture.TextureClient, cubeMapClient : CubeMap.CubeMapClient, sceneClient : PhysicallyBased.PhysicallyBasedSceneClient) =
 
     /// The texture client.
     member this.TextureClient = textureClient
@@ -21,7 +22,7 @@ type AssetClient (textureClient : OpenGL.Texture.TextureClient, cubeMapClient : 
     member this.SceneClient = sceneClient
 
     /// Preload assets.
-    member this.PreloadAssets (is2d, assets : Asset seq) =
+    member this.PreloadAssets (is2d, assets : Asset seq, vkc) =
 
         // collect loadable assets
         let textureAssets = List ()
@@ -38,7 +39,7 @@ type AssetClient (textureClient : OpenGL.Texture.TextureClient, cubeMapClient : 
         let textureDataLoadOps =
             [for textureAsset in textureAssets do
                 vsync {
-                    match OpenGL.Texture.TryCreateTextureData (not is2d, textureAsset.FilePath) with
+                    match Texture.TryCreateTextureData (not is2d, textureAsset.FilePath) with
                     | Some textureData -> return Right (textureAsset.FilePath, textureData)
                     | None -> return Left ("Error creating texture data from '" + textureAsset.FilePath + "'") }]
 
@@ -63,20 +64,20 @@ type AssetClient (textureClient : OpenGL.Texture.TextureClient, cubeMapClient : 
             | Right (filePath, textureData) ->
                 let texture =
                     if is2d then
-                        let (metadata, textureId) =
-                            if OpenGL.Texture.InferFiltered2d filePath
-                            then OpenGL.Texture.CreateTextureGlFromData (OpenGL.TextureMinFilter.LinearMipmapLinear, OpenGL.TextureMagFilter.Linear, true, true, OpenGL.Texture.Uncompressed, textureData)
-                            else OpenGL.Texture.CreateTextureGlFromData (OpenGL.TextureMinFilter.Nearest, OpenGL.TextureMagFilter.Nearest, false, false, OpenGL.Texture.Uncompressed, textureData)
-                        OpenGL.Texture.EagerTexture { TextureMetadata = metadata; TextureId = textureId }
+                        let (metadata, textureInternal) =
+                            if Texture.InferFiltered2d filePath
+                            then Texture.CreateTextureVulkanFromData (VkFilter.Linear, VkFilter.Linear, true, true, Texture.Uncompressed, textureData, Texture.RenderThread, vkc)
+                            else Texture.CreateTextureVulkanFromData (VkFilter.Nearest, VkFilter.Nearest, false, false, Texture.Uncompressed, textureData, Texture.RenderThread, vkc)
+                        Texture.EagerTexture { TextureMetadata = metadata; TextureInternal = textureInternal }
                     elif textureData.LazyLoadable then
-                        let (metadata, textureId) = OpenGL.Texture.CreateTextureGlFromData (OpenGL.TextureMinFilter.LinearMipmapLinear, OpenGL.TextureMagFilter.Linear, true, true, OpenGL.Texture.InferCompression filePath, textureData)
-                        let lazyTexture = new OpenGL.Texture.LazyTexture (filePath, metadata, textureId, OpenGL.TextureMinFilter.LinearMipmapLinear, OpenGL.TextureMagFilter.Linear, true)
+                        let (metadata, textureInternal) = Texture.CreateTextureVulkanFromData (VkFilter.Linear, VkFilter.Linear, true, true, Texture.InferCompression filePath, textureData, Texture.RenderThread, vkc)
+                        let lazyTexture = new Texture.LazyTexture (filePath, metadata, textureInternal, VkFilter.Linear, VkFilter.Linear, true)
                         textureClient.LazyTextureQueue.Enqueue lazyTexture
-                        OpenGL.Texture.LazyTexture lazyTexture
+                        Texture.LazyTexture lazyTexture
                     else
                         Log.infoOnce "One or more textures for non-2D usage are not streamable; consider using the ConvertToDds refinement with them for more efficient loading."
-                        let (metadata, textureId) = OpenGL.Texture.CreateTextureGlFromData (OpenGL.TextureMinFilter.LinearMipmapLinear, OpenGL.TextureMagFilter.Linear, true, true, OpenGL.Texture.InferCompression filePath, textureData)
-                        OpenGL.Texture.EagerTexture { TextureMetadata = metadata; TextureId = textureId }
+                        let (metadata, textureInternal) = Texture.CreateTextureVulkanFromData (VkFilter.Linear, VkFilter.Linear, true, true, Texture.InferCompression filePath, textureData, Texture.RenderThread, vkc)
+                        Texture.EagerTexture { TextureMetadata = metadata; TextureInternal = textureInternal }
                 textureClient.Textures.[filePath] <- texture
             | Left error -> Log.info error
 
@@ -98,7 +99,7 @@ type AssetClient (textureClient : OpenGL.Texture.TextureClient, cubeMapClient : 
                 let faceBackFilePath = dirPath + "/" + faceBackFilePath.Trim ()
                 let faceFrontFilePath = dirPath + "/" + faceFrontFilePath.Trim ()
                 let cubeMapKey = (faceRightFilePath, faceLeftFilePath, faceTopFilePath, faceBottomFilePath, faceBackFilePath, faceFrontFilePath)
-                match OpenGL.CubeMap.TryCreateCubeMap (faceRightFilePath, faceLeftFilePath, faceTopFilePath, faceBottomFilePath, faceBackFilePath, faceFrontFilePath) with
+                match CubeMap.TryCreateCubeMap (faceRightFilePath, faceLeftFilePath, faceTopFilePath, faceBottomFilePath, faceBackFilePath, faceFrontFilePath, Texture.RenderThread, vkc) with
                 | Right cubeMap -> cubeMapClient.CubeMaps.[cubeMapKey] <- cubeMap
                 | Left error -> Log.info ("Could not load cube map '" + cubeMap.FilePath + "' due to: " + error)
             | _ -> Log.info ("Could not load cube map '" + cubeMap.FilePath + "' due to requiring exactly 6 file paths with each file path on its own line.")

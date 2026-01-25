@@ -1,4 +1,4 @@
-﻿// Nu Game Engine.
+// Nu Game Engine.
 // Copyright (C) Bryan Edds.
 
 namespace Nu
@@ -7,6 +7,7 @@ open System.Collections.Generic
 open System.IO
 open System.Numerics
 open System.Runtime.InteropServices
+open Vortice.Vulkan
 open SDL2
 open TiledSharp
 open Prime
@@ -98,6 +99,16 @@ type TextDescriptor =
       Justification : Justification
       CaretOpt : int option }
 
+/// Describes how to render a vector path to a rendering subsystem.
+type [<NoEquality; NoComparison>] VectorPathDescriptor =
+    { mutable Transform : Transform
+      ClipOpt : Box2 voption
+      Commands : VectorPathCommand array
+      FillColor : Color
+      WindingRule : WindingRule
+      StrokeColor : Color
+      StrokeThickness : single }
+
 /// Describes a 2d rendering operation.
 type RenderOperation2d =
     | RenderSprite of SpriteDescriptor
@@ -108,6 +119,7 @@ type RenderOperation2d =
     | RenderText of TextDescriptor
     | RenderTiles of TilesDescriptor
     | RenderSpineSkeleton of SpineSkeletonDescriptor
+    | RenderVectorPath of VectorPathDescriptor
 
 /// Describes a layered rendering operation to a 2d rendering subsystem.
 /// NOTE: mutation is used only for internal caching.
@@ -169,16 +181,18 @@ type [<ReferenceEquality>] StubRenderer2d =
     static member make () =
         { StubRenderer2d = () }
 
-/// The OpenGL implementation of Renderer2d.
-type [<ReferenceEquality>] GlRenderer2d =
+/// The Vulkan implementation of Renderer2d.
+type [<ReferenceEquality>] VulkanRenderer2d =
     private
-        { mutable Viewport : Viewport
-          SpriteVao : uint // TODO: P1: release these resources on clean-up.
-          mutable SpriteShader : int * int * int * int * uint // TODO: P1: release these resources on clean-up.
-          TextQuad : uint * uint // TODO: P1: release these resources on clean-up.
-          TextTextureIdPool : uint Stack
-          TextTextures : Dictionary<obj, bool ref * (int * int * Matrix4x4 * OpenGL.Texture.Texture)>
-          SpriteBatchEnv : OpenGL.SpriteBatch.SpriteBatchEnv
+        { VulkanContext : Hl.VulkanContext
+          mutable Viewport : Viewport
+          mutable TextDrawIndex : int
+          mutable VectorPathDrawIndex : int
+          TextQuad : Buffer.Buffer * Buffer.Buffer
+          TextTexture : Texture.TextureAccumulator
+          SpriteBatchEnv : SpriteBatch.SpriteBatchEnv
+          SpritePipeline : Buffer.Buffer * Buffer.Buffer * Buffer.Buffer * Pipeline.Pipeline
+          VectorPathPipeline : Buffer.Buffer * Buffer.Buffer * Buffer.Buffer * Pipeline.Pipeline
           RenderPackages : Packages<RenderAsset, AssetClient>
           SpineSkeletonRenderers : Dictionary<uint64, bool ref * Spine.SkeletonRenderer>
           mutable RenderPackageCachedOpt : RenderPackageCached
@@ -196,28 +210,25 @@ type [<ReferenceEquality>] GlRenderer2d =
         renderer.RenderPackageCachedOpt <- Unchecked.defaultof<_>
         renderer.RenderAssetCached.CachedAssetTagOpt <- Unchecked.defaultof<_>
         renderer.RenderAssetCached.CachedRenderAsset <- RawAsset
-        for (_, _, _, textTexture) in Seq.map snd renderer.TextTextures.Values do textTexture.Destroy ()
-        renderer.TextTextures.Clear ()
 
     static member private freeRenderAsset renderAsset renderer =
-        GlRenderer2d.invalidateCaches renderer
+        VulkanRenderer2d.invalidateCaches renderer
         match renderAsset with
         | RawAsset -> ()
-        | TextureAsset texture -> texture.Destroy ()
+        | TextureAsset texture -> texture.Destroy renderer.VulkanContext
         | FontAsset (_, font) -> SDL_ttf.TTF_CloseFont font
         | CubeMapAsset _ -> ()
         | StaticModelAsset _ -> ()
         | AnimatedModelAsset _ -> ()
-        OpenGL.Hl.Assert ()
 
     static member private tryLoadRenderAsset (assetClient : AssetClient) (asset : Asset) renderer =
-        GlRenderer2d.invalidateCaches renderer
+        VulkanRenderer2d.invalidateCaches renderer
         match PathF.GetExtensionLower asset.FilePath with
         | ImageExtension _ ->
             let textureEir =
-                if OpenGL.Texture.InferFiltered2d asset.FilePath
-                then assetClient.TextureClient.TryCreateTextureFiltered (false, OpenGL.Texture.Uncompressed, asset.FilePath)
-                else assetClient.TextureClient.TryCreateTextureUnfiltered (false, asset.FilePath)
+                if Texture.InferFiltered2d asset.FilePath
+                then assetClient.TextureClient.TryCreateTextureFiltered (false, Texture.Uncompressed, asset.FilePath, Texture.RenderThread, renderer.VulkanContext)
+                else assetClient.TextureClient.TryCreateTextureUnfiltered (false, asset.FilePath, Texture.RenderThread, renderer.VulkanContext)
             match textureEir with
             | Right texture ->
                 Some (TextureAsset texture)
@@ -255,9 +266,9 @@ type [<ReferenceEquality>] GlRenderer2d =
                 | None ->
                     let assetClient =
                         AssetClient
-                            (OpenGL.Texture.TextureClient None,
-                                OpenGL.CubeMap.CubeMapClient (),
-                                OpenGL.PhysicallyBased.PhysicallyBasedSceneClient ())
+                            (Texture.TextureClient None,
+                                CubeMap.CubeMapClient (),
+                                PhysicallyBased.PhysicallyBasedSceneClient ())
                     let renderPackage = { Assets = dictPlus StringComparer.Ordinal []; PackageState = assetClient }
                     renderer.RenderPackages.[packageName] <- renderPackage
                     renderPackage
@@ -276,17 +287,17 @@ type [<ReferenceEquality>] GlRenderer2d =
                 then assetsToFree.Add (asset.FilePath, renderAsset)
                 else assetsToKeep.Add (assetName, (lastWriteTime, asset, renderAsset))
 
-            // free assets, including memo entries
-            for assetEntry in assetsToFree do
-                let filePath = assetEntry.Key
-                let renderAsset = assetEntry.Value
-                match renderAsset with
-                | RawAsset -> ()
-                | TextureAsset _ -> renderPackage.PackageState.TextureClient.Textures.Remove filePath |> ignore<bool>
-                | FontAsset _ -> ()
-                | CubeMapAsset (cubeMapKey, _, _) -> renderPackage.PackageState.CubeMapClient.CubeMaps.Remove cubeMapKey |> ignore<bool>
-                | StaticModelAsset _ | AnimatedModelAsset _ -> renderPackage.PackageState.SceneClient.Scenes.Remove filePath |> ignore<bool>
-                GlRenderer2d.freeRenderAsset renderAsset renderer
+                // free assets, including memo entries
+                for assetEntry in assetsToFree do
+                    let filePath = assetEntry.Key
+                    let renderAsset = assetEntry.Value
+                    match renderAsset with
+                    | RawAsset -> ()
+                    | TextureAsset _ -> renderPackage.PackageState.TextureClient.Textures.Remove filePath |> ignore<bool>
+                    | FontAsset _ -> ()
+                    | CubeMapAsset (cubeMapKey, _, _) -> renderPackage.PackageState.CubeMapClient.CubeMaps.Remove cubeMapKey |> ignore<bool>
+                    | StaticModelAsset _ | AnimatedModelAsset _ -> renderPackage.PackageState.SceneClient.Scenes.Remove filePath |> ignore<bool>
+                    VulkanRenderer2d.freeRenderAsset renderAsset renderer
 
             // categorize assets to load
             let assetsToLoad = HashSet ()
@@ -295,12 +306,12 @@ type [<ReferenceEquality>] GlRenderer2d =
                     assetsToLoad.Add asset |> ignore<bool>
 
             // preload assets in parallel
-            renderPackage.PackageState.PreloadAssets (true, assetsToLoad)
+            renderPackage.PackageState.PreloadAssets (true, assetsToLoad, renderer.VulkanContext)
 
             // load assets
             let assetsLoaded = Dictionary ()
             for asset in assetsToLoad do
-                match GlRenderer2d.tryLoadRenderAsset renderPackage.PackageState asset renderer with
+                match VulkanRenderer2d.tryLoadRenderAsset renderPackage.PackageState asset renderer with
                 | Some renderAsset ->
                     let lastWriteTime =
                         try DateTimeOffset (File.GetLastWriteTime asset.FilePath)
@@ -333,7 +344,7 @@ type [<ReferenceEquality>] GlRenderer2d =
                 renderer.RenderAssetCached.CachedAssetTagOpt <- assetTag
                 renderer.RenderAssetCached.CachedRenderAsset <- asset
                 ValueSome asset
-            else GlRenderer2d.logRenderAssetUnavailableOnce assetTag; ValueNone
+            else VulkanRenderer2d.logRenderAssetUnavailableOnce assetTag; ValueNone
         else
             match Dictionary.tryFind assetTag.PackageName renderer.RenderPackages with
             | Some package ->
@@ -343,10 +354,10 @@ type [<ReferenceEquality>] GlRenderer2d =
                     renderer.RenderAssetCached.CachedAssetTagOpt <- assetTag
                     renderer.RenderAssetCached.CachedRenderAsset <- asset
                     ValueSome asset
-                else GlRenderer2d.logRenderAssetUnavailableOnce assetTag; ValueNone
+                else VulkanRenderer2d.logRenderAssetUnavailableOnce assetTag; ValueNone
             | None ->
                 Log.info ("Loading Render2d package '" + assetTag.PackageName + "' for asset '" + assetTag.AssetName + "' on the fly.")
-                GlRenderer2d.tryLoadRenderPackage assetTag.PackageName renderer
+                VulkanRenderer2d.tryLoadRenderPackage assetTag.PackageName renderer
                 match renderer.RenderPackages.TryGetValue assetTag.PackageName with
                 | (true, package) ->
                     renderer.RenderPackageCachedOpt <- { CachedPackageName = assetTag.PackageName; CachedPackageAssets = package.Assets }
@@ -355,42 +366,43 @@ type [<ReferenceEquality>] GlRenderer2d =
                         renderer.RenderAssetCached.CachedAssetTagOpt <- assetTag
                         renderer.RenderAssetCached.CachedRenderAsset <- asset
                         ValueSome asset
-                    else GlRenderer2d.logRenderAssetUnavailableOnce assetTag; ValueNone
+                    else VulkanRenderer2d.logRenderAssetUnavailableOnce assetTag; ValueNone
                 | (false, _) -> ValueNone
-
+    
     static member private handleLoadRenderPackage hintPackageName renderer =
-        GlRenderer2d.tryLoadRenderPackage hintPackageName renderer
+        VulkanRenderer2d.tryLoadRenderPackage hintPackageName renderer
 
     static member private handleUnloadRenderPackage hintPackageName renderer =
-        GlRenderer2d.invalidateCaches renderer
+        VulkanRenderer2d.invalidateCaches renderer
         match Dictionary.tryFind hintPackageName renderer.RenderPackages with
         | Some package ->
-            for asset in package.Assets do GlRenderer2d.freeRenderAsset (__c asset.Value) renderer
+            for asset in package.Assets do VulkanRenderer2d.freeRenderAsset (__c asset.Value) renderer
             renderer.RenderPackages.Remove hintPackageName |> ignore
         | None -> ()
 
+    (* TODO: DJL: port to vulkan.
     static member private handleReloadShaders renderer =
         renderer.SpriteShader <- OpenGL.Sprite.CreateSpriteShader Constants.Paths.SpriteShaderFilePath
         OpenGL.Hl.Assert ()
         OpenGL.SpriteBatch.ReloadShaders renderer.SpriteBatchEnv
-        OpenGL.Hl.Assert ()
+        OpenGL.Hl.Assert ()*)
 
     static member private handleReloadRenderAssets renderer =
-        GlRenderer2d.invalidateCaches renderer
+        VulkanRenderer2d.invalidateCaches renderer
         for packageName in renderer.RenderPackages |> Seq.map (fun entry -> entry.Key) |> Array.ofSeq do
-            GlRenderer2d.tryLoadRenderPackage packageName renderer
-
+            VulkanRenderer2d.tryLoadRenderPackage packageName renderer
+    
     static member private handleRenderMessage renderMessage renderer =
         match renderMessage with
         | LayeredOperation2d operation -> renderer.LayeredOperations.Add operation
-        | LoadRenderPackage2d hintPackageUse -> GlRenderer2d.handleLoadRenderPackage hintPackageUse renderer
-        | UnloadRenderPackage2d hintPackageDisuse -> GlRenderer2d.handleUnloadRenderPackage hintPackageDisuse renderer
+        | LoadRenderPackage2d hintPackageUse -> VulkanRenderer2d.handleLoadRenderPackage hintPackageUse renderer
+        | UnloadRenderPackage2d hintPackageDisuse -> VulkanRenderer2d.handleUnloadRenderPackage hintPackageDisuse renderer
         | ReloadRenderAssets2d -> renderer.ReloadAssetsRequested <- true
 
     static member private handleRenderMessages renderMessages renderer =
         for renderMessage in renderMessages do
-            GlRenderer2d.handleRenderMessage renderMessage renderer
-
+            VulkanRenderer2d.handleRenderMessage renderMessage renderer
+    
     static member private sortLayeredOperations renderer =
         renderer.LayeredOperations.Sort (LayeredOperation2dComparer ())
 
@@ -406,7 +418,7 @@ type [<ReferenceEquality>] GlRenderer2d =
         (rotation : single)
         (insetOpt : Box2 voption)
         (clipOpt : Box2 voption)
-        (texture : OpenGL.Texture.Texture)
+        (texture : Texture.Texture)
         (color : Color)
         (blend : Blend)
         (emission : Color)
@@ -452,20 +464,20 @@ type [<ReferenceEquality>] GlRenderer2d =
                     (if flipH then -texCoordsUnflipped.Size.X else texCoordsUnflipped.Size.X)
                     (if flipV then -texCoordsUnflipped.Size.Y else texCoordsUnflipped.Size.Y))
 
-        // compute blending instructions
-        let struct (bfs, bfd, beq) =
+        // prepare blending info for pipeline
+        let pipelineBlend =
             match blend with
-            | Transparent -> struct (OpenGL.BlendingFactor.SrcAlpha, OpenGL.BlendingFactor.OneMinusSrcAlpha, OpenGL.BlendEquationMode.FuncAdd)
-            | Additive -> struct (OpenGL.BlendingFactor.SrcAlpha, OpenGL.BlendingFactor.One, OpenGL.BlendEquationMode.FuncAdd)
-            | Overwrite -> struct (OpenGL.BlendingFactor.One, OpenGL.BlendingFactor.Zero, OpenGL.BlendEquationMode.FuncAdd)
+            | Transparent -> Pipeline.Transparent
+            | Additive -> Pipeline.Additive
+            | Overwrite -> Pipeline.Overwrite
 
         // attempt to draw regular sprite
         if color.A <> 0.0f then
-            OpenGL.SpriteBatch.SubmitSpriteBatchSprite (absolute, min, size, pivot, rotation, &texCoords, &clipOpt, &color, bfs, bfd, beq, texture, renderer.Viewport, renderer.SpriteBatchEnv)
+            SpriteBatch.SubmitSpriteBatchSprite (absolute, min, size, pivot, rotation, &texCoords, &clipOpt, &color, pipelineBlend, texture, renderer.Viewport, renderer.SpriteBatchEnv)
 
         // attempt to draw emission sprite
         if emission.A <> 0.0f then
-            OpenGL.SpriteBatch.SubmitSpriteBatchSprite (absolute, min, size, pivot, rotation, &texCoords, &clipOpt, &emission, OpenGL.BlendingFactor.SrcAlpha, OpenGL.BlendingFactor.One, OpenGL.BlendEquationMode.FuncAdd, texture, renderer.Viewport, renderer.SpriteBatchEnv)
+            SpriteBatch.SubmitSpriteBatchSprite (absolute, min, size, pivot, rotation, &texCoords, &clipOpt, &emission, Pipeline.Additive, texture, renderer.Viewport, renderer.SpriteBatchEnv)
 
     /// Render sprite.
     static member renderSprite
@@ -485,17 +497,17 @@ type [<ReferenceEquality>] GlRenderer2d =
         let size = perimeter.Size.V2 * virtualScalar
         let pivot = transform.PerimeterPivot.V2 * virtualScalar
         let rotation = -transform.Angles.Z
-        match GlRenderer2d.tryGetRenderAsset image renderer with
+        match VulkanRenderer2d.tryGetRenderAsset image renderer with
         | ValueSome renderAsset ->
             match renderAsset with
             | TextureAsset texture ->
-                GlRenderer2d.batchSprite absolute min size pivot rotation insetOpt clipOpt texture color blend emission flip renderer
+                VulkanRenderer2d.batchSprite absolute min size pivot rotation insetOpt clipOpt texture color blend emission flip renderer
             | _ -> Log.infoOnce ("Cannot render sprite with a non-texture asset for '" + scstring image + "'.")
         | ValueNone -> Log.infoOnce ("Sprite failed to render due to unloadable asset for '" + scstring image + "'.")
-
+    
     /// Render sprite particles.
     static member renderSpriteParticles (clipOpt : Box2 voption inref, blend : Blend, image : Image AssetTag, particles : Particle SArray, renderer) =
-        match GlRenderer2d.tryGetRenderAsset image renderer with
+        match VulkanRenderer2d.tryGetRenderAsset image renderer with
         | ValueSome renderAsset ->
             match renderAsset with
             | TextureAsset texture ->
@@ -514,7 +526,7 @@ type [<ReferenceEquality>] GlRenderer2d =
                     let emission = &particle.Emission
                     let flip = particle.Flip
                     let insetOpt = &particle.InsetOpt
-                    GlRenderer2d.batchSprite absolute min size pivot rotation insetOpt clipOpt texture color blend emission flip renderer
+                    VulkanRenderer2d.batchSprite absolute min size pivot rotation insetOpt clipOpt texture color blend emission flip renderer
                     index <- inc index
             | _ -> Log.infoOnce ("Cannot render sprite particle with a non-texture asset for '" + scstring image + "'.")
         | ValueNone -> Log.infoOnce ("Sprite particles failed to render due to unloadable asset for '" + scstring image + "'.")
@@ -548,7 +560,7 @@ type [<ReferenceEquality>] GlRenderer2d =
         let tileSetTextures =
             tileAssets
             |> Array.map (fun struct (tileSet, tileSetImage) ->
-                match GlRenderer2d.tryGetRenderAsset tileSetImage renderer with
+                match VulkanRenderer2d.tryGetRenderAsset tileSetImage renderer with
                 | ValueSome asset ->
                     match asset with
                     | TextureAsset tileSetTexture -> ValueSome struct (tileSet, tileSetImage, tileSetTexture)
@@ -609,7 +621,7 @@ type [<ReferenceEquality>] GlRenderer2d =
                             let tileIdPosition = tileId * tileSourceSize.X
                             let tileSourcePosition = v2 (single (tileIdPosition % tileSetWidth)) (single (tileIdPosition / tileSetWidth * tileSourceSize.Y))
                             let inset = box2 tileSourcePosition (v2 (single tileSourceSize.X) (single tileSourceSize.Y))
-                            GlRenderer2d.batchSprite absolute tileMin tileSize tilePivot 0.0f (ValueSome inset) clipOpt texture color Transparent emission flip renderer
+                            VulkanRenderer2d.batchSprite absolute tileMin tileSize tilePivot 0.0f (ValueSome inset) clipOpt texture color Transparent emission flip renderer
                         | ValueNone -> ()
 
                 // fin
@@ -625,12 +637,13 @@ type [<ReferenceEquality>] GlRenderer2d =
          eyeCenter : Vector2,
          eyeSize : Vector2,
          renderer) =
+        (* TODO: DJL: get spine animation rendering working again.
         let mutable transform = transform
-        flip3 OpenGL.SpriteBatch.InterruptSpriteBatchFrame renderer.Viewport renderer.SpriteBatchEnv $ fun () ->
+        flip3 SpriteBatch.InterruptSpriteBatchFrame renderer.Viewport renderer.SpriteBatchEnv $ fun () ->
             let getTextureId (imageObj : obj) =
                 match imageObj with
                 | :? AssetTag<Image> as image ->
-                    match GlRenderer2d.tryGetRenderAsset image renderer with
+                    match VulkanRenderer2d.tryGetRenderAsset image renderer with
                     | ValueSome (TextureAsset textureAsset) -> textureAsset.TextureId
                     | _ -> 0u
                 | _ -> 0u
@@ -647,7 +660,50 @@ type [<ReferenceEquality>] GlRenderer2d =
                     let ssRenderer = Spine.SkeletonRenderer (fun vss fss -> OpenGL.Shader.CreateShaderFromStrs (vss, fss))
                     renderer.SpineSkeletonRenderers.Add (spineSkeletonId, (ref true, ssRenderer))
                     ssRenderer
-            ssRenderer.Draw (getTextureId, spineSkeleton, &modelViewProjection)
+            ssRenderer.Draw (getTextureId, spineSkeleton, &modelViewProjection)*)
+        ()
+
+    /// Render vector path.
+    static member renderVectorPath
+        (descriptor : VectorPathDescriptor)
+        (eyeCenter : Vector2)
+        (eyeSize : Vector2)
+        (renderer : VulkanRenderer2d) =
+
+        // interrupt sprite batch to render vector path
+        flip3 SpriteBatch.InterruptSpriteBatchFrame renderer.Viewport renderer.SpriteBatchEnv $ fun () ->
+            
+            // gather context for rendering vector path
+            let viewProjection2d = Viewport.getViewProjection2d descriptor.Transform.Absolute eyeCenter eyeSize renderer.Viewport
+            let viewProjectionClipAbsolute = Viewport.getViewProjectionClip true eyeCenter eyeSize renderer.Viewport
+            let viewProjectionClipRelative = Viewport.getViewProjectionClip false eyeCenter eyeSize renderer.Viewport
+            
+            // tesselate vector path (consider caching this)
+            let (vertices, indices) = VectorPath.tesselateVectorPath descriptor.Commands descriptor.FillColor descriptor.WindingRule descriptor.StrokeColor descriptor.StrokeThickness
+            
+            // only render if we have geometry
+            if vertices.Length > 0 && indices.Length > 0 then
+                
+                // construct model matrix (converts normalized coords to screen pixel position)
+                let modelViewProjection =
+                    Matrix4x4.CreateScale descriptor.Transform.Size *
+                    descriptor.Transform.AffineMatrix *
+                    Matrix4x4.CreateScale (single renderer.Viewport.DisplayScalar) *
+                    viewProjection2d
+
+                // draw vector path
+                VectorPath.drawVectorPath
+                    renderer.VectorPathDrawIndex
+                    (vertices, indices)
+                    descriptor.Transform.Absolute
+                    &viewProjectionClipAbsolute
+                    &viewProjectionClipRelative
+                    (modelViewProjection.ToArray ())
+                    &descriptor.ClipOpt
+                    renderer.Viewport
+                    renderer.VectorPathPipeline
+                    renderer.VulkanContext
+                renderer.VectorPathDrawIndex <- inc renderer.VectorPathDrawIndex
 
     /// Render text.
     static member renderText
@@ -662,7 +718,7 @@ type [<ReferenceEquality>] GlRenderer2d =
          caretOpt : int option,
          eyeCenter : Vector2,
          eyeSize : Vector2,
-         renderer : GlRenderer2d) =
+         renderer : VulkanRenderer2d) =
 
         // modify text to utilize caret
         let text =
@@ -674,12 +730,12 @@ type [<ReferenceEquality>] GlRenderer2d =
             | Some _ | None -> text
 
         // attempt to render text
-        let color = color // copy to local for proprety access
+        let color = color // copy to local for property access
         if  not (String.IsNullOrWhiteSpace text) && // render only when non-whitespace
             color.A8 <> 0uy then // render only when color isn't fully transparent because SDL_TTF doesn't handle zero alpha text as expected.
             let transform = transform // copy to local to make visible from lambda
             let clipOpt = clipOpt // same
-            flip3 OpenGL.SpriteBatch.InterruptSpriteBatchFrame renderer.Viewport renderer.SpriteBatchEnv $ fun () ->
+            flip3 SpriteBatch.InterruptSpriteBatchFrame renderer.Viewport renderer.SpriteBatchEnv $ fun () ->
 
                 // gather context for rendering text
                 let mutable transform = transform
@@ -691,7 +747,7 @@ type [<ReferenceEquality>] GlRenderer2d =
                 let viewProjection2d = Viewport.getViewProjection2d absolute eyeCenter eyeSize renderer.Viewport
                 let viewProjectionClipAbsolute = Viewport.getViewProjectionClip true eyeCenter eyeSize renderer.Viewport
                 let viewProjectionClipRelative = Viewport.getViewProjectionClip false eyeCenter eyeSize renderer.Viewport
-                match GlRenderer2d.tryGetRenderAsset font renderer with
+                match VulkanRenderer2d.tryGetRenderAsset font renderer with
                 | ValueSome renderAsset ->
                     match renderAsset with
                     | FontAsset (fontSizeDefault, font) ->
@@ -702,309 +758,280 @@ type [<ReferenceEquality>] GlRenderer2d =
                             | Some fontSize -> fontSize * renderer.Viewport.DisplayScalar
                             | None -> fontSizeDefault * renderer.Viewport.DisplayScalar
 
-                        // attempt to find or create text texture
-                        // NOTE: because of the hacky way the caret is shown, texture is recreated every blink on / off.
-                        let textTextureOpt =
-                            let textTextureKey = (perimeter, text, font, fontSize, fontStyling, color, justification)
-                            match renderer.TextTextures.TryGetValue textTextureKey with
-                            | (false, _) ->
+                        // gather rendering resources
+                        let (offset, textSurface, textSurfacePtr) =
 
-                                // gather rendering resources
-                                let (offset, textSurface, textSurfacePtr) =
+                            // create sdl color
+                            let mutable colorSdl = SDL.SDL_Color ()
+                            colorSdl.r <- color.R8
+                            colorSdl.g <- color.G8
+                            colorSdl.b <- color.B8
+                            colorSdl.a <- color.A8
 
-                                    // create sdl color
-                                    let mutable colorSdl = SDL.SDL_Color ()
-                                    colorSdl.r <- color.R8
-                                    colorSdl.g <- color.G8
-                                    colorSdl.b <- color.B8
-                                    colorSdl.a <- color.A8
+                            // attempt to configure sdl font size
+                            if SDL_ttf.TTF_SetFontSize (font, fontSize) <> 0 then
+                                let error = SDL_ttf.TTF_GetError ()
+                                Log.infoOnce ("Failed to set font size for font '" + scstring font + "' due to: " + error)
+                                SDL_ttf.TTF_SetFontSize (font, fontSizeDefault * renderer.Viewport.DisplayScalar) |> ignore<int>
 
-                                    // attempt to configure sdl font size
-                                    if SDL_ttf.TTF_SetFontSize (font, fontSize) <> 0 then
-                                        let error = SDL_ttf.TTF_GetError ()
-                                        Log.infoOnce ("Failed to set font size for font '" + scstring font + "' due to: " + error)
-                                        SDL_ttf.TTF_SetFontSize (font, fontSizeDefault * renderer.Viewport.DisplayScalar) |> ignore<int>
+                            // configure sdl font style
+                            let styleSdl =
+                                if fontStyling.Count > 0 then // OPTIMIZATION: avoid set queries where possible.
+                                    (if fontStyling.Contains Bold then SDL_ttf.TTF_STYLE_BOLD else 0) |||
+                                    (if fontStyling.Contains Italic then SDL_ttf.TTF_STYLE_ITALIC else 0) |||
+                                    (if fontStyling.Contains Underline then SDL_ttf.TTF_STYLE_UNDERLINE else 0) |||
+                                    (if fontStyling.Contains Strikethrough then SDL_ttf.TTF_STYLE_STRIKETHROUGH else 0)
+                                else 0
+                            SDL_ttf.TTF_SetFontStyle (font, styleSdl)
 
-                                    // configure sdl font style
-                                    let styleSdl =
-                                        if fontStyling.Count > 0 then // OPTIMIZATION: avoid set queries where possible.
-                                            (if fontStyling.Contains Bold then SDL_ttf.TTF_STYLE_BOLD else 0) |||
-                                            (if fontStyling.Contains Italic then SDL_ttf.TTF_STYLE_ITALIC else 0) |||
-                                            (if fontStyling.Contains Underline then SDL_ttf.TTF_STYLE_UNDERLINE else 0) |||
-                                            (if fontStyling.Contains Strikethrough then SDL_ttf.TTF_STYLE_STRIKETHROUGH else 0)
-                                        else 0
-                                    SDL_ttf.TTF_SetFontStyle (font, styleSdl)
+                            // render text to surface
+                            match justification with
+                            | Unjustified wrapped ->
+                                let textSurfacePtr =
+                                    if wrapped
+                                    then SDL_ttf.TTF_RenderUNICODE_Blended_Wrapped (font, text, colorSdl, uint32 size.X)
+                                    else SDL_ttf.TTF_RenderUNICODE_Blended (font, text, colorSdl)
+                                let textSurface = Marshal.PtrToStructure<SDL.SDL_Surface> textSurfacePtr
+                                let textSurfaceHeight = single textSurface.h
+                                let offsetY = size.Y - textSurfaceHeight
+                                (v2 0.0f offsetY, textSurface, textSurfacePtr)
+                            | Justified (h, v) ->
+                                let mutable width = 0
+                                let mutable height = 0
+                                SDL_ttf.TTF_SizeUNICODE (font, text, &width, &height) |> ignore
+                                let textSurfacePtr = SDL_ttf.TTF_RenderUNICODE_Blended (font, text, colorSdl)
+                                let textSurface = Marshal.PtrToStructure<SDL.SDL_Surface> textSurfacePtr
+                                let offsetX =
+                                    match h with
+                                    | JustifyLeft -> 0.0f
+                                    | JustifyCenter -> floor ((size.X - single width) * 0.5f)
+                                    | JustifyRight -> size.X - single width
+                                let offsetY =
+                                    match v with
+                                    | JustifyTop -> size.Y - single height
+                                    | JustifyMiddle -> floor ((size.Y - single height) * 0.5f)
+                                    | JustifyBottom -> 0.0f
+                                let offset = v2 offsetX offsetY
+                                (offset, textSurface, textSurfacePtr)
 
-                                    // render text to surface
-                                    match justification with
-                                    | Unjustified wrapped ->
-                                        let textSurfacePtr =
-                                            if wrapped
-                                            then SDL_ttf.TTF_RenderUNICODE_Blended_Wrapped (font, text, colorSdl, uint32 size.X)
-                                            else SDL_ttf.TTF_RenderUNICODE_Blended (font, text, colorSdl)
-                                        let textSurface = Marshal.PtrToStructure<SDL.SDL_Surface> textSurfacePtr
-                                        let textSurfaceHeight = single textSurface.h
-                                        let offsetY = size.Y - textSurfaceHeight
-                                        (v2 0.0f offsetY, textSurface, textSurfacePtr)
-                                    | Justified (h, v) ->
-                                        let mutable width = 0
-                                        let mutable height = 0
-                                        SDL_ttf.TTF_SizeUNICODE (font, text, &width, &height) |> ignore
-                                        let textSurfacePtr = SDL_ttf.TTF_RenderUNICODE_Blended (font, text, colorSdl)
-                                        let textSurface = Marshal.PtrToStructure<SDL.SDL_Surface> textSurfacePtr
-                                        let offsetX =
-                                            match h with
-                                            | JustifyLeft -> 0.0f
-                                            | JustifyCenter -> floor ((size.X - single width) * 0.5f)
-                                            | JustifyRight -> size.X - single width
-                                        let offsetY =
-                                            match v with
-                                            | JustifyTop -> size.Y - single height
-                                            | JustifyMiddle -> floor ((size.Y - single height) * 0.5f)
-                                            | JustifyBottom -> 0.0f
-                                        let offset = v2 offsetX offsetY
-                                        (offset, textSurface, textSurfacePtr)
+                        // render only when a valid surface was created
+                        if textSurfacePtr <> IntPtr.Zero then
 
-                                // render only when a valid surface was created
-                                if textSurfacePtr <> IntPtr.Zero then
+                            // construct mvp matrix
+                            let textSurfaceWidth = textSurface.pitch / 4 // NOTE: textSurface.w may be an innacurate representation of texture width in SDL2_ttf versions beyond v2.0.15 because... I don't know why.
+                            let textSurfaceHeight = textSurface.h
+                            let translation = (position + offset).V3
+                            let scale = v3 (single textSurfaceWidth) (single textSurfaceHeight) 1.0f
+                            let modelTranslation = Matrix4x4.CreateTranslation translation
+                            let modelScale = Matrix4x4.CreateScale scale
+                            let modelMatrix = modelScale * modelTranslation
+                            let modelViewProjection = modelMatrix * viewProjection2d
 
-                                    // construct mvp matrix
-                                    let textSurfaceWidth = textSurface.pitch / 4
-                                    let textSurfaceHeight = textSurface.h
-                                    let translation = (position + offset).V3
-                                    let scale = v3 (single textSurfaceWidth) (single textSurfaceHeight) 1.0f
-                                    let modelTranslation = Matrix4x4.CreateTranslation translation
-                                    let modelScale = Matrix4x4.CreateScale scale
-                                    let modelMatrix = modelScale * modelTranslation
-                                    let modelViewProjection = modelMatrix * viewProjection2d
-
-                                    // attempt to get text texture id from pool
-                                    let textTextureId =
-                                        match renderer.TextTextureIdPool.TryPop () with
-                                        | (true, textureId) -> textureId
-                                        | (false, _) -> OpenGL.Gl.GenTexture ()
-
-                                    // upload texture data
-                                    OpenGL.Gl.BindTexture (OpenGL.TextureTarget.Texture2d, textTextureId)
-                                    OpenGL.Gl.TexImage2D (OpenGL.TextureTarget.Texture2d, 0, OpenGL.Texture.Uncompressed.InternalFormat, textSurfaceWidth, textSurfaceHeight, 0, OpenGL.PixelFormat.Bgra, OpenGL.PixelType.UnsignedByte, textSurface.pixels)
-                                    OpenGL.Gl.TexParameter (OpenGL.TextureTarget.Texture2d, OpenGL.TextureParameterName.TextureMinFilter, int OpenGL.TextureMinFilter.Nearest)
-                                    OpenGL.Gl.TexParameter (OpenGL.TextureTarget.Texture2d, OpenGL.TextureParameterName.TextureMagFilter, int OpenGL.TextureMagFilter.Nearest)
-                                    OpenGL.Gl.BindTexture (OpenGL.TextureTarget.Texture2d, 0u)
-                                    OpenGL.Hl.Assert ()
-
-                                    // make texture drawable
-                                    let textTextureMetadata = OpenGL.Texture.TextureMetadata.make textSurfaceWidth textSurfaceHeight
-                                    let textTexture = OpenGL.Texture.EagerTexture { TextureMetadata = textTextureMetadata; TextureId = textTextureId }
-                                    OpenGL.Hl.Assert ()
-
-                                    // free sdl surface
-                                    SDL.SDL_FreeSurface textSurfacePtr
-
-                                    // register texture for reuse
-                                    renderer.TextTextures.Add (textTextureKey, (ref true, (textSurfaceWidth, textSurfaceHeight, modelViewProjection, textTexture)))
-                                    Some (textSurfaceWidth, textSurfaceHeight, modelViewProjection, textTexture)
-
-                                // error
-                                else None
-
-                            // already exists, so mark as used and reuse
-                            | (true, (used, (textSurfaceWidth, textSurfaceHeight, modelViewProjection, textTexture))) ->
-                                used.Value <- true
-                                Some (textSurfaceWidth, textSurfaceHeight, modelViewProjection, textTexture)
-
-                        // attempt to render text
-                        match textTextureOpt with
-                        | Some (textSurfaceWidth, textSurfaceHeight, modelViewProjection, textTexture) ->
-
+                            // load texture
+                            let vkc = renderer.VulkanContext
+                            Texture.TextureAccumulator.load
+                                renderer.TextDrawIndex
+                                vkc.RenderCommandBuffer
+                                (Texture.TextureMetadata.make textSurfaceWidth textSurfaceHeight)
+                                textSurface.pixels
+                                renderer.TextTexture
+                                vkc
+                            
                             // draw text sprite
                             // NOTE: we allocate an array here, too.
-                            let vao = renderer.SpriteVao
-                            let (modelViewProjectionUniform, texCoords4Uniform, colorUniform, textureUniform, shader) = renderer.SpriteShader
                             let (vertices, indices) = renderer.TextQuad
+                            let (modelViewProjectionUniform, texCoords4Uniform, colorUniform, pipeline) = renderer.SpritePipeline
                             let insetOpt : Box2 voption = ValueNone
                             let color = Color.White
-                            OpenGL.Sprite.DrawSprite (vertices, indices, absolute, &viewProjectionClipAbsolute, &viewProjectionClipRelative, modelViewProjection.ToArray (), &insetOpt, &clipOpt, &color, FlipNone, textSurfaceWidth, textSurfaceHeight, textTexture, renderer.Viewport, modelViewProjectionUniform, texCoords4Uniform, colorUniform, textureUniform, shader, vao)
-                            OpenGL.Hl.Assert ()
+                            Sprite.DrawSprite
+                                (renderer.TextDrawIndex,
+                                    vertices,
+                                    indices,
+                                    absolute,
+                                    &viewProjectionClipAbsolute,
+                                    &viewProjectionClipRelative,
+                                    modelViewProjection.ToArray (),
+                                    &insetOpt,
+                                    &clipOpt,
+                                    &color,
+                                    FlipNone,
+                                    textSurfaceWidth,
+                                    textSurfaceHeight,
+                                    renderer.TextTexture.[renderer.TextDrawIndex],
+                                    renderer.Viewport,
+                                    modelViewProjectionUniform,
+                                    texCoords4Uniform,
+                                    colorUniform,
+                                    pipeline,
+                                    vkc)
 
-                        | None -> ()
+                            // destroy text surface
+                            SDL.SDL_FreeSurface textSurfacePtr
+
+                            // advance text draw index
+                            renderer.TextDrawIndex <- inc renderer.TextDrawIndex
 
                     // fin
                     | _ -> Log.infoOnce ("Cannot render text with a non-font asset for '" + scstring font + "'.")
                 | ValueNone -> Log.infoOnce ("TextDescriptor failed due to unloadable asset for '" + scstring font + "'.")
             OpenGL.Hl.Assert ()
-
+    
     static member private renderDescriptor descriptor eyeCenter eyeSize renderer =
         match descriptor with
         | RenderSprite descriptor ->
-            GlRenderer2d.renderSprite
-                (&descriptor.Transform, &descriptor.InsetOpt, &descriptor.ClipOpt, descriptor.Image, &descriptor.Color, descriptor.Blend, &descriptor.Emission, descriptor.Flip, renderer)
+            VulkanRenderer2d.renderSprite (&descriptor.Transform, &descriptor.InsetOpt, &descriptor.ClipOpt, descriptor.Image, &descriptor.Color, descriptor.Blend, &descriptor.Emission, descriptor.Flip, renderer)
         | RenderSprites descriptor ->
             let sprites = descriptor.Sprites
             for index in 0 .. sprites.Length - 1 do
                 let sprite = &sprites.[index]
-                GlRenderer2d.renderSprite
-                    (&sprite.Transform, &sprite.InsetOpt, &sprite.ClipOpt, sprite.Image, &sprite.Color, sprite.Blend, &sprite.Emission, sprite.Flip, renderer)
+                VulkanRenderer2d.renderSprite (&sprite.Transform, &sprite.InsetOpt, &sprite.ClipOpt, sprite.Image, &sprite.Color, sprite.Blend, &sprite.Emission, sprite.Flip, renderer)
         | RenderSpriteDescriptors descriptor ->
             let sprites = descriptor.SpriteDescriptors
             for index in 0 .. sprites.Length - 1 do
                 let sprite = sprites.[index]
-                GlRenderer2d.renderSprite
-                    (&sprite.Transform, &sprite.InsetOpt, &sprite.ClipOpt, sprite.Image, &sprite.Color, sprite.Blend, &sprite.Emission, sprite.Flip, renderer)
+                VulkanRenderer2d.renderSprite (&sprite.Transform, &sprite.InsetOpt, &sprite.ClipOpt, sprite.Image, &sprite.Color, sprite.Blend, &sprite.Emission, sprite.Flip, renderer)
         | RenderSpriteParticles descriptor ->
-            GlRenderer2d.renderSpriteParticles
-                (&descriptor.ClipOpt, descriptor.Blend, descriptor.Image, descriptor.Particles, renderer)
+            VulkanRenderer2d.renderSpriteParticles (&descriptor.ClipOpt, descriptor.Blend, descriptor.Image, descriptor.Particles, renderer)
         | RenderCachedSprite descriptor ->
-            GlRenderer2d.renderSprite
-                (&descriptor.CachedSprite.Transform, &descriptor.CachedSprite.InsetOpt, &descriptor.CachedSprite.ClipOpt, descriptor.CachedSprite.Image, &descriptor.CachedSprite.Color, descriptor.CachedSprite.Blend, &descriptor.CachedSprite.Emission, descriptor.CachedSprite.Flip, renderer)
+            VulkanRenderer2d.renderSprite (&descriptor.CachedSprite.Transform, &descriptor.CachedSprite.InsetOpt, &descriptor.CachedSprite.ClipOpt, descriptor.CachedSprite.Image, &descriptor.CachedSprite.Color, descriptor.CachedSprite.Blend, &descriptor.CachedSprite.Emission, descriptor.CachedSprite.Flip, renderer)
         | RenderText descriptor ->
-            GlRenderer2d.renderText
-                (&descriptor.Transform, &descriptor.ClipOpt, descriptor.Text, descriptor.Font, descriptor.FontSizing, descriptor.FontStyling, &descriptor.Color, descriptor.Justification, descriptor.CaretOpt, eyeCenter, eyeSize, renderer)
+            VulkanRenderer2d.renderText (&descriptor.Transform, &descriptor.ClipOpt, descriptor.Text, descriptor.Font, descriptor.FontSizing, descriptor.FontStyling, &descriptor.Color, descriptor.Justification, descriptor.CaretOpt, eyeCenter, eyeSize, renderer)
         | RenderTiles descriptor ->
-            GlRenderer2d.renderTiles
-                (&descriptor.Transform, &descriptor.ClipOpt, &descriptor.Color, &descriptor.Emission, descriptor.MapSize, descriptor.Tiles, descriptor.TileSourceSize, descriptor.TileSize, descriptor.TileAssets, eyeCenter, eyeSize, renderer)
+            VulkanRenderer2d.renderTiles
+                (&descriptor.Transform, &descriptor.ClipOpt, &descriptor.Color, &descriptor.Emission,
+                 descriptor.MapSize, descriptor.Tiles, descriptor.TileSourceSize, descriptor.TileSize, descriptor.TileAssets,
+                 eyeCenter, eyeSize, renderer)
         | RenderSpineSkeleton descriptor ->
-            GlRenderer2d.renderSpineSkeleton
-                (&descriptor.Transform, descriptor.SpineSkeletonId, descriptor.SpineSkeletonClone, eyeCenter, eyeSize, renderer)
+            VulkanRenderer2d.renderSpineSkeleton (&descriptor.Transform, descriptor.SpineSkeletonId, descriptor.SpineSkeletonClone, eyeCenter, eyeSize, renderer)
+        | RenderVectorPath descriptor ->
+            VulkanRenderer2d.renderVectorPath descriptor eyeCenter eyeSize renderer
 
     static member private renderLayeredOperations eyeCenter eyeSize renderer =
         for operation in renderer.LayeredOperations do
-            GlRenderer2d.renderDescriptor operation.RenderOperation2d eyeCenter eyeSize renderer
-
+            VulkanRenderer2d.renderDescriptor operation.RenderOperation2d eyeCenter eyeSize renderer
+    
     static member private render eyeCenter eyeSize viewport renderMessages renderer =
 
         // invalidate caches and reload fonts when viewport changes
-        if renderer.Viewport <> viewport then
-            GlRenderer2d.invalidateCaches renderer
+        if renderer.Viewport.DisplayScalar <> viewport.DisplayScalar then
+            VulkanRenderer2d.invalidateCaches renderer
             for package in renderer.RenderPackages.Values do
                 for (assetName, (lastWriteTime, asset, renderAsset)) in package.Assets.Pairs do
                     if renderAsset.IsFontAsset then
-                        GlRenderer2d.freeRenderAsset renderAsset renderer
-                        match GlRenderer2d.tryLoadRenderAsset package.PackageState asset renderer with
+                        VulkanRenderer2d.freeRenderAsset renderAsset renderer
+                        match VulkanRenderer2d.tryLoadRenderAsset package.PackageState asset renderer with
                         | Some renderAsset -> package.Assets.[assetName] <- (lastWriteTime, asset, renderAsset)
                         | None -> Log.fail ("Failed to reload font '" + scstring asset.AssetTag + "' on DisplayScalar change.")
 
+        // reset text and vector path drawing index
+        renderer.TextDrawIndex <- 0
+        renderer.VectorPathDrawIndex <- 0
+        
         // update viewport
         renderer.Viewport <- viewport
-
-        // update viewport
-        let inner = renderer.Viewport.Inner
-        OpenGL.Gl.Viewport (inner.Min.X, inner.Min.Y, inner.Size.X, inner.Size.Y)
-        OpenGL.Hl.Assert ()
-
+        
         // begin sprite batch frame
-        let viewProjectionAbsolute = Viewport.getViewProjection2d true eyeCenter eyeSize renderer.Viewport
-        let viewProjectionRelative = Viewport.getViewProjection2d false eyeCenter eyeSize renderer.Viewport
-        let viewProjectionClipAbsolute = Viewport.getViewProjectionClip true eyeCenter eyeSize renderer.Viewport
-        let viewProjectionClipRelative = Viewport.getViewProjectionClip false eyeCenter eyeSize renderer.Viewport
-        OpenGL.SpriteBatch.BeginSpriteBatchFrame (&viewProjectionAbsolute, &viewProjectionRelative, &viewProjectionClipAbsolute, &viewProjectionClipRelative, renderer.SpriteBatchEnv)
-        OpenGL.Hl.Assert ()
+        if renderer.VulkanContext.RenderDesired then
+            let viewProjectionAbsolute = Viewport.getViewProjection2d true eyeCenter eyeSize renderer.Viewport
+            let viewProjectionRelative = Viewport.getViewProjection2d false eyeCenter eyeSize renderer.Viewport
+            let viewProjectionClipAbsolute = Viewport.getViewProjectionClip true eyeCenter eyeSize viewport
+            let viewProjectionClipRelative = Viewport.getViewProjectionClip false eyeCenter eyeSize viewport
+            SpriteBatch.BeginSpriteBatchFrame (&viewProjectionAbsolute, &viewProjectionRelative, &viewProjectionClipAbsolute, &viewProjectionClipRelative, renderer.SpriteBatchEnv)
 
         // render frame
-        GlRenderer2d.handleRenderMessages renderMessages renderer
-        GlRenderer2d.sortLayeredOperations renderer
-        GlRenderer2d.renderLayeredOperations eyeCenter eyeSize renderer
+        VulkanRenderer2d.handleRenderMessages renderMessages renderer
+        if renderer.VulkanContext.RenderDesired then
+            VulkanRenderer2d.sortLayeredOperations renderer
+            VulkanRenderer2d.renderLayeredOperations eyeCenter eyeSize renderer
         renderer.LayeredOperations.Clear ()
 
         // end sprite batch frame
-        OpenGL.SpriteBatch.EndSpriteBatchFrame renderer.Viewport renderer.SpriteBatchEnv
-        OpenGL.Hl.Assert ()
+        if renderer.VulkanContext.RenderDesired then
+            SpriteBatch.EndSpriteBatchFrame renderer.Viewport renderer.SpriteBatchEnv
 
         // reload render assets upon request
         if renderer.ReloadAssetsRequested then
-            GlRenderer2d.handleReloadShaders renderer
-            GlRenderer2d.handleReloadRenderAssets renderer
-            renderer.ReloadAssetsRequested <- false
+            VulkanRenderer2d.handleReloadRenderAssets renderer
 
-        // sweep up any text textures that went unused this frame
-        let textTexturesUnused =
-            renderer.TextTextures
-            |> Seq.filter (fun entry -> not (fst entry.Value).Value)
-            |> Seq.map (fun entry -> entry.Key)
-            |> Seq.toArray
-        for entry in textTexturesUnused do
-            let (_, _, _, textTexture) = snd renderer.TextTextures.[entry]
-            renderer.TextTextures.Remove entry |> ignore<bool>
-            renderer.TextTextureIdPool.Push textTexture.TextureId
-            OpenGL.Hl.Assert ()
-
-        // mark unswept text textures as unused for next frame
-        for entry in renderer.TextTextures.Values do
-            let used = fst entry
-            used.Value <- false
-
+        (* TODO: DJL: enable when spine rendering is working again.
         // sweep up any skeleton renderers that went unused this frame
         let entriesUnused = renderer.SpineSkeletonRenderers |> Seq.filter (fun entry -> not (fst entry.Value).Value)
         for entry in entriesUnused do
             let spineSkeletonId = entry.Key
             let spineSkeleton = snd entry.Value
             renderer.SpineSkeletonRenderers.Remove spineSkeletonId |> ignore<bool>
-            spineSkeleton.Destroy ()
+            spineSkeleton.Destroy ()*)
 
-    /// Make a GlRenderer2d.
-    static member make viewport =
-
-        // create sprite vao
-        let spriteVao = OpenGL.Sprite.CreateSpriteVao ()
-        OpenGL.Hl.Assert ()
-
-        // create one-off sprite and text resources
-        let spriteShader = OpenGL.Sprite.CreateSpriteShader Constants.Paths.SpriteShaderFilePath
-        let textQuad = OpenGL.Sprite.CreateSpriteQuad true
-        OpenGL.Hl.Assert ()
-
-        // create initial text texture ids
-        let textTextureIds = Array.zeroCreate 64
-        OpenGL.Gl.CreateTextures (OpenGL.TextureTarget.Texture2d, textTextureIds)
+    /// Make a VulkanRenderer2d.
+    static member make viewport (vkc : Hl.VulkanContext) =
+        
+        // create text resources
+        let spritePipeline = Sprite.CreateSpritePipeline vkc
+        let textQuad = Sprite.CreateSpriteQuad true vkc
+        let textTexture = Texture.TextureAccumulator.create Hl.Bgra Texture.Uncompressed.ImageFormat vkc
 
         // create sprite batch env
-        let spriteBatchEnv = OpenGL.SpriteBatch.CreateSpriteBatchEnv ()
-        OpenGL.Hl.Assert ()
+        let spriteBatchEnv = SpriteBatch.CreateSpriteBatchEnv vkc
 
+        // create vector path pipeline
+        let vectorPathPipeline = VectorPath.createVectorPathPipeline vkc
+        
         // make renderer
         let renderer =
-            { Viewport = viewport
-              SpriteVao = spriteVao
-              SpriteShader = spriteShader
+            { VulkanContext = vkc
+              Viewport = viewport
+              TextDrawIndex = 0
+              VectorPathDrawIndex = 0
               TextQuad = textQuad
-              TextTextureIdPool = Stack textTextureIds
-              TextTextures = dictPlus HashIdentity.Structural []
+              TextTexture = textTexture
               SpriteBatchEnv = spriteBatchEnv
+              SpritePipeline = spritePipeline
+              VectorPathPipeline = vectorPathPipeline
               RenderPackages = dictPlus StringComparer.Ordinal []
               SpineSkeletonRenderers = dictPlus HashIdentity.Structural []
               RenderPackageCachedOpt = Unchecked.defaultof<_>
               RenderAssetCached = { CachedAssetTagOpt = Unchecked.defaultof<_>; CachedRenderAsset = Unchecked.defaultof<_> }
               ReloadAssetsRequested = false
               LayeredOperations = List () }
-
+        
         // fin
         renderer
-
+    
     interface Renderer2d with
-
+        
         member renderer.Render eyeCenter eyeSize viewport renderMessages =
             if renderMessages.Count > 0 then
-                GlRenderer2d.render eyeCenter eyeSize viewport renderMessages renderer
-
+                VulkanRenderer2d.render eyeCenter eyeSize viewport renderMessages renderer
+        
         member renderer.CleanUp () =
+            
+            // destroy vulkan resources
+            let vkc = renderer.VulkanContext
+            let (modelViewProjectionUniform, texCoords4Uniform, colorUniform, pipeline) = renderer.SpritePipeline
+            let (vertices, indices) = renderer.TextQuad
+            let (vectorPathModelViewProjectionUniform, vectorPathVertexBuffer, vectorPathIndexBuffer, vectorPathPipeline) = renderer.VectorPathPipeline
+            Texture.TextureAccumulator.destroy renderer.TextTexture vkc
+            Pipeline.Pipeline.destroy pipeline vkc
+            Pipeline.Pipeline.destroy vectorPathPipeline vkc
+            Buffer.Buffer.destroy modelViewProjectionUniform vkc
+            Buffer.Buffer.destroy texCoords4Uniform vkc
+            Buffer.Buffer.destroy colorUniform vkc
+            Buffer.Buffer.destroy vectorPathModelViewProjectionUniform vkc
+            Buffer.Buffer.destroy vectorPathVertexBuffer vkc
+            Buffer.Buffer.destroy vectorPathIndexBuffer vkc
+            Buffer.Buffer.destroy vertices vkc
+            Buffer.Buffer.destroy indices vkc
 
-            // destroy sprite batch env
-            OpenGL.SpriteBatch.DestroySpriteBatchEnv renderer.SpriteBatchEnv
-            OpenGL.Hl.Assert ()
+            // destroy sprite batch environment
+            SpriteBatch.DestroySpriteBatchEnv renderer.SpriteBatchEnv
 
-            // free text texture ids
-            OpenGL.Gl.DeleteTextures (Seq.toArray renderer.TextTextureIdPool)
-            renderer.TextTextureIdPool.Clear ()
-
-            // free text textures
-            for (_, _, _, textTexture) in Seq.map snd renderer.TextTextures.Values do textTexture.Destroy ()
-            renderer.TextTextures.Clear ()
-
+            (* TODO: DJL: free spine skeleton resources.
             // free sprite skeleton renderers
             for spineSkeletonRenderer in Seq.map snd renderer.SpineSkeletonRenderers.Values do spineSkeletonRenderer.Destroy ()
-            renderer.SpineSkeletonRenderers.Clear ()
+            renderer.SpineSkeletonRenderers.Clear ()*)
 
-            // free resources
+            // free assets
             let renderPackages = renderer.RenderPackages |> Seq.map (fun entry -> entry.Value)
             let renderAssets = renderPackages |> Seq.map (fun package -> package.Assets.Values) |> Seq.concat
-            for (_, _, renderAsset) in renderAssets do GlRenderer2d.freeRenderAsset renderAsset renderer
+            for (_, _, renderAsset) in renderAssets do VulkanRenderer2d.freeRenderAsset renderAsset renderer
             renderer.RenderPackages.Clear ()

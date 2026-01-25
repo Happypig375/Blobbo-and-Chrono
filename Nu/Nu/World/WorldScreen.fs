@@ -165,10 +165,11 @@ module WorldScreenModule =
 
         /// Edit a screen with the given operation using the ImGui APIs.
         /// Intended only to be called by editors like Gaia.
-        static member editScreen operation (screen : Screen) world =
+        static member editScreen lateBindingsPredicate operation (screen : Screen) world =
             let dispatcher = screen.GetDispatcher world
-            dispatcher.Edit (operation, screen, world)
-            World.runEditDeferrals operation screen world
+            if lateBindingsPredicate (dispatcher :> LateBindings) then
+                dispatcher.Edit (operation, screen, world)
+                World.runEditDeferrals operation screen world
 
         /// Attempt to truncate a model.
         static member tryTruncateScreenModel<'model> (model : 'model) (screen : Screen) world =
@@ -410,7 +411,7 @@ module WorldScreenModule =
                                 match boundsOpt with
                                 | None -> boundsOpt <- Some bounds
                                 | Some (bounds' : Box3) -> boundsOpt <- Some (bounds'.Combine bounds)
-                                if geometry.PrimitiveType = OpenGL.PrimitiveType.Triangles then
+                                if geometry.PrimitiveTopology = Vortice.Vulkan.Vulkan.VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST then
                                     for v in geometry.Vertices do
                                         let v' = v.Transform affineMatrix
                                         v'.X; v'.Y; v'.Z
@@ -453,7 +454,7 @@ module WorldScreenModule =
                                 offset <- offset + 8
                             | Choice2Of3 (_, _, surface) ->
                                 let geometry = surface.PhysicallyBasedGeometry
-                                if geometry.PrimitiveType = OpenGL.PrimitiveType.Triangles then
+                                if geometry.PrimitiveTopology = Vortice.Vulkan.Vulkan.VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST then
                                     for i in geometry.Indices do
                                         yield offset + i
                                 offset <- offset + geometry.Vertices.Length
