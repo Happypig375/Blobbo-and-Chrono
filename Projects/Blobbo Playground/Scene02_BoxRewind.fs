@@ -30,8 +30,7 @@ type Scene02_BoxRewindDispatcher () =
                    TransformOpt = None
                    PropertiesOpt = None }
              Entity.Elevation .= -1f
-             Entity.StaticImage .= Assets.Gameplay.Background
-             Entity.LinearConveyorVelocity .= v3 200f 0f 0f] world |> ignore
+             Entity.StaticImage .= Assets.Gameplay.Background] world |> ignore
 
         let (box, _) =
             World.doBox2d "Box"
