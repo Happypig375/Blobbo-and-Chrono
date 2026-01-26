@@ -1,4 +1,4 @@
-<Project Sdk="Microsoft.NET.Sdk">
+﻿<Project Sdk="Microsoft.NET.Sdk">
 
 	<PropertyGroup>
 		<OutputType>Exe</OutputType>
@@ -30,6 +30,7 @@
 
 	<ItemGroup>
 		<None Include="Assets/*" />
+		<Compile Include="CSharpMath.Nu.fs" />
 		<None Include="Assets/*/*" />
 		<Content Include="AssetGraph.nuag">
 			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
@@ -53,6 +54,8 @@
 	</ItemGroup>
 
 	<ItemGroup>
+		<PackageReference Include="CSharpMath.Rendering" Version="0.5.1" />
+		<PackageReference Include="CSharpMath.Evaluation" Version="0.5.1" />
 		<Reference Include="AssimpNet">
 			<HintPath>..\..\Nu\Nu.Dependencies\AssimpNet\netstandard2.1\AssimpNet.dll</HintPath>
 		</Reference>
