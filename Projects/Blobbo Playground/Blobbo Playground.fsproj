@@ -37,13 +37,14 @@
 		</Content>
 		<Compile Include="Assets.fs" />
 		<Compile Include="Simulants.fs" />
-		<Compile Include="SArray.fs" />
 		<Compile Include="Rewindable.fs" />
+		<Compile Include="MathObject.fs" />
 		<Compile Include="Experiments\BlobboDoubleSize.fs" />
 		<Compile Include="Blobbo.fs" />
 		<Compile Include="Chrono.fs" />
 		<Compile Include="Scene01_Playground.fs" />
 		<Compile Include="Scene02_BoxRewind.fs" />
+		<Compile Include="Scene03_MathSimplify.fs" />
 		<Compile Include="BlobboPlayground.fs" />
 		<Compile Include="BlobboPlaygroundPlugin.fs" />
 		<Compile Include="Program.fs" />
@@ -54,8 +55,8 @@
 	</ItemGroup>
 
 	<ItemGroup>
-		<PackageReference Include="CSharpMath.Rendering" Version="0.5.1" />
-		<PackageReference Include="CSharpMath.Evaluation" Version="0.5.1" />
+		<PackageReference Include="CSharpMath.Rendering" Version="0.5.3-ci-93cc0cecc3baf619f8b0287de7e14e5097d2da1f" />
+		<PackageReference Include="CSharpMath.Evaluation" Version="0.5.3-ci-86464bc4c2f70c0decf3061310ba1c7b8516b1b4" />
 		<Reference Include="AssimpNet">
 			<HintPath>..\..\Nu\Nu.Dependencies\AssimpNet\netstandard2.1\AssimpNet.dll</HintPath>
 		</Reference>

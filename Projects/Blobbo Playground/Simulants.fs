@@ -8,14 +8,8 @@ open Nu
 [<RequireQualifiedAccess>]
 module Simulants =
 
-    // splash screen
     let Splash = Game / "Splash"
-
-    // title screen
     let Title = Game / "Title"
-
-    // Scene01_Playground screen
     let Scene01_Playground = Game / "Scene01_Playground"
-
-    // Scene02_BoxRewind screen
     let Scene02_BoxRewind = Game / "Scene02_BoxRewind"
+    let Scene03_MathSimplify = Game / "Scene03_MathSimplify"

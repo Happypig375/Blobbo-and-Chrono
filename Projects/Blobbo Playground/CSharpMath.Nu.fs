@@ -99,9 +99,11 @@ type MathPainter () =
     override _.WrapColor color = color |> toDrawingColor
 
 namespace BlobboPlayground
+open Prime
 open Nu
+open CSharpMath.Atom
+open CSharpMath.Editor
 open CSharpMath.Nu
-open CSharpMath.Rendering.FrontEnd
 open System.Numerics
 module [<AutoOpen>] MathFacetExtensions =
     type Entity with
@@ -111,22 +113,50 @@ module [<AutoOpen>] MathFacetExtensions =
         member this.GetMathFontSize world : single = this.Get (nameof this.MathFontSize) world
         member this.SetMathFontSize (value : single) world = this.Set (nameof this.MathFontSize) value world
         member this.MathFontSize = lens (nameof this.MathFontSize) this this.GetMathFontSize this.SetMathFontSize
+        member this.GetMathNextInsertion world : MathListIndex option = this.Get (nameof this.MathNextInsertion) world
+        member this.SetMathNextInsertion (value : MathListIndex option) world = this.Set (nameof this.MathNextInsertion) value world
+        member this.MathNextInsertion = lens (nameof this.MathNextInsertion) this this.GetMathNextInsertion this.SetMathNextInsertion
         member this.GetMathPainter world : MathPainter = this.Get (nameof this.MathPainter) world
         member this.MathPainter = lensReadOnly (nameof this.MathPainter) this this.GetMathPainter
 
 type MathFacet () =
     inherit Facet (false, false, false)
 
+    let rec findNextPlaceholder (mathList: MathList) =
+        (None, mathList) ||> Seq.foldi (fun i found atom ->
+            match found with
+            | Some _ -> found
+            | None ->
+                match atom with
+                | :? Atoms.Placeholder ->
+                    Some (MathListIndex.Level0Index i)
+                | :? Atoms.Radical as r ->
+                    findNextPlaceholder r.Degree |> Option.map (fun subIndex -> MathListIndex.IndexAtLocation (i, MathListSubIndexType.Degree, subIndex))
+                    |> Option.orElseWith (fun () -> findNextPlaceholder r.Radicand |> Option.map (fun subIndex -> MathListIndex.IndexAtLocation (i, MathListSubIndexType.Radicand, subIndex)))
+                | :? Atoms.Fraction as f ->
+                    findNextPlaceholder f.Numerator |> Option.map (fun subIndex -> MathListIndex.IndexAtLocation (i, MathListSubIndexType.Numerator, subIndex))
+                    |> Option.orElseWith (fun () -> findNextPlaceholder f.Denominator |> Option.map (fun subIndex -> MathListIndex.IndexAtLocation (i, MathListSubIndexType.Denominator, subIndex)))
+                | :? Atoms.Inner as inner ->
+                    findNextPlaceholder inner.InnerList |> Option.map (fun subIndex -> MathListIndex.IndexAtLocation (i, MathListSubIndexType.Inner, subIndex))
+                | _ -> None
+                |> Option.orElseWith (fun () -> findNextPlaceholder atom.Subscript |> Option.map (fun subIndex -> MathListIndex.IndexAtLocation (i, MathListSubIndexType.Subscript, subIndex)))
+                |> Option.orElseWith (fun () -> findNextPlaceholder atom.Superscript |> Option.map (fun subIndex -> MathListIndex.IndexAtLocation (i, MathListSubIndexType.Superscript, subIndex)))
+        )
+
     static member Properties =
         [define Entity.LaTeX ""
          define Entity.MathFontSize 12f
          define Entity.Color Color.White
-         nonPersistent Entity.MathPainter (MathPainter ())]
+         nonPersistent Entity.MathPainter Unchecked.defaultof<MathPainter>
+         nonPersistent Entity.MathNextInsertion None]
 
     override this.Register (entity, world) =
+        entity.Set (nameof Entity.MathPainter) (MathPainter ()) world
         World.sense (fun event world ->
             let painter = event.Subscriber.GetMathPainter world
             painter.LaTeX <- (event.Data : ChangeData).Value :?> string
+            event.Subscriber.SetXtensionPropertyWithoutEvent (nameof Entity.LaTeX) painter.LaTeX world
+            event.Subscriber.SetMathNextInsertion (findNextPlaceholder painter.Content) world
             let size = painter.Measure 0f
             event.Subscriber.SetSize (v3 size.Width size.Height 0f) world
             Cascade) entity.LaTeX.ChangeEvent entity (nameof MathFacet) world

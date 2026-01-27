@@ -12,6 +12,7 @@ type GameState =
     | Title
     | Scene01_Playground
     | Scene02_BoxRewind
+    | Scene03_MathSimplify
 
 // this extends the Game API to expose the above ImSim model as a property.
 [<AutoOpen>]
@@ -45,6 +46,7 @@ type BlobboPlaygroundDispatcher () =
         World.beginPanel "Panel" [Entity.Size .= Constants.Render.DisplayVirtualResolution.V3; Entity.Layout .= Grid (v2i 8 8, Some FlowRightward, true)] world
         if World.doButton "Scene01_Playground" [Entity.Text .= "01"] world then game.SetGameState Scene01_Playground world
         if World.doButton "Scene02_BoxRewind" [Entity.Text .= "02"] world then game.SetGameState Scene02_BoxRewind world
+        if World.doButton "Scene03_MathSimplify" [Entity.Text .= "03"] world then game.SetGameState Scene03_MathSimplify world
         if World.doButton "Exit" [Entity.Text .= "Exit"] world && world.Unaccompanied then World.exit world
         World.endPanel world
         World.endGroup world
@@ -64,6 +66,14 @@ type BlobboPlaygroundDispatcher () =
         if FQueue.contains Select results then Simulants.Scene02_BoxRewind.SetGameplayState Playing world
         if FQueue.contains Deselecting results then Simulants.Scene02_BoxRewind.SetGameplayState Quit world
         if Simulants.Scene02_BoxRewind.GetSelected world && Simulants.Scene02_BoxRewind.GetGameplayState world = Quit then game.SetGameState Title world
+        World.endScreen world
+
+        // declare scene 03
+        let behavior = Dissolve (Constants.Dissolve.Default, None)
+        let results = World.beginScreen<Scene03_MathSimplifyDispatcher> Simulants.Scene03_MathSimplify.Name (game.GetGameState world = Scene03_MathSimplify) behavior [] world
+        if FQueue.contains Select results then Simulants.Scene03_MathSimplify.SetGameplayState Playing world
+        if FQueue.contains Deselecting results then Simulants.Scene03_MathSimplify.SetGameplayState Quit world
+        if Simulants.Scene03_MathSimplify.GetSelected world && Simulants.Scene03_MathSimplify.GetGameplayState world = Quit then game.SetGameState Title world
         World.endScreen world
 
         // handle Alt+F4 when not in editor
