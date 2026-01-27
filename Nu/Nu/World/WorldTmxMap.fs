@@ -327,6 +327,8 @@ module TmxMap =
         bodyProperties
 
     let getLayeredMessages2d time absolute (viewBounds : Box2) (tileMapPosition : Vector2) tileMapElevation tileMapClipOpt tileMapColor tileMapEmission tileLayerClearance tileSizeDivisor tileIndexOffset tileIndexOffsetRange tileMapPackage (tileMap : TmxMap) =
+
+        // compute descriptors for visible layers
         let layers = List.ofSeq tileMap.TileLayers
         let tileSourceSize = v2i tileMap.TileWidth tileMap.TileHeight
         let tileSizeDivisor = max 1 tileSizeDivisor
@@ -412,8 +414,11 @@ module TmxMap =
                         tileStripY <- tileStripY - tileSize.Y
                     Seq.toList descriptors :: descriptorLists
 
+                // outside of view
                 else descriptorLists)
                 [] layers
+
+        // fin
         List.concat descriptorLists
 
     let getAttributesInferred tileSizeDivisor (tileMap : TmxMap) =

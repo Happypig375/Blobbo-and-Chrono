@@ -910,7 +910,7 @@ module FeelerFacetExtensions =
         member this.UntouchEvent = Events.UntouchEvent --> this
 
 /// Augments an entity with feeler behavior, acting as little invisible pane that produces touch events in response
-/// to mouse input.
+/// to left mouse input.
 type FeelerFacet () =
     inherit Facet (false, false, false)
 
@@ -2547,7 +2547,7 @@ type LightProbe3dFacet () =
 
     static let handleProbeVisibleChange (evt : Event<ChangeData, Entity>) world =
         let entity = evt.Subscriber
-        if evt.Data.Value :?> bool && entity.Group.GetVisible world then entity.SetProbeStale true world
+        if evt.Data.Value :?> bool && entity.Group.GetEditing world then entity.SetProbeStale true world
         Cascade
 
     static let handleProbeStaleChange (evt : Event<ChangeData, Entity>) world =
@@ -2565,7 +2565,7 @@ type LightProbe3dFacet () =
          nonPersistent Entity.ProbeStale false]
 
     override this.Register (entity, world) =
-        World.sense handleProbeVisibleChange entity.Group.Visible.ChangeEvent entity (nameof LightProbe3dFacet) world
+        World.sense handleProbeVisibleChange entity.Group.Editing.ChangeEvent entity (nameof LightProbe3dFacet) world
         World.sense handleProbeVisibleChange entity.Visible.ChangeEvent entity (nameof LightProbe3dFacet) world
         World.sense handleProbeStaleChange entity.ProbeStale.ChangeEvent entity (nameof LightProbe3dFacet) world
         entity.SetProbeStale true world
@@ -2622,6 +2622,9 @@ module Light3dFacetExtensions =
         member this.GetDesireShadows world : bool = this.Get (nameof this.DesireShadows) world
         member this.SetDesireShadows (value : bool) world = this.Set (nameof this.DesireShadows) value world
         member this.DesireShadows = lens (nameof this.DesireShadows) this this.GetDesireShadows this.SetDesireShadows
+        member this.GetDynamicShadows world : bool = this.Get (nameof this.DynamicShadows) world
+        member this.SetDynamicShadows (value : bool) world = this.Set (nameof this.DynamicShadows) value world
+        member this.DynamicShadows = lens (nameof this.DynamicShadows) this this.GetDynamicShadows this.SetDynamicShadows
         member this.GetDesireFog world : bool = this.Get (nameof this.DesireFog) world
         member this.SetDesireFog (value : bool) world = this.Set (nameof this.DesireFog) value world
         member this.DesireFog = lens (nameof this.DesireFog) this this.GetDesireFog this.SetDesireFog
@@ -2663,6 +2666,46 @@ module Light3dFacetExtensions =
             let shadowProjection = this.ComputeShadowProjection world
             Frustum (shadowView * shadowProjection)
 
+[<RequireQualifiedAccess>]
+module Light3dFacetModule =
+
+    let getDirectionalLightOrigin (lightRotation : Quaternion) lightCutoff world =
+
+        // https://learn.microsoft.com/en-us/windows/win32/dxtecharts/common-techniques-to-improve-shadow-depth-maps?redirectedfrom=MSDN#moving-the-light-in-texel-sized-increments
+        let shadowOrigin = World.getEye3dCenter world
+        let shadowForward = lightRotation.Down
+        let shadowUp = shadowForward.OrthonormalUp
+        let shadowView = Matrix4x4.CreateLookAt (v3Zero, shadowForward, shadowUp)
+        let shadowWidth = max (lightCutoff * 2.0f) (Constants.Render.NearPlaneDistanceInterior * 2.0f)
+        let shadowTexelSize = shadowWidth / single world.GeometryViewport.ShadowTextureResolution.X
+        let originShadow = shadowOrigin.Transform shadowView
+        let originShadowSnapped =
+            v3
+                (floor (originShadow.X / shadowTexelSize) * shadowTexelSize)
+                (floor (originShadow.Y / shadowTexelSize) * shadowTexelSize)
+                originShadow.Z
+        originShadowSnapped.Transform shadowView.Inverted
+
+    let getCascadedLightOrigin (lightRotation : Quaternion) lightCutoff world =
+
+        // TODO: P1: make this work if possible.
+        //let frustumCenter = World.getEye3dFrustumCenter lightCutoff world
+        //let shadowForward = lightRotation.Down
+        //let shadowUp = shadowForward.OrthonormalUp
+        //let shadowView = Matrix4x4.CreateLookAt (v3Zero, shadowForward, shadowUp)
+        //let shadowWidth = max (lightCutoff * 2.0f) (Constants.Render.NearPlaneDistanceInterior * 2.0f)
+        //let shadowTexelSize = shadowWidth / single world.GeometryViewport.ShadowTextureResolution.X
+        //let centerShadow = frustumCenter.Transform shadowView
+        //let centerShadowSnapped =
+        //    v3
+        //        (floor (centerShadow.X / shadowTexelSize) * shadowTexelSize)
+        //        (floor (centerShadow.Y / shadowTexelSize) * shadowTexelSize)
+        //        centerShadow.Z
+        //centerShadowSnapped.Transform shadowView.Inverted// TODO: P1: figure out how to compute this like DirectionalLight but for CSM.
+        ignore lightRotation
+        ignore lightCutoff
+        World.getEye3dCenter world
+
 /// Augments an entity with a 3d light.
 type Light3dFacet () =
     inherit Facet (false, false, true)
@@ -2693,6 +2736,7 @@ type Light3dFacet () =
          define Entity.LightCutoff Constants.Render.LightCutoffDefault
          define Entity.LightType PointLight
          define Entity.DesireShadows false
+         define Entity.DynamicShadows true
          define Entity.DesireFog false]
 
     override this.Register (entity, world) =
@@ -2701,22 +2745,26 @@ type Light3dFacet () =
 
     override this.Render (renderPass, entity, world) =
         let lightId = entity.GetId world
-        let position = entity.GetPosition world
         let rotation = entity.GetRotation world
+        let lightCutoff = entity.GetLightCutoff world
+        let lightType = entity.GetLightType world
+        let origin =
+            match lightType with
+            | PointLight | SpotLight (_, _) -> entity.GetPosition world
+            | DirectionalLight -> Light3dFacetModule.getDirectionalLightOrigin rotation lightCutoff world
+            | CascadedLight -> Light3dFacetModule.getCascadedLightOrigin rotation lightCutoff world
         let direction = rotation.Down
         let color = entity.GetColor world
         let brightness = entity.GetBrightness world
         let attenuationLinear = entity.GetAttenuationLinear world
         let attenuationQuadratic = entity.GetAttenuationQuadratic world
-        let lightCutoff = entity.GetLightCutoff world
-        let lightType = entity.GetLightType world
         let desireShadows = entity.GetDesireShadows world
+        let dynamicShadows = entity.GetDynamicShadows world
         let desireFog = entity.GetDesireFog world
-        let bounds = entity.GetBounds world
         World.enqueueRenderMessage3d
             (RenderLight3d
                 { LightId = lightId
-                  Origin = position
+                  Origin = origin
                   Rotation = rotation
                   Direction = direction
                   Color = color
@@ -2726,8 +2774,8 @@ type Light3dFacet () =
                   LightCutoff = lightCutoff
                   LightType = lightType
                   DesireShadows = desireShadows
+                  DynamicShadows = dynamicShadows
                   DesireFog = desireFog
-                  Bounds = bounds
                   RenderPass = renderPass })
             world
 
