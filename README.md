@@ -1,6 +1,6 @@
 # Blobbo and Chrono [![Discord](https://img.shields.io/discord/1421554405609570459?logo=discord&label=Join%20our%20Discord!)](https://discord.gg/QFp6B74ASr)
 
-All code are in branch [`blobbo`](https://github.com/Happypig375/Blobbo-and-Chrono/tree/blobbo). Do not clone this `main` branch!
+All code are in branch [`blobbo`](https://github.com/Happypig375/Blobbo-and-Chrono/tree/blobbo). Do not clone this `main` branch! Use `git clone -b blobbo --single-branch https://github.com/Happypig375/Blobbo-and-Chrono` to not clone all those patch branches I submit upstream which bloat repository size. Alternatively, `git clone https://github.com/bryanedds/Nu; git remote rename origin upstream; git remote add origin https://github.com/Happypig375/Blobbo-and-Chrono; git fetch origin blobbo; git switch blobbo` if you work with upstream Nu.
 
 ---
 
