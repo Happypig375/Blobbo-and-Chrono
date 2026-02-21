@@ -1,5 +1,8 @@
 ﻿// Nu Game Engine.
+// Required Notice:
 // Copyright (C) Bryan Edds.
+// Nu Game Engine is licensed under the Nu Game Engine Noncommercial License.
+// See https://github.com/bryanedds/Nu/blob/master/License.md.
 
 namespace Nu
 open System
@@ -49,6 +52,7 @@ module WorldEntityModule =
         let mutable PerimeterUnscaled = Unchecked.defaultof<Lens<Box3, Entity>>
         let mutable Perimeter = Unchecked.defaultof<Lens<Box3, Entity>>
         let mutable Bounds = Unchecked.defaultof<Lens<Box3, Entity>>
+        let mutable Protection = Unchecked.defaultof<Lens<Protection, Entity>>
         let mutable Presence = Unchecked.defaultof<Lens<Presence, Entity>>
         let mutable Absolute = Unchecked.defaultof<Lens<bool, Entity>>
         let mutable MountOpt = Unchecked.defaultof<Lens<Entity Address option, Entity>>
@@ -61,8 +65,8 @@ module WorldEntityModule =
         let mutable Pickable = Unchecked.defaultof<Lens<bool, Entity>>
         let mutable AlwaysUpdate = Unchecked.defaultof<Lens<bool, Entity>>
         let mutable AlwaysRender = Unchecked.defaultof<Lens<bool, Entity>>
-        let mutable Protected = Unchecked.defaultof<Lens<bool, Entity>>
         let mutable Persistent = Unchecked.defaultof<Lens<bool, Entity>>
+        let mutable OverflowAbsolute = Unchecked.defaultof<Lens<bool, Entity>>
         let mutable Is2d = Unchecked.defaultof<Lens<bool, Entity>>
         let mutable Is3d = Unchecked.defaultof<Lens<bool, Entity>>
         let mutable Static = Unchecked.defaultof<Lens<bool, Entity>>
@@ -181,6 +185,9 @@ module WorldEntityModule =
         member this.GetPropagationSourceOpt world = World.getEntityPropagationSourceOpt this world
         member this.SetPropagationSourceOpt value world = World.setEntityPropagationSourceOpt value this world |> ignore<bool>
         member this.PropagationSourceOpt = if notNull (this :> obj) then lens (nameof this.PropagationSourceOpt) this this.GetPropagationSourceOpt this.SetPropagationSourceOpt else Cached.PropagationSourceOpt
+        member this.GetProtection world = World.getEntityProtection this world
+        member this.SetProtection value world = World.setEntityProtection value this world |> ignore<bool>
+        member this.Protection = if notNull (this :> obj) then lens (nameof this.Protection) this this.GetProtection this.SetProtection else Cached.Protection
         member this.GetPresence world = World.getEntityPresence this world
         member this.SetPresence value world = World.setEntityPresence value this world |> ignore<bool>
         member this.Presence = if notNull (this :> obj) then lens (nameof this.Presence) this this.GetPresence this.SetPresence else Cached.Presence
@@ -211,11 +218,12 @@ module WorldEntityModule =
         member this.GetAlwaysRender world = World.getEntityAlwaysRender this world
         member this.SetAlwaysRender value world = World.setEntityAlwaysRender value this world |> ignore<bool>
         member this.AlwaysRender = if notNull (this :> obj) then lens (nameof this.AlwaysRender) this this.GetAlwaysRender this.SetAlwaysRender else Cached.AlwaysRender
-        member this.GetProtected world = World.getEntityProtected this world
-        member this.Protected = if notNull (this :> obj) then lensReadOnly (nameof this.Protected) this this.GetProtected else Cached.Protected
         member this.GetPersistent world = World.getEntityPersistent this world
         member this.SetPersistent value world = World.setEntityPersistent value this world |> ignore<bool>
         member this.Persistent = if notNull (this :> obj) then lens (nameof this.Persistent) this this.GetPersistent this.SetPersistent else Cached.Persistent
+        member this.GetOverflowAbsolute world = World.getEntityOverflowAbsolute this world
+        member this.SetOverflowAbsolute value world = World.setEntityOverflowAbsolute value this world |> ignore<bool>
+        member this.OverflowAbsolute = if notNull (this :> obj) then lens (nameof this.OverflowAbsolute) this this.GetOverflowAbsolute this.SetOverflowAbsolute else Cached.OverflowAbsolute
         member this.GetIs2d world = World.getEntityIs2d this world
         member this.Is2d = if notNull (this :> obj) then lensReadOnly (nameof this.Is2d) this this.GetIs2d else Cached.Is2d
         member this.GetIs3d world = World.getEntityIs3d this world
@@ -278,6 +286,7 @@ module WorldEntityModule =
             Cached.Overflow <- lens (nameof Cached.Overflow) Unchecked.defaultof<_> Unchecked.defaultof<_> Unchecked.defaultof<_>
             Cached.AffineMatrix <- lensReadOnly (nameof Cached.AffineMatrix) Unchecked.defaultof<_> Unchecked.defaultof<_>
             Cached.AffineMatrixLocal <- lensReadOnly (nameof Cached.AffineMatrixLocal) Unchecked.defaultof<_> Unchecked.defaultof<_>
+            Cached.Protection <- lens (nameof Cached.Protection) Unchecked.defaultof<_> Unchecked.defaultof<_> Unchecked.defaultof<_>
             Cached.Presence <- lens (nameof Cached.Presence) Unchecked.defaultof<_> Unchecked.defaultof<_> Unchecked.defaultof<_>
             Cached.Absolute <- lens (nameof Cached.Absolute) Unchecked.defaultof<_> Unchecked.defaultof<_> Unchecked.defaultof<_>
             Cached.MountOpt <- lens (nameof Cached.MountOpt) Unchecked.defaultof<_> Unchecked.defaultof<_> Unchecked.defaultof<_>
@@ -291,6 +300,7 @@ module WorldEntityModule =
             Cached.AlwaysUpdate <- lens (nameof Cached.AlwaysUpdate) Unchecked.defaultof<_> Unchecked.defaultof<_> Unchecked.defaultof<_>
             Cached.AlwaysRender <- lens (nameof Cached.AlwaysRender) Unchecked.defaultof<_> Unchecked.defaultof<_> Unchecked.defaultof<_>
             Cached.Persistent <- lens (nameof Cached.Persistent) Unchecked.defaultof<_> Unchecked.defaultof<_> Unchecked.defaultof<_>
+            Cached.OverflowAbsolute <- lens (nameof Cached.OverflowAbsolute) Unchecked.defaultof<_> Unchecked.defaultof<_> Unchecked.defaultof<_>
             Cached.Is2d <- lensReadOnly (nameof Cached.Is2d) Unchecked.defaultof<_> Unchecked.defaultof<_>
             Cached.Is3d <- lensReadOnly (nameof Cached.Is3d) Unchecked.defaultof<_> Unchecked.defaultof<_>
             Cached.Static <- lens (nameof Cached.Static) Unchecked.defaultof<_> Unchecked.defaultof<_> Unchecked.defaultof<_>
@@ -535,7 +545,7 @@ module WorldEntityModule =
 
         /// Propagate entity physics properties into the physics system.
         member this.PropagatePhysics world =
-            if WorldModule.getSelected this world then
+            if WorldModuleInternal.getSelected this world then
                 World.propagateEntityPhysics this world
 
         /// Check that an entity uses a facet of the given type.
@@ -589,8 +599,8 @@ module WorldEntityModule =
                 World.updateEntityPresenceOverride destination world
 
                 // process if needed
-                if WorldModule.UpdatingSimulants && World.getEntitySelected destination world then
-                    WorldModule.tryProcessEntity true destination world
+                if WorldModuleInternal.UpdatingSimulants && World.getEntitySelected destination world then
+                    WorldModuleInternal.tryProcessEntity true destination world
 
                 // update propagation sources
                 for target in World.getPropagationTargets source world do
@@ -689,7 +699,7 @@ module WorldEntityModule =
             | (false, _) -> Seq.empty
 
         /// Get all the entities directly parented by the group.
-        static member getSovereignEntities (group : Group) (world : World) =
+        static member getEntitiesSovereign (group : Group) (world : World) =
             match world.Simulants.TryGetValue (group :> Simulant) with
             | (true, childrenOpt) ->
                 match childrenOpt with
@@ -767,7 +777,7 @@ module WorldEntityModule =
                 |> Option.map snd
             | :? Group as parent ->
                 let order = World.getEntityOrder entity world
-                World.getSovereignEntities parent world
+                World.getEntitiesSovereign parent world
                 |> Seq.map (fun child -> (child.GetOrder world, child))
                 |> Array.ofSeq
                 |> Array.sortBy fst
@@ -789,7 +799,7 @@ module WorldEntityModule =
                 |> Option.map snd
             | :? Group as parent ->
                 let order = World.getEntityOrder entity world
-                World.getSovereignEntities parent world
+                World.getEntitiesSovereign parent world
                 |> Seq.map (fun child -> (child.GetOrder world, child))
                 |> Array.ofSeq
                 |> Array.sortBy fst

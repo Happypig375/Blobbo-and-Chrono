@@ -1,5 +1,8 @@
 // Nu Game Engine.
+// Required Notice:
 // Copyright (C) Bryan Edds.
+// Nu Game Engine is licensed under the Nu Game Engine Noncommercial License.
+// See https://github.com/bryanedds/Nu/blob/master/License.md.
 
 namespace Nu
 open System
@@ -99,15 +102,11 @@ type TextDescriptor =
       Justification : Justification
       CaretOpt : int option }
 
-/// Describes how to render a vector path to a rendering subsystem.
-type [<NoEquality; NoComparison>] VectorPathDescriptor =
+/// Describes how to render a vector graphics contour to a rendering subsystem.
+type [<NoEquality; NoComparison>] ContourDescriptor =
     { mutable Transform : Transform
       ClipOpt : Box2 voption
-      Commands : VectorPathCommand array
-      FillColor : Color
-      WindingRule : WindingRule
-      StrokeColor : Color
-      StrokeThickness : single }
+      Tessellation : ContourTessellation }
 
 /// Describes a 2d rendering operation.
 type RenderOperation2d =
@@ -119,7 +118,7 @@ type RenderOperation2d =
     | RenderText of TextDescriptor
     | RenderTiles of TilesDescriptor
     | RenderSpineSkeleton of SpineSkeletonDescriptor
-    | RenderVectorPath of VectorPathDescriptor
+    | RenderContour of ContourDescriptor
 
 /// Describes a layered rendering operation to a 2d rendering subsystem.
 /// NOTE: mutation is used only for internal caching.
@@ -187,12 +186,14 @@ type [<ReferenceEquality>] VulkanRenderer2d =
         { VulkanContext : Hl.VulkanContext
           mutable Viewport : Viewport
           mutable TextDrawIndex : int
-          mutable VectorPathDrawIndex : int
+          mutable ContourTessellationDrawIndex : int
           TextQuad : Buffer.Buffer * Buffer.Buffer
-          TextTexture : Texture.TextureAccumulator
+          ContourTessellationVertices : Buffer.Buffer * Buffer.Buffer
+          TextTextures : Dictionary<obj, bool ref * (int * int * Matrix4x4 * Texture.Texture)>
+          TextureDisposer : Texture.TextureDisposer
           SpriteBatchEnv : SpriteBatch.SpriteBatchEnv
-          SpritePipeline : Buffer.Buffer * Buffer.Buffer * Buffer.Buffer * Pipeline.Pipeline
-          VectorPathPipeline : Buffer.Buffer * Buffer.Buffer * Buffer.Buffer * Pipeline.Pipeline
+          SpritePipeline : Buffer.Buffer * Buffer.Buffer * Pipeline.Pipeline
+          ContourTessellationPipeline : Buffer.Buffer * Pipeline.Pipeline
           RenderPackages : Packages<RenderAsset, AssetClient>
           SpineSkeletonRenderers : Dictionary<uint64, bool ref * Spine.SkeletonRenderer>
           mutable RenderPackageCachedOpt : RenderPackageCached
@@ -267,8 +268,8 @@ type [<ReferenceEquality>] VulkanRenderer2d =
                     let assetClient =
                         AssetClient
                             (Texture.TextureClient None,
-                                CubeMap.CubeMapClient (),
-                                PhysicallyBased.PhysicallyBasedSceneClient ())
+                             CubeMap.CubeMapClient (),
+                             PhysicallyBased.PhysicallyBasedSceneClient ())
                     let renderPackage = { Assets = dictPlus StringComparer.Ordinal []; PackageState = assetClient }
                     renderer.RenderPackages.[packageName] <- renderPackage
                     renderPackage
@@ -663,47 +664,46 @@ type [<ReferenceEquality>] VulkanRenderer2d =
             ssRenderer.Draw (getTextureId, spineSkeleton, &modelViewProjection)*)
         ()
 
-    /// Render vector path.
-    static member renderVectorPath
-        (descriptor : VectorPathDescriptor)
+    /// Render vector graphic contour.
+    static member renderContour
+        (descriptor : ContourDescriptor)
         (eyeCenter : Vector2)
         (eyeSize : Vector2)
         (renderer : VulkanRenderer2d) =
 
-        // interrupt sprite batch to render vector path
-        flip3 SpriteBatch.InterruptSpriteBatchFrame renderer.Viewport renderer.SpriteBatchEnv $ fun () ->
+        // only render if we have geometry
+        if descriptor.Tessellation.Indices.Length > 0 then
+
+            // interrupt sprite batch to render contour
+            flip3 SpriteBatch.InterruptSpriteBatchFrame renderer.Viewport renderer.SpriteBatchEnv $ fun () ->
             
-            // gather context for rendering vector path
-            let viewProjection2d = Viewport.getViewProjection2d descriptor.Transform.Absolute eyeCenter eyeSize renderer.Viewport
-            let viewProjectionClipAbsolute = Viewport.getViewProjectionClip true eyeCenter eyeSize renderer.Viewport
-            let viewProjectionClipRelative = Viewport.getViewProjectionClip false eyeCenter eyeSize renderer.Viewport
-            
-            // tesselate vector path (consider caching this)
-            let (vertices, indices) = VectorPath.tesselateVectorPath descriptor.Commands descriptor.FillColor descriptor.WindingRule descriptor.StrokeColor descriptor.StrokeThickness
-            
-            // only render if we have geometry
-            if vertices.Length > 0 && indices.Length > 0 then
+                // gather context for rendering contour
+                let viewProjection2d = Viewport.getViewProjection2d descriptor.Transform.Absolute eyeCenter eyeSize renderer.Viewport
+                let viewProjectionClipAbsolute = Viewport.getViewProjectionClip true eyeCenter eyeSize renderer.Viewport
+                let viewProjectionClipRelative = Viewport.getViewProjectionClip false eyeCenter eyeSize renderer.Viewport
                 
-                // construct model matrix (converts normalized coords to screen pixel position)
+                // construct model matrix (converts tesselated coords to screen pixel position)
+                let mutable affineMatrix = descriptor.Transform.RotationMatrix
+                affineMatrix.Translation <- descriptor.Transform.Position // NOTE: scale is omitted because it's considered during tessellation.
                 let modelViewProjection =
-                    Matrix4x4.CreateScale descriptor.Transform.Size *
-                    descriptor.Transform.AffineMatrix *
+                    affineMatrix *
                     Matrix4x4.CreateScale (single renderer.Viewport.DisplayScalar) *
                     viewProjection2d
 
-                // draw vector path
-                VectorPath.drawVectorPath
-                    renderer.VectorPathDrawIndex
-                    (vertices, indices)
+                // draw contour
+                ContourTessellation.draw
+                    renderer.ContourTessellationDrawIndex
+                    descriptor.Tessellation
                     descriptor.Transform.Absolute
                     &viewProjectionClipAbsolute
                     &viewProjectionClipRelative
-                    (modelViewProjection.ToArray ())
+                    &modelViewProjection
                     &descriptor.ClipOpt
                     renderer.Viewport
-                    renderer.VectorPathPipeline
+                    renderer.ContourTessellationVertices
+                    renderer.ContourTessellationPipeline
                     renderer.VulkanContext
-                renderer.VectorPathDrawIndex <- inc renderer.VectorPathDrawIndex
+                renderer.ContourTessellationDrawIndex <- inc renderer.ContourTessellationDrawIndex
 
     /// Render text.
     static member renderText
@@ -758,89 +758,115 @@ type [<ReferenceEquality>] VulkanRenderer2d =
                             | Some fontSize -> fontSize * renderer.Viewport.DisplayScalar
                             | None -> fontSizeDefault * renderer.Viewport.DisplayScalar
 
-                        // gather rendering resources
-                        let (offset, textSurface, textSurfacePtr) =
+                        // attempt to find or create text texture
+                        // NOTE: because of the hacky way the caret is shown, texture is recreated every blink on / off.
+                        let textTextureOpt =
+                            let textTextureKey = (perimeter, text, font, fontSize, fontStyling, color, justification)
+                            match renderer.TextTextures.TryGetValue textTextureKey with
+                            | (false, _) ->
+                        
+                                // gather rendering resources
+                                let (offset, textSurface, textSurfacePtr) =
 
-                            // create sdl color
-                            let mutable colorSdl = SDL.SDL_Color ()
-                            colorSdl.r <- color.R8
-                            colorSdl.g <- color.G8
-                            colorSdl.b <- color.B8
-                            colorSdl.a <- color.A8
+                                    // create sdl color
+                                    let mutable colorSdl = SDL.SDL_Color ()
+                                    colorSdl.r <- color.R8
+                                    colorSdl.g <- color.G8
+                                    colorSdl.b <- color.B8
+                                    colorSdl.a <- color.A8
 
-                            // attempt to configure sdl font size
-                            if SDL_ttf.TTF_SetFontSize (font, fontSize) <> 0 then
-                                let error = SDL_ttf.TTF_GetError ()
-                                Log.infoOnce ("Failed to set font size for font '" + scstring font + "' due to: " + error)
-                                SDL_ttf.TTF_SetFontSize (font, fontSizeDefault * renderer.Viewport.DisplayScalar) |> ignore<int>
+                                    // attempt to configure sdl font size
+                                    if SDL_ttf.TTF_SetFontSize (font, fontSize) <> 0 then
+                                        let error = SDL_ttf.TTF_GetError ()
+                                        Log.infoOnce ("Failed to set font size for font '" + scstring font + "' due to: " + error)
+                                        SDL_ttf.TTF_SetFontSize (font, fontSizeDefault * renderer.Viewport.DisplayScalar) |> ignore<int>
 
-                            // configure sdl font style
-                            let styleSdl =
-                                if fontStyling.Count > 0 then // OPTIMIZATION: avoid set queries where possible.
-                                    (if fontStyling.Contains Bold then SDL_ttf.TTF_STYLE_BOLD else 0) |||
-                                    (if fontStyling.Contains Italic then SDL_ttf.TTF_STYLE_ITALIC else 0) |||
-                                    (if fontStyling.Contains Underline then SDL_ttf.TTF_STYLE_UNDERLINE else 0) |||
-                                    (if fontStyling.Contains Strikethrough then SDL_ttf.TTF_STYLE_STRIKETHROUGH else 0)
-                                else 0
-                            SDL_ttf.TTF_SetFontStyle (font, styleSdl)
+                                    // configure sdl font style
+                                    let styleSdl =
+                                        if fontStyling.Count > 0 then // OPTIMIZATION: avoid set queries where possible.
+                                            (if fontStyling.Contains Bold then SDL_ttf.TTF_STYLE_BOLD else 0) |||
+                                            (if fontStyling.Contains Italic then SDL_ttf.TTF_STYLE_ITALIC else 0) |||
+                                            (if fontStyling.Contains Underline then SDL_ttf.TTF_STYLE_UNDERLINE else 0) |||
+                                            (if fontStyling.Contains Strikethrough then SDL_ttf.TTF_STYLE_STRIKETHROUGH else 0)
+                                        else 0
+                                    SDL_ttf.TTF_SetFontStyle (font, styleSdl)
 
-                            // render text to surface
-                            match justification with
-                            | Unjustified wrapped ->
-                                let textSurfacePtr =
-                                    if wrapped
-                                    then SDL_ttf.TTF_RenderUNICODE_Blended_Wrapped (font, text, colorSdl, uint32 size.X)
-                                    else SDL_ttf.TTF_RenderUNICODE_Blended (font, text, colorSdl)
-                                let textSurface = Marshal.PtrToStructure<SDL.SDL_Surface> textSurfacePtr
-                                let textSurfaceHeight = single textSurface.h
-                                let offsetY = size.Y - textSurfaceHeight
-                                (v2 0.0f offsetY, textSurface, textSurfacePtr)
-                            | Justified (h, v) ->
-                                let mutable width = 0
-                                let mutable height = 0
-                                SDL_ttf.TTF_SizeUNICODE (font, text, &width, &height) |> ignore
-                                let textSurfacePtr = SDL_ttf.TTF_RenderUNICODE_Blended (font, text, colorSdl)
-                                let textSurface = Marshal.PtrToStructure<SDL.SDL_Surface> textSurfacePtr
-                                let offsetX =
-                                    match h with
-                                    | JustifyLeft -> 0.0f
-                                    | JustifyCenter -> floor ((size.X - single width) * 0.5f)
-                                    | JustifyRight -> size.X - single width
-                                let offsetY =
-                                    match v with
-                                    | JustifyTop -> size.Y - single height
-                                    | JustifyMiddle -> floor ((size.Y - single height) * 0.5f)
-                                    | JustifyBottom -> 0.0f
-                                let offset = v2 offsetX offsetY
-                                (offset, textSurface, textSurfacePtr)
+                                    // render text to surface
+                                    match justification with
+                                    | Unjustified wrapped ->
+                                        let textSurfacePtr =
+                                            if wrapped
+                                            then SDL_ttf.TTF_RenderUNICODE_Blended_Wrapped (font, text, colorSdl, uint32 size.X)
+                                            else SDL_ttf.TTF_RenderUNICODE_Blended (font, text, colorSdl)
+                                        let textSurface = Marshal.PtrToStructure<SDL.SDL_Surface> textSurfacePtr
+                                        let textSurfaceHeight = single textSurface.h
+                                        let offsetY = size.Y - textSurfaceHeight
+                                        (v2 0.0f offsetY, textSurface, textSurfacePtr)
+                                    | Justified (h, v) ->
+                                        let mutable width = 0
+                                        let mutable height = 0
+                                        SDL_ttf.TTF_SizeUNICODE (font, text, &width, &height) |> ignore
+                                        let textSurfacePtr = SDL_ttf.TTF_RenderUNICODE_Blended (font, text, colorSdl)
+                                        let textSurface = Marshal.PtrToStructure<SDL.SDL_Surface> textSurfacePtr
+                                        let offsetX =
+                                            match h with
+                                            | JustifyLeft -> 0.0f
+                                            | JustifyCenter -> floor ((size.X - single width) * 0.5f)
+                                            | JustifyRight -> size.X - single width
+                                        let offsetY =
+                                            match v with
+                                            | JustifyTop -> size.Y - single height
+                                            | JustifyMiddle -> floor ((size.Y - single height) * 0.5f)
+                                            | JustifyBottom -> 0.0f
+                                        let offset = v2 offsetX offsetY
+                                        (offset, textSurface, textSurfacePtr)
 
-                        // render only when a valid surface was created
-                        if textSurfacePtr <> IntPtr.Zero then
+                                // render only when a valid surface was created
+                                if textSurfacePtr <> IntPtr.Zero then
 
-                            // construct mvp matrix
-                            let textSurfaceWidth = textSurface.pitch / 4 // NOTE: textSurface.w may be an innacurate representation of texture width in SDL2_ttf versions beyond v2.0.15 because... I don't know why.
-                            let textSurfaceHeight = textSurface.h
-                            let translation = (position + offset).V3
-                            let scale = v3 (single textSurfaceWidth) (single textSurfaceHeight) 1.0f
-                            let modelTranslation = Matrix4x4.CreateTranslation translation
-                            let modelScale = Matrix4x4.CreateScale scale
-                            let modelMatrix = modelScale * modelTranslation
-                            let modelViewProjection = modelMatrix * viewProjection2d
+                                    // construct mvp matrix
+                                    let textSurfaceWidth = textSurface.pitch / 4 // NOTE: textSurface.w may be an innacurate representation of texture width in SDL2_ttf versions beyond v2.0.15 because... I don't know why.
+                                    let textSurfaceHeight = textSurface.h
+                                    let translation = (position + offset).V3
+                                    let scale = v3 (single textSurfaceWidth) (single textSurfaceHeight) 1.0f
+                                    let modelTranslation = Matrix4x4.CreateTranslation translation
+                                    let modelScale = Matrix4x4.CreateScale scale
+                                    let modelMatrix = modelScale * modelTranslation
+                                    let modelViewProjection = modelMatrix * viewProjection2d
 
-                            // load texture
-                            let vkc = renderer.VulkanContext
-                            Texture.TextureAccumulator.load
-                                renderer.TextDrawIndex
-                                vkc.RenderCommandBuffer
-                                (Texture.TextureMetadata.make textSurfaceWidth textSurfaceHeight)
-                                textSurface.pixels
-                                renderer.TextTexture
-                                vkc
-                            
+                                    // create and load texture
+                                    let vkc = renderer.VulkanContext
+                                    let metadata = Texture.TextureMetadata.make textSurfaceWidth textSurfaceHeight
+                                    let textTextureInternal =
+                                        Texture.TextureInternal.create
+                                            VkSamplerAddressMode.Repeat VkFilter.Nearest VkFilter.Nearest false
+                                            Texture.MipmapNone Texture.AttachmentNone Texture.Texture2d [||]
+                                            Texture.Uncompressed.ImageFormat Hl.Bgra metadata vkc
+                                    Texture.TextureInternal.uploadAsync vkc.RenderCommandBuffer metadata 0 0 textSurface.pixels textTextureInternal vkc
+                                    let textTexture = Texture.EagerTexture { TextureMetadata = metadata; TextureInternal = textTextureInternal }
+                                    
+                                    // free text surface
+                                    SDL.SDL_FreeSurface textSurfacePtr
+
+                                    // register texture for reuse
+                                    renderer.TextTextures.Add (textTextureKey, (ref true, (textSurfaceWidth, textSurfaceHeight, modelViewProjection, textTexture)))
+                                    Some (textSurfaceWidth, textSurfaceHeight, modelViewProjection, textTexture)
+
+                                // error
+                                else None
+
+                            // already exists, so mark as used and reuse
+                            | (true, (used, (textSurfaceWidth, textSurfaceHeight, modelViewProjection, textTexture))) ->
+                                used.Value <- true
+                                Some (textSurfaceWidth, textSurfaceHeight, modelViewProjection, textTexture)
+
+                        // attempt to render text
+                        match textTextureOpt with
+                        | Some (textSurfaceWidth, textSurfaceHeight, modelViewProjection, textTexture) ->   
+                         
                             // draw text sprite
-                            // NOTE: we allocate an array here, too.
                             let (vertices, indices) = renderer.TextQuad
-                            let (modelViewProjectionUniform, texCoords4Uniform, colorUniform, pipeline) = renderer.SpritePipeline
+                            let (spriteVertUniform, spriteFragUniform, pipeline) = renderer.SpritePipeline
                             let insetOpt : Box2 voption = ValueNone
                             let color = Color.White
                             Sprite.DrawSprite
@@ -850,26 +876,24 @@ type [<ReferenceEquality>] VulkanRenderer2d =
                                     absolute,
                                     &viewProjectionClipAbsolute,
                                     &viewProjectionClipRelative,
-                                    modelViewProjection.ToArray (),
+                                    modelViewProjection,
                                     &insetOpt,
                                     &clipOpt,
                                     &color,
                                     FlipNone,
                                     textSurfaceWidth,
                                     textSurfaceHeight,
-                                    renderer.TextTexture.[renderer.TextDrawIndex],
+                                    textTexture,
                                     renderer.Viewport,
-                                    modelViewProjectionUniform,
-                                    texCoords4Uniform,
-                                    colorUniform,
+                                    spriteVertUniform,
+                                    spriteFragUniform,
                                     pipeline,
-                                    vkc)
-
-                            // destroy text surface
-                            SDL.SDL_FreeSurface textSurfacePtr
+                                    renderer.VulkanContext)
 
                             // advance text draw index
                             renderer.TextDrawIndex <- inc renderer.TextDrawIndex
+
+                        | None -> ()
 
                     // fin
                     | _ -> Log.infoOnce ("Cannot render text with a non-font asset for '" + scstring font + "'.")
@@ -903,8 +927,8 @@ type [<ReferenceEquality>] VulkanRenderer2d =
                  eyeCenter, eyeSize, renderer)
         | RenderSpineSkeleton descriptor ->
             VulkanRenderer2d.renderSpineSkeleton (&descriptor.Transform, descriptor.SpineSkeletonId, descriptor.SpineSkeletonClone, eyeCenter, eyeSize, renderer)
-        | RenderVectorPath descriptor ->
-            VulkanRenderer2d.renderVectorPath descriptor eyeCenter eyeSize renderer
+        | RenderContour descriptor ->
+            VulkanRenderer2d.renderContour descriptor eyeCenter eyeSize renderer
 
     static member private renderLayeredOperations eyeCenter eyeSize renderer =
         for operation in renderer.LayeredOperations do
@@ -912,6 +936,13 @@ type [<ReferenceEquality>] VulkanRenderer2d =
     
     static member private render eyeCenter eyeSize viewport renderMessages renderer =
 
+        // destroy expired textures from last executed frame
+        Texture.TextureDisposer.disposeFinished renderer.TextureDisposer renderer.VulkanContext
+        
+        // reset text and contour tessellation drawing index
+        renderer.TextDrawIndex <- 0
+        renderer.ContourTessellationDrawIndex <- 0
+        
         // invalidate caches and reload fonts when viewport changes
         if renderer.Viewport.DisplayScalar <> viewport.DisplayScalar then
             VulkanRenderer2d.invalidateCaches renderer
@@ -923,10 +954,6 @@ type [<ReferenceEquality>] VulkanRenderer2d =
                         | Some renderAsset -> package.Assets.[assetName] <- (lastWriteTime, asset, renderAsset)
                         | None -> Log.fail ("Failed to reload font '" + scstring asset.AssetTag + "' on DisplayScalar change.")
 
-        // reset text and vector path drawing index
-        renderer.TextDrawIndex <- 0
-        renderer.VectorPathDrawIndex <- 0
-        
         // update viewport
         renderer.Viewport <- viewport
         
@@ -953,6 +980,22 @@ type [<ReferenceEquality>] VulkanRenderer2d =
         if renderer.ReloadAssetsRequested then
             VulkanRenderer2d.handleReloadRenderAssets renderer
 
+        // clean up any text textures that went unused this frame
+        let textTexturesUnused =
+            renderer.TextTextures
+            |> Seq.filter (fun entry -> not (fst entry.Value).Value)
+            |> Seq.map (fun entry -> entry.Key)
+            |> Seq.toArray
+        for entry in textTexturesUnused do
+            let (_, _, _, textTexture) = snd renderer.TextTextures.[entry]
+            Texture.TextureDisposer.submit textTexture renderer.TextureDisposer
+            renderer.TextTextures.Remove entry |> ignore<bool>
+
+        // mark remaining text textures as unused for next frame
+        for entry in renderer.TextTextures.Values do
+            let used = fst entry
+            used.Value <- false
+        
         (* TODO: DJL: enable when spine rendering is working again.
         // sweep up any skeleton renderers that went unused this frame
         let entriesUnused = renderer.SpineSkeletonRenderers |> Seq.filter (fun entry -> not (fst entry.Value).Value)
@@ -968,25 +1011,27 @@ type [<ReferenceEquality>] VulkanRenderer2d =
         // create text resources
         let spritePipeline = Sprite.CreateSpritePipeline vkc
         let textQuad = Sprite.CreateSpriteQuad true vkc
-        let textTexture = Texture.TextureAccumulator.create Hl.Bgra Texture.Uncompressed.ImageFormat vkc
+        let textureDisposer = Texture.TextureDisposer.create ()
 
         // create sprite batch env
         let spriteBatchEnv = SpriteBatch.CreateSpriteBatchEnv vkc
 
-        // create vector path pipeline
-        let vectorPathPipeline = VectorPath.createVectorPathPipeline vkc
+        // create contour tessellation pipeline
+        let (contourTesselationVertices, contourTesselationPipeline) = ContourTessellation.createPipeline vkc
         
         // make renderer
         let renderer =
             { VulkanContext = vkc
               Viewport = viewport
               TextDrawIndex = 0
-              VectorPathDrawIndex = 0
+              ContourTessellationDrawIndex = 0
               TextQuad = textQuad
-              TextTexture = textTexture
+              ContourTessellationVertices = contourTesselationVertices
+              TextTextures = dictPlus HashIdentity.Structural []
+              TextureDisposer = textureDisposer
               SpriteBatchEnv = spriteBatchEnv
               SpritePipeline = spritePipeline
-              VectorPathPipeline = vectorPathPipeline
+              ContourTessellationPipeline = contourTesselationPipeline
               RenderPackages = dictPlus StringComparer.Ordinal []
               SpineSkeletonRenderers = dictPlus HashIdentity.Structural []
               RenderPackageCachedOpt = Unchecked.defaultof<_>
@@ -1007,18 +1052,20 @@ type [<ReferenceEquality>] VulkanRenderer2d =
             
             // destroy vulkan resources
             let vkc = renderer.VulkanContext
-            let (modelViewProjectionUniform, texCoords4Uniform, colorUniform, pipeline) = renderer.SpritePipeline
+            let (spriteVertUniform, spriteFragUniform, pipeline) = renderer.SpritePipeline
             let (vertices, indices) = renderer.TextQuad
-            let (vectorPathModelViewProjectionUniform, vectorPathVertexBuffer, vectorPathIndexBuffer, vectorPathPipeline) = renderer.VectorPathPipeline
-            Texture.TextureAccumulator.destroy renderer.TextTexture vkc
+            let (tessellationVertexBuffer, tessellationIndexBuffer) = renderer.ContourTessellationVertices
+            let (tessellationModelViewProjectionUniform, tessellationPipeline) = renderer.ContourTessellationPipeline
+            for (_, _, _, textTexture) in Seq.map snd renderer.TextTextures.Values do textTexture.Destroy vkc
+            renderer.TextTextures.Clear ()
+            Texture.TextureDisposer.destroy renderer.TextureDisposer vkc
             Pipeline.Pipeline.destroy pipeline vkc
-            Pipeline.Pipeline.destroy vectorPathPipeline vkc
-            Buffer.Buffer.destroy modelViewProjectionUniform vkc
-            Buffer.Buffer.destroy texCoords4Uniform vkc
-            Buffer.Buffer.destroy colorUniform vkc
-            Buffer.Buffer.destroy vectorPathModelViewProjectionUniform vkc
-            Buffer.Buffer.destroy vectorPathVertexBuffer vkc
-            Buffer.Buffer.destroy vectorPathIndexBuffer vkc
+            Pipeline.Pipeline.destroy tessellationPipeline vkc
+            Buffer.Buffer.destroy spriteVertUniform vkc
+            Buffer.Buffer.destroy spriteFragUniform vkc
+            Buffer.Buffer.destroy tessellationModelViewProjectionUniform vkc
+            Buffer.Buffer.destroy tessellationVertexBuffer vkc
+            Buffer.Buffer.destroy tessellationIndexBuffer vkc
             Buffer.Buffer.destroy vertices vkc
             Buffer.Buffer.destroy indices vkc
 

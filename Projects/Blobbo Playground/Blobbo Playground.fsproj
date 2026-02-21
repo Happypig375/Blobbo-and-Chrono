@@ -55,8 +55,8 @@
 	</ItemGroup>
 
 	<ItemGroup>
-		<PackageReference Include="CSharpMath.Rendering" Version="0.5.3-ci-93cc0cecc3baf619f8b0287de7e14e5097d2da1f" />
-		<PackageReference Include="CSharpMath.Evaluation" Version="0.5.3-ci-86464bc4c2f70c0decf3061310ba1c7b8516b1b4" />
+		<PackageReference Include="CSharpMath.Rendering" Version="1.0.0-pre.1" />
+		<PackageReference Include="CSharpMath.Evaluation" Version="1.0.0-pre.1" />
 		<Reference Include="AssimpNet">
 			<HintPath>..\..\Nu\Nu.Dependencies\AssimpNet\netstandard2.1\AssimpNet.dll</HintPath>
 		</Reference>

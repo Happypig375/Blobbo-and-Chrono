@@ -24,7 +24,7 @@ type ChronoDispatcher () =
          ]
 
     override _.Register (chrono, world) =
-        let hourglass = World.createEntity<Box2dDispatcher> (Some chrono.EntityAddress) DefaultOverlay (Some (Array.add "Hourglass" chrono.Surnames)) chrono.Group world
+        let hourglass = World.createEntity<BoxBody2dDispatcher> (Some chrono.EntityAddress) DefaultOverlay (Some (Array.add "Hourglass" chrono.Surnames)) chrono.Group world
         chrono.SetHourglass hourglass.EntityAddress world
         hourglass.SetStaticImage Assets.Gameplay.Hourglass world
         hourglass.SetScale (v3 0.5f 0.5f 1f) world

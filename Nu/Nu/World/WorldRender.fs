@@ -1,5 +1,8 @@
 // Nu Game Engine.
+// Required Notice:
 // Copyright (C) Bryan Edds.
+// Nu Game Engine is licensed under the Nu Game Engine Noncommercial License.
+// See https://github.com/bryanedds/Nu/blob/master/License.md.
 
 namespace Nu
 open System
@@ -151,10 +154,10 @@ module WorldRender =
                 let operation = { Elevation = textTransform.Elevation; Horizon = perimeter.Center.Y; AssetTag = font; RenderOperation2d = RenderText descriptor }
                 World.enqueueLayeredOperation2d operation world
 
-        /// Render a vector path.
-        static member renderVectorPath (descriptor : VectorPathDescriptor) world =
+        /// Render a vector graphics contour.
+        static member renderContour (descriptor : ContourDescriptor) world =
             World.enqueueLayeredOperation2d
                 { Elevation = descriptor.Transform.Elevation
                   Horizon = descriptor.Transform.Horizon
-                  AssetTag = AssetTag.make "VectorPath" Assets.Default.PackageName
-                  RenderOperation2d = RenderVectorPath descriptor } world
+                  AssetTag = AssetTag.makeEmpty ()
+                  RenderOperation2d = RenderContour descriptor } world

@@ -1,5 +1,8 @@
 ﻿// Nu Game Engine.
+// Required Notice:
 // Copyright (C) Bryan Edds.
+// Nu Game Engine is licensed under the Nu Game Engine Noncommercial License.
+// See https://github.com/bryanedds/Nu/blob/master/License.md.
 
 namespace Nu
 open System
@@ -20,7 +23,7 @@ type [<Struct>] private CharacterUserData =
       CharacterCollisionCategories : uint64
       CharacterCollisionMask : uint64
       CharacterGravity : Gravity
-      CharacterProperties : CharacterStairSteppingProperties }
+      CharacterProperties : StairSteppingCharacterProperties }
 
 type [<Struct; CustomEquality; NoComparison>] private BodyContactEvent =
     | BodyContactAdded of BodyID : BodyID * Body2ID : BodyID * ContactNormal : Vector3
@@ -653,29 +656,17 @@ and [<ReferenceEquality>] JoltPhysicsEngine =
         | DynamicCharacter -> if bodyEnabled then MotionType.Dynamic else MotionType.Static
         | Vehicle -> if bodyEnabled then MotionType.Dynamic else MotionType.Static
 
-    static member private computeRepresentationType bodyProperties =
-        match bodyProperties.BodyType with
+    static member private computeRepresentationType (bodyType : Nu.BodyType) characterProperties vehicleProperties =
+        match bodyType with
         | Static -> Choice1Of3 ()
         | Kinematic -> Choice1Of3 ()
-        | KinematicCharacter ->
-            match bodyProperties.CharacterProperties with
-            | StairStepping properties -> Choice2Of3 properties
-            | PogoSpring _ ->
-                Log.warn "PogoSpring character properties is not implemented in JoltPhysicsEngine. Ignoring character properties."
-                Choice1Of3 ()
+        | KinematicCharacter -> Choice2Of3 characterProperties
         | Dynamic -> Choice1Of3 ()
-        | DynamicCharacter ->
-            match bodyProperties.CharacterProperties with
-            | StairStepping properties -> Choice2Of3 properties
-            | PogoSpring _ ->
-                Log.warn "PogoSpring character properties is not implemented in JoltPhysicsEngine. Ignoring character properties."
-                Choice1Of3 ()
+        | DynamicCharacter -> Choice2Of3 characterProperties
         | Vehicle ->
-            match bodyProperties.VehicleProperties with
+            match vehicleProperties with
             | VehiclePropertiesJolt vehicleConstraintSettings -> Choice3Of3 vehicleConstraintSettings
-            | _ ->
-                Log.warn "VehicleProperties must be VehiclePropertiesJolt for Vehicle body type to take effect. Using Dynamic body type instead."
-                Choice1Of3 ()
+            | _ -> Choice1Of3 ()
 
     static member private createBody3 (bodyId : BodyId) (bodyProperties : BodyProperties) (physicsEngine : JoltPhysicsEngine) =
 
@@ -690,7 +681,11 @@ and [<ReferenceEquality>] JoltPhysicsEngine =
             scShapeSettings.AddShape (&position, &rotation, new EmptyShapeSettings (&centerOfMass))
         let objectLayer = JoltPhysicsEngine.computeObjectLayer bodyProperties.Enabled bodyProperties.BodyType
         let motionType = JoltPhysicsEngine.computeMotionType bodyProperties.Enabled bodyProperties.BodyType
-        let representationType = JoltPhysicsEngine.computeRepresentationType bodyProperties
+        let characterProperties =
+            match bodyProperties.CharacterProperties with
+            | PogoSpringCharacterProperties _ -> StairSteppingCharacterProperties.defaultProperties
+            | StairSteppingCharacterProperties characterProperties -> characterProperties
+        let representationType = JoltPhysicsEngine.computeRepresentationType bodyProperties.BodyType characterProperties bodyProperties.VehicleProperties
         match representationType with
         | Choice1Of3 () ->
 
@@ -908,7 +903,7 @@ and [<ReferenceEquality>] JoltPhysicsEngine =
                     | None -> ()
                 else Log.warn ("Could not add body joint for '" + scstring bodyJointId + "'.")
             | _ -> ()
-        | _ -> Log.warn ("Joint type '" + getCaseName bodyJointProperties.BodyJoint + "' not implemented for AetherPhysicsEngine.")
+        | _ -> Log.warn ("Joint type '" + getCaseName bodyJointProperties.BodyJoint + "' not implemented for JoltPhysicsEngine.")
 
     static member private createBodyJoint (createBodyJointMessage : CreateBodyJointMessage) physicsEngine =
 

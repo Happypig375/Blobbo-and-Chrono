@@ -1,5 +1,8 @@
 ﻿// Nu Game Engine.
+// Required Notice:
 // Copyright (C) Bryan Edds.
+// Nu Game Engine is licensed under the Nu Game Engine Noncommercial License.
+// See https://github.com/bryanedds/Nu/blob/master/License.md.
 
 namespace Nu
 open System
@@ -13,6 +16,15 @@ type Entity2dDispatcher (physical, lightProbe, light) =
 
     static member Properties =
         [define Entity.Size Constants.Engine.Entity2dSizeDefault]
+
+/// A 2d contour dispatcher.
+type Contour2dDispatcher (physical, lightProbe, light) =
+    inherit EntityDispatcher (true, physical, lightProbe, light)
+
+    static member Properties =
+        [define Entity.OverflowAbsolute true
+         define Entity.Size Constants.Engine.Entity2dSizeDefault
+         define Entity.ClipOpt None]
 
 /// A gui entity dispatcher.
 type GuiDispatcher () =
@@ -59,6 +71,41 @@ type AnimatedSpriteDispatcher () =
 
     static member Facets =
         [typeof<AnimatedSpriteFacet>]
+
+/// Gives an entity the base behavior of a 2d circle contour.
+type CircleContour2dDispatcher () =
+    inherit Contour2dDispatcher (false, false, false)
+
+    static member Facets =
+        [typeof<CircleContour2dFacet>]
+
+/// Gives an entity the base behavior of a 2d rectangle contour.
+type RectangleContour2dDispatcher () =
+    inherit Contour2dDispatcher (false, false, false)
+
+    static member Facets =
+        [typeof<RectangleContour2dFacet>]
+
+/// Gives an entity the base behavior of a 2d rounded rectangle contour.
+type RectangleRoundedContour2dDispatcher () =
+    inherit Contour2dDispatcher (false, false, false)
+
+    static member Facets =
+        [typeof<RectangleRoundedContour2dFacet>]
+
+/// Gives an entity the base behavior of a 2d spiral contour.
+type SpiralContour2dDispatcher () =
+    inherit Contour2dDispatcher (false, false, false)
+
+    static member Facets =
+        [typeof<SpiralContour2dFacet>]
+
+/// Gives an entity the base behavior of a 2d wedge (pie slice) contour.
+type WedgeContour2dDispatcher () =
+    inherit Contour2dDispatcher (false, false, false)
+
+    static member Facets =
+        [typeof<WedgeContour2dFacet>]
 
 /// Gives an entity the base behavior of a gui text control.
 type TextDispatcher () =
@@ -236,16 +283,16 @@ type Effect2dDispatcher () =
     override this.GetAttributesInferred (_, _) =
         AttributesInferred.unimportant
 
-/// Gives an entity the base behavior of a rigid 2d block using Static physics.
-type Block2dDispatcher () =
+/// Gives an entity the base behavior of a 2d block body using Static physics.
+type BlockBody2dDispatcher () =
     inherit Entity2dDispatcher (true, false, false)
 
     static member Facets =
         [typeof<RigidBodyFacet>
          typeof<StaticSpriteFacet>]
 
-/// Gives an entity the base behavior of a rigid 2d box using Dynamic physics.
-type Box2dDispatcher () =
+/// Gives an entity the base behavior of a 2d box body using Dynamic physics.
+type BoxBody2dDispatcher () =
     inherit Entity2dDispatcher (true, false, false)
 
     static member Facets =
@@ -257,8 +304,8 @@ type Box2dDispatcher () =
          define Entity.BodyType Dynamic
          define Entity.BodyShape (BoxShape { Size = v3One; TransformOpt = None; PropertiesOpt = None })]
 
-/// Gives an entity the base behavior of a rigid 2d sphere using Static physics.
-type Sphere2dDispatcher () =
+/// Gives an entity the base behavior of a 2d orb body using Static physics.
+type OrbBody2dDispatcher () =
     inherit Entity2dDispatcher (true, false, false)
 
     static member Facets =
@@ -269,8 +316,8 @@ type Sphere2dDispatcher () =
         [define Entity.BodyShape (SphereShape { Radius = 0.5f; TransformOpt = None; PropertiesOpt = None })
          define Entity.StaticImage Assets.Default.Ball]
 
-/// Gives an entity the base behavior of a rigid 2d ball using Dynamic physics.
-type Ball2dDispatcher () =
+/// Gives an entity the base behavior of a 2d ball body using Dynamic physics.
+type BallBody2dDispatcher () =
     inherit Entity2dDispatcher (true, false, false)
 
     static member Facets =
@@ -413,7 +460,7 @@ type FluidEmitter2dDispatcher () =
     override this.Render (_, emitter, world) =
         let particleRadius = emitter.GetFluidParticleRadius world
         let staticImage = emitter.GetStaticImage world
-        let insetOpt = match emitter.GetInsetOpt world with Some inset -> ValueSome inset | None -> ValueNone
+        let insetOpt = emitter.GetInsetOpt world |> Option.toValueOption
         let clipOpt = emitter.GetClipOpt world |> Option.toValueOption
         let color = emitter.GetColor world
         let blend = emitter.GetBlend world
@@ -704,8 +751,8 @@ type Effect3dDispatcher () =
     override this.GetAttributesInferred (_, _) =
         AttributesInferred.unimportant
 
-/// Gives an entity the base behavior of a rigid 3d block using Static physics.
-type Block3dDispatcher () =
+/// Gives an entity the base behavior of a 3d block body using Static physics.
+type BlockBody3dDispatcher () =
     inherit Entity3dDispatcher (true, false, false)
 
     static member Facets =
@@ -713,8 +760,8 @@ type Block3dDispatcher () =
          typeof<StaticModelFacet>
          typeof<NavBodyFacet>]
 
-/// Gives an entity the base behavior of a rigid 3d box using Dynamic physics.
-type Box3dDispatcher () =
+/// Gives an entity the base behavior of a 3d box body using Dynamic physics.
+type BoxBody3dDispatcher () =
     inherit Entity3dDispatcher (true, false, false)
 
     static member Facets =
@@ -726,8 +773,8 @@ type Box3dDispatcher () =
         [define Entity.MountOpt None
          define Entity.BodyType Dynamic]
 
-/// Gives an entity the base behavior of a rigid 3d sphere using Static physics.
-type Sphere3dDispatcher () =
+/// Gives an entity the base behavior of a 3d orb body using Static physics.
+type OrbBody3dDispatcher () =
     inherit Entity3dDispatcher (true, false, false)
 
     static member Facets =
@@ -739,8 +786,8 @@ type Sphere3dDispatcher () =
         [define Entity.BodyShape (SphereShape { Radius = 0.5f; TransformOpt = None; PropertiesOpt = None })
          define Entity.StaticModel Assets.Default.BallModel]
 
-/// Gives an entity the base behavior of a rigid 3d ball using Dynamic physics.
-type Ball3dDispatcher () =
+/// Gives an entity the base behavior of a 3d ball body using Dynamic physics.
+type BallBody3dDispatcher () =
     inherit Entity3dDispatcher (true, false, false)
 
     static member Facets =
@@ -807,7 +854,7 @@ type BodyJoint3dDispatcher () =
         let intersectionOpt = ray.Intersects (entity.GetBounds world)
         [|Intersection.ofNullable intersectionOpt|]
 
-/// Gives an entity the base behavior of a rigid 3d terrain.
+/// Gives an entity the base behavior of a 3d terrain body.
 type TerrainDispatcher () =
     inherit Entity3dDispatcher (true, false, false)
 
@@ -862,148 +909,3 @@ type EditVolumeDispatcher () =
 
     static member Facets =
         [typeof<EditVolumeFacet>]
-
-[<AutoOpen>]
-module CircleDispatcherExtensions =
-    type Entity with
-        member this.GetStrokeColor world : Color = this.Get (nameof Entity.StrokeColor) world
-        member this.SetStrokeColor (value : Color) world = this.Set (nameof Entity.StrokeColor) value world
-        member this.StrokeColor = lens (nameof Entity.StrokeColor) this this.GetStrokeColor this.SetStrokeColor
-        member this.GetStrokeThickness world : single = this.Get (nameof Entity.StrokeThickness) world
-        member this.SetStrokeThickness (value : single) world = this.Set (nameof Entity.StrokeThickness) value world
-        member this.StrokeThickness = lens (nameof Entity.StrokeThickness) this this.GetStrokeThickness this.SetStrokeThickness
-
-/// Gives an entity the base behavior of a circle render.
-type CircleDispatcher () =
-    inherit Entity2dDispatcher (false, false, false)
-        
-    // Create a circle using cubic bezier curves
-    // Magic number for circle approximation with bezier curves in [-1,1] space: 4/3 * (sqrt(2) - 1) = 0.5522847498
-    static let k = 0.5522847498f / 2.0f // Divided by 2 to account for radius of 0.5 in normalized space
-        
-    // Define circle in normalized space from -0.5 to 0.5
-    static let commands =
-        [|MoveTo (v2 0.5f 0.0f)                                  // Start at right
-          CubicCurveTo (v2 0.5f k, v2 k 0.5f, v2 0.0f 0.5f)      // Top arc
-          CubicCurveTo (v2 -k 0.5f, v2 -0.5f k, v2 -0.5f 0.0f)   // Left arc
-          CubicCurveTo (v2 -0.5f -k, v2 -k -0.5f, v2 0.0f -0.5f) // Bottom arc
-          CubicCurveTo (v2 k -0.5f, v2 0.5f -k, v2 0.5f 0.0f)    // Right arc
-          CloseContour|]                                         // Closing the contour is optional, but can test our implementation
-
-    static member Properties =
-        [define Entity.Color Color.Red
-         define Entity.ClipOpt None
-         define Entity.StrokeColor (Color.White.WithA 0.5f)
-         define Entity.StrokeThickness 0.1f]
-
-    override _.Render (_, entity, world) =
-        World.renderVectorPath
-            { Transform = entity.GetTransform world
-              ClipOpt = entity.GetClipOpt world |> Option.toValueOption
-              Commands = commands
-              FillColor = entity.GetColor world
-              WindingRule = WindingRule.Default
-              StrokeColor = entity.GetStrokeColor world
-              StrokeThickness = entity.GetStrokeThickness world } world
-   
-/// Gives an entity the base behavior of a rectangle render.
-type RectangleDispatcher () =
-    inherit Entity2dDispatcher (false, false, false)
-        
-    // Define rectangle in normalized space from -0.5 to 0.5
-    static let commands =
-        [|MoveTo (v2 0.5f 0.5f)
-          LineTo (v2 -0.5f 0.5f)
-          LineTo (v2 -0.5f -0.5f)
-          LineTo (v2 0.5f -0.5f)
-          CloseContour|]
-
-    static member Properties =
-        [define Entity.Color Color.Red
-         define Entity.ClipOpt None
-         define Entity.StrokeColor (Color.White.WithA 0.5f)
-         define Entity.StrokeThickness 0.1f]
-
-    override _.Render (_, entity, world) =
-        World.renderVectorPath
-            { Transform = entity.GetTransform world
-              ClipOpt = entity.GetClipOpt world |> Option.toValueOption
-              Commands = commands
-              FillColor = entity.GetColor world
-              WindingRule = WindingRule.Default
-              StrokeColor = entity.GetStrokeColor world
-              StrokeThickness = entity.GetStrokeThickness world } world
-
-module [<AutoOpen>] SpiralDispatcherExtensions =
-    type Entity with
-        member this.GetTurns world : single = this.Get (nameof Entity.Turns) world
-        member this.SetTurns (value : single) world = this.Set (nameof Entity.Turns) value world
-        member this.Turns = lens (nameof Entity.Turns) this this.GetTurns this.SetTurns
-        member this.GetSpacing world : single = this.Get (nameof Entity.Spacing) world
-        member this.SetSpacing (value : single) world = this.Set (nameof Entity.Spacing) value world
-        member this.Spacing = lens (nameof Entity.Spacing) this this.GetSpacing this.SetSpacing
-        member this.GetPointsPerTurn world : single = this.Get (nameof Entity.PointsPerTurn) world
-        member this.SetPointsPerTurn (value : single) world = this.Set (nameof Entity.PointsPerTurn) value world
-        member this.PointsPerTurn = lens (nameof Entity.PointsPerTurn) this this.GetPointsPerTurn this.SetPointsPerTurn
-        member this.GetWindingRule world : WindingRule = this.Get (nameof Entity.WindingRule) world
-        member this.SetWindingRule (value : WindingRule) world = this.Set (nameof Entity.WindingRule) value world
-        member this.WindingRule = lens (nameof Entity.WindingRule) this this.GetWindingRule this.SetWindingRule
-
-/// Gives an entity the base behavior of a polygonal spiral render.
-type SpiralDispatcher () =
-    inherit Entity2dDispatcher (false, false, false)
-        
-    // Compute a polygonal spiral
-    static let computeSpiralCommands (turns : single) (spacing : single) (pointsPerTurn : single) =
-        let angleIncrement = MathF.TWO_PI / pointsPerTurn
-        let totalSteps = turns * pointsPerTurn
-        let wholeSteps = MathF.Floor totalSteps
-        let mutable commands = ResizeArray<VectorPathCommand>()
-
-        // Handle whole steps
-        for i in 0 .. int wholeSteps do
-            let angle = single i * angleIncrement
-            let struct (sin, cos) = MathF.SinCos angle
-            let radius = spacing * angle / MathF.TWO_PI
-            let point = radius * v2 cos sin
-            if i = 0 then commands.Add (MoveTo point)
-            else commands.Add (LineTo point)
-
-        // Handle final partial step
-        if totalSteps > wholeSteps then
-            let angle = (wholeSteps + 1.0f) * angleIncrement // next angle
-            let struct (sin, cos) = MathF.SinCos angle
-            let radius = spacing * angle / MathF.TWO_PI
-            let point = radius * v2 cos sin
-            let weightedPoint = 
-                let t = totalSteps - wholeSteps
-                let struct (sinW, cosW) = MathF.SinCos (angle - angleIncrement) // previous angle
-                let radiusW = spacing * (angle - angleIncrement) / MathF.TWO_PI
-                let pointW = radiusW * v2 cosW sinW
-                (1.0f - t) * pointW + t * point // weighted average
-            commands.Add (LineTo weightedPoint)
-        commands.ToArray ()
-
-    static member Properties =
-        [define Entity.Color Color.Red
-         define Entity.ClipOpt None
-         define Entity.StrokeColor Color.White
-         define Entity.StrokeThickness 0.01f
-         define Entity.Turns 5.0f
-         define Entity.Spacing 0.1f
-         define Entity.PointsPerTurn 50.0f
-         define Entity.WindingRule WindingRule.Default]
-
-    override _.Render (_, entity, world) =
-        let turns = entity.GetTurns world
-        let spacing = entity.GetSpacing world
-        let pointsPerTurn = entity.GetPointsPerTurn world
-        let commands = computeSpiralCommands turns spacing pointsPerTurn
-        World.renderVectorPath
-            { Transform = entity.GetTransform world
-              ClipOpt = entity.GetClipOpt world |> Option.toValueOption
-              Commands = commands
-              FillColor = entity.GetColor world
-              WindingRule = entity.GetWindingRule world
-              StrokeColor = entity.GetStrokeColor world
-              StrokeThickness = entity.GetStrokeThickness world } world

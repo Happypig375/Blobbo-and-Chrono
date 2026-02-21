@@ -1,15 +1,29 @@
 #version 450 core
+#extension GL_EXT_nonuniform_qualifier : enable
 
-layout (binding = 0) uniform a { mat4 view; } view;
-layout (binding = 1) uniform b { mat4 projection; } projection;
-layout (binding = 2) uniform c { mat4 viewProjection; } viewProjection;
+struct SkyBoxVert
+{
+    mat4 view;
+    mat4 projection;
+    mat4 viewProjection;
+};
 
-layout (location = 0) in vec3 position;
+layout(push_constant) uniform PushConstant
+{
+    int drawId;
+};
 
-layout (location = 0) out vec3 texCoordsOut;
+layout(binding = 0) uniform SkyBoxVertBlock
+{
+    SkyBoxVert skyBox;
+} skyBoxVert[];
+
+layout(location = 0) in vec3 position;
+
+layout(location = 0) out vec3 texCoordsOut;
 
 void main()
 {
     texCoordsOut = position;
-    gl_Position = (viewProjection.viewProjection * vec4(position, 1.0)).xyww;
+    gl_Position = (skyBoxVert[drawId].skyBox.viewProjection * vec4(position, 1.0)).xyww;
 }

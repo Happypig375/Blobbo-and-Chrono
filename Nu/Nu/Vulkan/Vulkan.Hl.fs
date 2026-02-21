@@ -41,32 +41,63 @@ module Hl =
     type ImageFormat =
         | Rgba8
         | Rgba16f
+        | Rgb16f
+        | Rg32f
+        | R16f
+        | R32f
         | Bc3
         | Bc5
+        | D32f
 
         /// The VkFormat.
         member this.VkFormat =
             match this with
             | Rgba8 -> VkFormat.R8G8B8A8Unorm
             | Rgba16f -> VkFormat.R16G16B16A16Sfloat
+            | Rgb16f -> VkFormat.R16G16B16Sfloat
+            | Rg32f -> VkFormat.R32G32Sfloat
+            | R16f -> VkFormat.R16Sfloat
+            | R32f -> VkFormat.R32Sfloat
             | Bc3 -> VkFormat.Bc3UnormBlock
             | Bc5 -> VkFormat.Bc5UnormBlock
+            | D32f -> VkFormat.D32Sfloat
 
+        /// The VkImageAspectFlags.
+        member this.VkImageAspectFlags =
+            match this with
+            | Rgba8 -> VkImageAspectFlags.Color
+            | Rgba16f -> VkImageAspectFlags.Color
+            | Rgb16f -> VkImageAspectFlags.Color
+            | Rg32f -> VkImageAspectFlags.Color
+            | R16f -> VkImageAspectFlags.Color
+            | R32f -> VkImageAspectFlags.Color
+            | Bc3 -> VkImageAspectFlags.Color
+            | Bc5 -> VkImageAspectFlags.Color
+            | D32f -> VkImageAspectFlags.Depth
+        
         /// Get the size in bytes of an image with given width, height and format.
         static member getImageSize width height imageFormat =
             match imageFormat with
             | Rgba8 -> width * height * 4
             | Rgba16f -> width * height * 8
+            | Rgb16f -> width * height * 6
+            | Rg32f -> width * height * 8
+            | R16f -> width * height * 2
+            | R32f -> width * height * 4
             | Bc3
             | Bc5 ->
                 let x = if width % 4 = 0 then width else (width / 4 + 1) * 4
                 let y = if height % 4 = 0 then height else (height / 4 + 1) * 4
                 x * y
+            | D32f -> width * height * 4
     
     /// The pixel format of an image.
     type PixelFormat =
         | Rgba
         | Bgra
+        | Rgb
+        | Rg
+        | Red
         | Depth
 
         /// The VkComponentSwizzles of a PixelFormat.
@@ -74,6 +105,9 @@ module Hl =
             match this with
             | Rgba -> (VkComponentSwizzle.R, VkComponentSwizzle.G, VkComponentSwizzle.B, VkComponentSwizzle.A)
             | Bgra -> (VkComponentSwizzle.B, VkComponentSwizzle.G, VkComponentSwizzle.R, VkComponentSwizzle.A)
+            | Rgb -> (VkComponentSwizzle.R, VkComponentSwizzle.G, VkComponentSwizzle.B, VkComponentSwizzle.A)
+            | Rg -> (VkComponentSwizzle.R, VkComponentSwizzle.G, VkComponentSwizzle.B, VkComponentSwizzle.A)
+            | Red -> (VkComponentSwizzle.R, VkComponentSwizzle.G, VkComponentSwizzle.B, VkComponentSwizzle.A)
             | Depth -> (VkComponentSwizzle.R, VkComponentSwizzle.G, VkComponentSwizzle.B, VkComponentSwizzle.A) // doesn't matter
     
     /// An image layout in its access and pipeline stage context.
@@ -84,6 +118,7 @@ module Hl =
         | TransferDst
         | ShaderRead
         | ColorAttachmentWrite
+        | DepthAttachment
         | Present
 
         /// The VkImageLayout.
@@ -95,6 +130,7 @@ module Hl =
             | TransferDst -> VkImageLayout.TransferDstOptimal
             | ShaderRead -> VkImageLayout.ShaderReadOnlyOptimal
             | ColorAttachmentWrite -> VkImageLayout.ColorAttachmentOptimal
+            | DepthAttachment -> VkImageLayout.DepthStencilAttachmentOptimal
             | Present -> VkImageLayout.PresentSrcKHR
 
         /// The access flag.
@@ -106,6 +142,7 @@ module Hl =
             | TransferDst -> VkAccessFlags.TransferWrite
             | ShaderRead -> VkAccessFlags.ShaderRead
             | ColorAttachmentWrite -> VkAccessFlags.ColorAttachmentWrite
+            | DepthAttachment -> VkAccessFlags.DepthStencilAttachmentRead ||| VkAccessFlags.DepthStencilAttachmentWrite
             | Present -> VkAccessFlags.None
 
         /// The pipeline stage.
@@ -117,6 +154,7 @@ module Hl =
             | TransferDst -> VkPipelineStageFlags.Transfer
             | ShaderRead -> VkPipelineStageFlags.FragmentShader
             | ColorAttachmentWrite -> VkPipelineStageFlags.ColorAttachmentOutput
+            | DepthAttachment -> VkPipelineStageFlags.EarlyFragmentTests
             | Present -> VkPipelineStageFlags.BottomOfPipe
     
     /// The format of a vertex attribute.
@@ -267,12 +305,12 @@ module Hl =
             VkColorComponentFlags.A
         blendAttachment
 
-    /// Make a VkVertexInputBindingDescription with vertex input rate.
-    let makeVertexBindingVertex (binding : int) (stride : int) =
+    /// Make a VkVertexInputBindingDescription.
+    let makeVertexBinding (binding : int) (stride : int) inputRate =
         let mutable bindingDescription = VkVertexInputBindingDescription ()
         bindingDescription.binding <- uint binding
         bindingDescription.stride <- uint stride
-        bindingDescription.inputRate <- VkVertexInputRate.Vertex
+        bindingDescription.inputRate <- inputRate
         bindingDescription
 
     /// Make a VkVertexInputAttributeDescription.
@@ -315,27 +353,48 @@ module Hl =
         blit
     
     /// Make a VkRenderingInfo.
-    /// NOTE: DJL: must be inline to keep pointer valid.
-    let inline makeRenderingInfo imageView renderArea clearValueOpt =
+    let inline makeRenderingInfo (colorAttachments : VkImageView array) depthAttachmentOpt renderArea clearValueOpt =
         
-        // attachment info
-        let mutable aInfo = VkRenderingAttachmentInfo ()
-        aInfo.imageView <- imageView
-        aInfo.imageLayout <- ColorAttachmentWrite.VkImageLayout
-        aInfo.storeOp <- VkAttachmentStoreOp.Store
-        match clearValueOpt with
-        | Some clearValue ->
-            aInfo.loadOp <- VkAttachmentLoadOp.Clear
-            aInfo.clearValue <- clearValue
-        | None ->
-            aInfo.loadOp <- VkAttachmentLoadOp.Load
+        // NOTE: DJL: must be inline to keep pointers valid.
+        
+        // color attachment infos
+        let cInfos = Array.zeroCreate colorAttachments.Length
+        for i in 0 .. dec cInfos.Length do
+            let mutable cInfo = VkRenderingAttachmentInfo ()
+            cInfo.imageView <- colorAttachments.[i]
+            cInfo.imageLayout <- ColorAttachmentWrite.VkImageLayout
+            cInfo.storeOp <- VkAttachmentStoreOp.Store
+            match clearValueOpt with
+            | Some clearValue ->
+                cInfo.loadOp <- VkAttachmentLoadOp.Clear
+                cInfo.clearValue <- clearValue
+            | None ->
+                cInfo.loadOp <- VkAttachmentLoadOp.Load
+            cInfos.[i] <- cInfo
+        use cInfosPin = new ArrayPin<_> (cInfos)
 
+        // depth attachment info
+        let mutable dInfo = VkRenderingAttachmentInfo ()
+        match depthAttachmentOpt with
+        | Some depthAttachment ->
+            dInfo.imageView <- depthAttachment
+            dInfo.imageLayout <- DepthAttachment.VkImageLayout
+            dInfo.storeOp <- VkAttachmentStoreOp.Store
+            match clearValueOpt with
+            | Some _ ->
+                dInfo.loadOp <- VkAttachmentLoadOp.Clear
+                dInfo.clearValue <- VkClearValue (1.0f, 0u)
+            | None ->
+                dInfo.loadOp <- VkAttachmentLoadOp.Load
+        | None -> ()
+        
         // rendering info
         let mutable rInfo = VkRenderingInfo ()
         rInfo.renderArea <- renderArea
         rInfo.layerCount <- 1u
-        rInfo.colorAttachmentCount <- 1u
-        rInfo.pColorAttachments <- asPointer &aInfo
+        rInfo.colorAttachmentCount <- uint cInfos.Length
+        rInfo.pColorAttachments <- cInfosPin.Pointer
+        if depthAttachmentOpt.IsSome then rInfo.pDepthAttachment <- asPointer &dInfo
         rInfo
     
     /// Check that VkRect2D has non-zero area.
@@ -422,7 +481,7 @@ module Hl =
         shaderModule
 
     /// Record command to transition image layout.
-    let recordTransitionLayout cb allLevels mipNumber layer imageAspect (oldLayout : ImageLayout) (newLayout : ImageLayout) vkImage =
+    let recordTransitionLayout cb allLevels mipNumber layer layerCount imageAspect (oldLayout : ImageLayout) (newLayout : ImageLayout) vkImage =
         
         // mipNumber means total number of mips or the target mip depending on context
         let mipLevels = if allLevels then mipNumber else 1
@@ -437,7 +496,7 @@ module Hl =
         barrier.srcQueueFamilyIndex <- Vulkan.VK_QUEUE_FAMILY_IGNORED
         barrier.dstQueueFamilyIndex <- Vulkan.VK_QUEUE_FAMILY_IGNORED
         barrier.image <- vkImage
-        barrier.subresourceRange <- makeSubresourceRange mipLevel mipLevels layer 1 imageAspect
+        barrier.subresourceRange <- makeSubresourceRange mipLevel mipLevels layer layerCount imageAspect
         Vulkan.vkCmdPipelineBarrier
             (cb,
              oldLayout.PipelineStage,
@@ -453,14 +512,13 @@ module Hl =
         capabilities
     
     /// Create an image view.
-    let createImageView pixelFormat format mips isCube imageAspect image device =
+    let createImageView pixelFormat vkFormat mipLevel mipCount layer layerCount viewType imageAspect image device =
         let mutable info = VkImageViewCreateInfo ()
         info.image <- image
-        info.viewType <- if isCube then VkImageViewType.ImageCube else VkImageViewType.Image2D
-        info.format <- format
+        info.viewType <- viewType
+        info.format <- vkFormat
         info.components <- makeComponentMapping pixelFormat
-        let layers = if isCube then 6 else 1
-        info.subresourceRange <- makeSubresourceRange 0 mips 0 layers imageAspect
+        info.subresourceRange <- makeSubresourceRange mipLevel mipCount layer layerCount imageAspect
         let mutable imageView = Unchecked.defaultof<VkImageView>
         Vulkan.vkCreateImageView (device, &info, nullPtr, &imageView) |> check
         imageView
@@ -512,16 +570,9 @@ module Hl =
     /// Init recording to a transient command buffer.
     /// TODO: DJL: review choice of transient command buffers over normal ones.
     let initCommandBufferTransient commandPool device =
-        
-        // create command buffer
         let cb = allocateCommandBuffer commandPool device
-
-        // reset command buffer and begin recording
-        Vulkan.vkResetCommandPool (device, commandPool, VkCommandPoolResetFlags.None) |> check
         let mutable cbInfo = VkCommandBufferBeginInfo (flags = VkCommandBufferUsageFlags.OneTimeSubmit)
         Vulkan.vkBeginCommandBuffer (cb, asPointer &cbInfo) |> check
-
-        // return command buffer
         cb
     
     /// A physical device and associated data.
@@ -689,7 +740,7 @@ module Hl =
         /// Create the image views.
         static member private createImageViews format (images : VkImage array) device =
             let imageViews = Array.zeroCreate<VkImageView> images.Length
-            for i in 0 .. dec imageViews.Length do imageViews.[i] <- createImageView Rgba format 1 false VkImageAspectFlags.Color images.[i] device
+            for i in 0 .. dec imageViews.Length do imageViews.[i] <- createImageView Rgba format 0 1 0 1 VkImageViewType.Image2D VkImageAspectFlags.Color images.[i] device
             imageViews
         
         /// Create a SwapchainInternal.
@@ -1037,10 +1088,16 @@ module Hl =
             let header = "Vulkan" + typeLabel + severityLabel
             
             // decide when to log
-            if not (messageType = VkDebugUtilsMessageTypeFlagsEXT.General && messageSeverity <= VkDebugUtilsMessageSeverityFlagsEXT.Info) then Log.custom header message
+            if not
+                (messageType = VkDebugUtilsMessageTypeFlagsEXT.General &&
+                 messageSeverity <= VkDebugUtilsMessageSeverityFlagsEXT.Info)
+            then Log.custom header message
             
             // decide when to fail
-            if messageSeverity = VkDebugUtilsMessageSeverityFlagsEXT.Error then System.Diagnostics.Debugger.Break (); failwith "Vulkan error, see Log."
+            if
+                (messageType = VkDebugUtilsMessageTypeFlagsEXT.Validation && // at least general errors must be allowed, otherwise Nsight launch may fail
+                 messageSeverity = VkDebugUtilsMessageSeverityFlagsEXT.Error)
+            then failwith "Vulkan error, see Log."
             
             // finish passively
             ignore pUserData
@@ -1074,6 +1131,7 @@ module Hl =
             Vulkan.vkEnumerateInstanceLayerProperties (asPointer &layerCount, layersPin.Pointer) |> check
 
             // check if validation layer exists
+            // TODO: DJL: try to automatically prevent validation from interfering with Nsight, starting with VK_VALIDATION_FEATURE_DISABLE_UNIQUE_HANDLES_EXT.
             let validationLayer = "VK_LAYER_KHRONOS_validation"
             let validationLayerExists = Array.exists (fun x -> getLayerName x = validationLayer) layers
             if ValidationLayersEnabled && not validationLayerExists then Log.info (validationLayer + " is not available. Vulkan programmers must install the Vulkan SDK to enable validation.")
@@ -1117,6 +1175,7 @@ module Hl =
             Vulkan.vkCreateInstance (&info, nullPtr, &instance) |> check
             instance
 
+        // TODO: DJL: try separate this from validation status, same for create instance debug.
         static member private tryCreateDebugMessenger info instance =
             if ValidationLayersActivated then
                 let mutable debugMessenger = Unchecked.defaultof<VkDebugUtilsMessengerEXT>
@@ -1349,8 +1408,8 @@ module Hl =
                     let extent = vkc.Swapchain_.SwapExtent_
                     let swapchainBounds = box2i v2iZero (v2i (int extent.width) (int extent.height))
                     if
-                        swapchainBounds.Contains windowViewport.Bounds = ContainmentType.Contains &&
-                        windowViewport.Bounds.Contains windowViewport.Inner = ContainmentType.Contains
+                        swapchainBounds.ContainsInclusive windowViewport.Bounds = ContainmentType.Contains &&
+                        windowViewport.Bounds.ContainsInclusive windowViewport.Inner = ContainmentType.Contains
                     then
                         // try to acquire image from swapchain to draw onto
                         // NOTE: DJL: due to semaphore, if this is successful, the render *must* proceed!
@@ -1369,19 +1428,19 @@ module Hl =
                 initCommandBuffer vkc.RenderCommandBuffer
                 
                 // transition swapchain image layout to color attachment
-                recordTransitionLayout vkc.RenderCommandBuffer true 1 0 VkImageAspectFlags.Color Undefined ColorAttachmentWrite vkc.Swapchain_.Image
+                recordTransitionLayout vkc.RenderCommandBuffer true 1 0 1 VkImageAspectFlags.Color Undefined ColorAttachmentWrite vkc.Swapchain_.Image
                 
                 // clear screen
                 let renderArea = VkRect2D (VkOffset2D.Zero, vkc.Swapchain_.SwapExtent_)
                 let clearColor = VkClearValue (Constants.Render.WindowClearColor.R, Constants.Render.WindowClearColor.G, Constants.Render.WindowClearColor.B, Constants.Render.WindowClearColor.A)
-                let mutable rendering = makeRenderingInfo vkc.SwapchainImageView renderArea (Some clearColor)
+                let mutable rendering = makeRenderingInfo [|vkc.SwapchainImageView|] None renderArea (Some clearColor)
                 Vulkan.vkCmdBeginRendering (vkc.RenderCommandBuffer, asPointer &rendering)
                 Vulkan.vkCmdEndRendering vkc.RenderCommandBuffer
 
                 // clear viewport
                 let renderArea = VkRect2D (windowViewport.Bounds.Min.X, windowViewport.Bounds.Min.Y, uint windowViewport.Bounds.Size.X, uint windowViewport.Bounds.Size.Y)
                 let clearColor = VkClearValue (Constants.Render.ViewportClearColor.R, Constants.Render.ViewportClearColor.G, Constants.Render.ViewportClearColor.B, Constants.Render.ViewportClearColor.A)
-                let mutable rendering = makeRenderingInfo vkc.SwapchainImageView renderArea (Some clearColor)
+                let mutable rendering = makeRenderingInfo [|vkc.SwapchainImageView|] None renderArea (Some clearColor)
                 Vulkan.vkCmdBeginRendering (vkc.RenderCommandBuffer, asPointer &rendering)
                 Vulkan.vkCmdEndRendering vkc.RenderCommandBuffer
 
@@ -1394,7 +1453,7 @@ module Hl =
             if vkc.RenderDesired_ then
             
                 // transition swapchain image layout to presentation
-                recordTransitionLayout vkc.RenderCommandBuffer true 1 0 VkImageAspectFlags.Color ColorAttachmentWrite Present vkc.Swapchain_.Image
+                recordTransitionLayout vkc.RenderCommandBuffer true 1 0 1 VkImageAspectFlags.Color ColorAttachmentWrite Present vkc.Swapchain_.Image
                 
                 // the *simple* solution: https://vulkan-tutorial.com/Drawing_a_triangle/Drawing/Rendering_and_presentation#page_Subpass-dependencies
                 let waitStage = VkPipelineStageFlags.TopOfPipe

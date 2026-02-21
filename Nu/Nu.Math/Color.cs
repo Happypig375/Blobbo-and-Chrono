@@ -1,3 +1,12 @@
+//
+// Color.cs
+//
+// Copyright (C) 2025 OpenTK
+//
+// This software may be modified and distributed under the terms
+// of the MIT license at https://github.com/opentk/opentk/blob/master/LICENSE.md
+//
+
 using System;
 
 namespace System.Numerics
@@ -48,6 +57,13 @@ namespace System.Numerics
         /// The alpha component as a byte.
         /// </summary>
         public readonly byte A8 => (byte)(A * 255.0f);
+
+        /// <summary>
+        /// Instantiates a new <see cref="V3"/> from the R, G, and B components of a <see cref="Color"/>.
+        /// </summary>
+        /// <param name="col">The color which the instantiated vector will use the X,Y and Z from, in that order.</param>
+        /// <returns>The vector that was instantiated.</returns>
+        public readonly Vector3 V3 => new Vector3(R, G, B);
 
         /// <summary>
         /// Instantiates a new <see cref="V4"/> from the R, G, B and A components of a <see cref="Color"/>.

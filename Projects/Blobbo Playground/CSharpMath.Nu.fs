@@ -11,86 +11,77 @@ module [<AutoOpen>] Helpers =
     let toDrawingColor (color: Color) =
         Drawing.Color.FromArgb (int color.A8, int color.R8, int color.G8, int color.B8)
 
-type NuCanvas (transform : Transform inref, world : Nu.World) =
-    let mutable transform = transform
-    member _.World = world
-    member _.Transform = transform
-    member val TransformStack = Stack<Transform> () with get
+type NuCanvas (width, height) =
+    let transformStack = Stack<Matrix3x2> ()
+    member this.Width = width
+    member this.Height = height
+    member val Transform = Matrix3x2.Identity with get, set
+    member val Tessellations = List<ContourTessellation * Matrix3x2> () with get
     member val CurrentColor = Nullable<Drawing.Color> () with get, set
     member val DefaultColor = Drawing.Color.Black with get, set
     member val CurrentStyle = CSharpMath.Rendering.FrontEnd.PaintStyle.Fill with get, set
-    member this.Scale (sx, sy) = transform.Scale <- v3 (transform.Scale.X * sx) (transform.Scale.Y * sy) 1f
+    member this.Scale (sx : single, sy : single) =
+        this.Transform <- Matrix3x2.CreateScale (sx, sy) * this.Transform
     interface CSharpMath.Rendering.FrontEnd.ICanvas with
-        member this.Width = transform.Size.X * transform.Scale.X
-        member this.Height = transform.Size.Y * transform.Scale.Y
+        member this.Width = width
+        member this.Height = height
         member this.CurrentColor with get () = this.CurrentColor and set value = this.CurrentColor <- value
         member this.DefaultColor with get () = this.DefaultColor and set value = this.DefaultColor <- value
         member this.CurrentStyle with get () = this.CurrentStyle and set value = this.CurrentStyle <- value
         member this.DrawLine (x1, y1, x2, y2, lineThickness) =
-            World.renderVectorPath
-                { Transform = transform
-                  ClipOpt = ValueNone
-                  Commands =
+            this.Tessellations.Add
+                (ContourTessellation.make
                     [| MoveTo (v2 x1 y1)
                        LineTo (v2 x2 y2) |]
-                  FillColor = Color.Zero
-                  WindingRule = WindingRule.Default
-                  StrokeColor = this.CurrentColor ?^ this.DefaultColor |> toNuColor
-                  StrokeThickness = lineThickness } world
+                    ContourFill.none
+                    (ContourStroke.antiAliased (this.CurrentColor ?^ this.DefaultColor |> toNuColor) lineThickness)
+                    (v2 width height), this.Transform)
         member this.FillRect (x, y, width, height) =
-            World.renderVectorPath
-                { Transform = transform
-                  ClipOpt = ValueNone
-                  Commands =
+            this.Tessellations.Add
+                (ContourTessellation.make
                     [| MoveTo (v2 x y)
                        LineTo (v2 (x + width) y)
                        LineTo (v2 (x + width) (y + height))
                        LineTo (v2 x (y + height))
                        CloseContour |]
-                  FillColor = this.CurrentColor ?^ this.DefaultColor |> toNuColor
-                  WindingRule = WindingRule.Default
-                  StrokeColor = Color.Zero
-                  StrokeThickness = 0.0f } world
-        member this.StrokeRect (left, top, width, height) =
-            World.renderVectorPath
-                { Transform = transform
-                  ClipOpt = ValueNone
-                  Commands =
-                    [| MoveTo (v2 left top)
-                       LineTo (v2 (left + width) top)
-                       LineTo (v2 (left + width) (top + height))
-                       LineTo (v2 left (top + height))
+                    (ContourFill.ofColor (this.CurrentColor ?^ this.DefaultColor |> toNuColor))
+                    ContourStroke.none
+                    (v2 width height), this.Transform)
+        member this.StrokeRect (x, y, width, height) =
+            this.Tessellations.Add
+                (ContourTessellation.make
+                    [| MoveTo (v2 x y)
+                       LineTo (v2 (x + width) y)
+                       LineTo (v2 (x + width) (y + height))
+                       LineTo (v2 x (y + height))
                        CloseContour |]
-                  FillColor = Color.Zero
-                  WindingRule = WindingRule.Default
-                  StrokeColor = this.CurrentColor ?^ this.DefaultColor |> toNuColor
-                  StrokeThickness = 2f } world
-        member this.Save () = this.TransformStack.Push transform
-        member this.Restore () = transform <- this.TransformStack.Pop ()
-        member this.Translate (dx, dy) = transform.Position <- transform.Position + (v3 dx dy 0f * transform.Scale * transform.Size).Transform transform.Rotation
+                    ContourFill.none
+                    (ContourStroke.antiAliased (this.CurrentColor ?^ this.DefaultColor |> toNuColor) 2f)
+                    (v2 width height), this.Transform)
+        member this.Save () = transformStack.Push this.Transform
+        member this.Restore () = this.Transform <- transformStack.Pop ()
+        member this.Translate (dx, dy) = this.Transform <- Matrix3x2.CreateTranslation (v2 dx dy) * this.Transform
         member this.Scale (sx, sy) = this.Scale (sx, sy)
         member this.StartNewPath () = new NuPath (this)
 
 and NuPath (owner : NuCanvas) =
     inherit CSharpMath.Rendering.FrontEnd.Path ()
-    member val VectorPathCommands = ResizeArray<VectorPathCommand>()
-    override this.MoveTo(x, y) = this.VectorPathCommands.Add (MoveTo (v2 x y))
-    override this.LineTo(x, y) = this.VectorPathCommands.Add (LineTo (v2 x y))
-    override this.Curve3(cpx, cpy, x, y) = this.VectorPathCommands.Add (QuadraticCurveTo (v2 cpx cpy, v2 x y))
-    override this.Curve4(cp1x, cp1y, cp2x, cp2y, x, y) =
-        this.VectorPathCommands.Add (CubicCurveTo (v2 cp1x cp1y, v2 cp2x cp2y, v2 x y))
-    override this.CloseContour() = this.VectorPathCommands.Add CloseContour
-    override val Foreground = Nullable<Drawing.Color>() with get, set
+    member val ContourCommands = List<ContourCommand> ()
+    override this.MoveTo (x, y) = this.ContourCommands.Add (MoveTo (v2 x y))
+    override this.LineTo (x, y) = this.ContourCommands.Add (LineTo (v2 x y))
+    override this.Curve3 (cpx, cpy, x, y) = this.ContourCommands.Add (QuadraticCurveTo (v2 cpx cpy, v2 x y))
+    override this.Curve4 (cp1x, cp1y, cp2x, cp2y, x, y) =
+        this.ContourCommands.Add (CubicCurveTo (v2 cp1x cp1y, v2 cp2x cp2y, v2 x y))
+    override this.CloseContour () = this.ContourCommands.Add CloseContour
+    override val Foreground = Nullable<Drawing.Color> () with get, set
     override this.Dispose () =
         let color = this.Foreground ?^ owner.CurrentColor ?^ owner.DefaultColor |> toNuColor
-        World.renderVectorPath
-            { Transform = owner.Transform
-              ClipOpt = ValueNone
-              Commands = this.VectorPathCommands.ToArray()
-              FillColor = if owner.CurrentStyle = CSharpMath.Rendering.FrontEnd.PaintStyle.Fill then color else Color.Zero
-              WindingRule = WindingRule.Default
-              StrokeColor = if owner.CurrentStyle = CSharpMath.Rendering.FrontEnd.PaintStyle.Stroke then color else Color.Zero
-              StrokeThickness = 2.0f } owner.World
+        owner.Tessellations.Add
+            (ContourTessellation.make
+                this.ContourCommands
+                (ContourFill.ofColor (if owner.CurrentStyle = CSharpMath.Rendering.FrontEnd.PaintStyle.Fill then color else Color.Zero))
+                (ContourStroke.antiAliased (if owner.CurrentStyle = CSharpMath.Rendering.FrontEnd.PaintStyle.Stroke then color else Color.Zero) 2f)
+                (v2 owner.Width owner.Height), owner.Transform)
 
 type MathPainter () =
     inherit CSharpMath.Rendering.FrontEnd.MathPainter<NuCanvas, Color> ()
@@ -99,14 +90,18 @@ type MathPainter () =
     override _.WrapColor color = color |> toDrawingColor
 
 namespace BlobboPlayground
+open System.Collections.Generic
+open System.Numerics
 open Prime
 open Nu
 open CSharpMath.Atom
 open CSharpMath.Editor
 open CSharpMath.Nu
-open System.Numerics
 module [<AutoOpen>] MathFacetExtensions =
     type Entity with
+        member this.GetTessellations world : (ContourTessellation * Matrix3x2) List = this.Get (nameof this.Tessellations) world
+        member this.SetTessellations (value : (ContourTessellation * Matrix3x2) List) world = this.Set (nameof this.Tessellations) value world
+        member this.Tessellations = lens (nameof this.Tessellations) this this.GetTessellations this.SetTessellations
         member this.GetLaTeX world : string = this.Get (nameof this.LaTeX) world
         member this.SetLaTeX (value : string) world = this.Set (nameof this.LaTeX) value world
         member this.LaTeX = lens (nameof this.LaTeX) this this.GetLaTeX this.SetLaTeX
@@ -143,8 +138,25 @@ type MathFacet () =
                 |> Option.orElseWith (fun () -> findNextPlaceholder atom.Superscript |> Option.map (fun subIndex -> MathListIndex.IndexAtLocation (i, MathListSubIndexType.Superscript, subIndex)))
         )
 
+    static let updateOverflowAndTessellation (entity : Entity) world =
+        entity.SetOverflow (entity.GetStrokeThickness world) world
+        let painter = entity.GetMathPainter world
+        let size = v2 painter.Display.Width (painter.Display.Ascent + painter.Display.Descent)
+        entity.SetSize size.V3 world
+        let width = size.X * (entity.GetScale world).X
+        let height = size.Y * (entity.GetScale world).Y
+        if width > 0f && height > 0f then
+            let transform = entity.GetTransform world
+            let canvas = NuCanvas (width, height)
+            canvas.Scale (1f / width, -1f / height)
+            painter.Draw (canvas, width * -0.5f, (painter.Display.Ascent - painter.Display.Descent) * (entity.GetScale world).Y * 0.5f)
+            entity.SetTessellations canvas.Tessellations world
+        Cascade
+
     static member Properties =
-        [define Entity.LaTeX ""
+        [define Entity.OverflowAbsolute true
+         nonPersistent Entity.Tessellation ContourTessellation.empty
+         define Entity.LaTeX ""
          define Entity.MathFontSize 12f
          define Entity.Color Color.White
          nonPersistent Entity.MathPainter Unchecked.defaultof<MathPainter>
@@ -169,12 +181,38 @@ type MathFacet () =
         World.sense (fun event world ->
             (event.Subscriber.GetMathPainter world).TextColor <- (event.Data : ChangeData).Value :?> Color
             Cascade) entity.Color.ChangeEvent entity (nameof MathFacet) world
+        for propertyName in
+            [nameof Entity.Size; nameof Entity.Scale
+             nameof Entity.FillColor; nameof Entity.FillWinding; nameof Entity.StrokeColor; nameof Entity.StrokeThickness
+             nameof Entity.CornerRadius] do
+            World.sense (constant $ updateOverflowAndTessellation entity) (entity.ChangeEvent propertyName) entity (nameof RectangleRoundedContour2dFacet) world
+        updateOverflowAndTessellation entity world |> ignore<Handling>
 
     override this.Render (_, entity, world) =
-        let painter = entity.GetMathPainter world
-        let height = painter.Display.Ascent + painter.Display.Descent
-        if painter.Display.Width > 0f && height > 0f then
-            let transform = entity.GetTransform world
-            let canvas = NuCanvas (&transform, world)
-            canvas.Scale (1f / painter.Display.Width, -1f / height)
-            painter.Draw (canvas, painter.Display.Width * -0.5f, (painter.Display.Ascent - painter.Display.Descent) * 0.5f)
+        let t = entity.GetTransform world
+        for (tess, transform) in entity.GetTessellations world do
+            let mutable t = t
+
+            // Combine all transformations: stored transform * entity scale * entity rotation * entity translation
+            let combinedTransform = 
+                transform 
+                * Matrix3x2.CreateScale (t.Scale.X, t.Scale.Y)
+                * Matrix3x2.CreateRotation t.Rotation.Angle2d
+                * Matrix3x2.CreateTranslation (t.Position.X, t.Position.Y)
+
+            // Extract translation
+            t.Position <- v3 combinedTransform.M31 combinedTransform.M32 t.Position.Z
+            
+            // Extract scale and rotation
+            let scaleX = sqrt (combinedTransform.M11 * combinedTransform.M11 + combinedTransform.M12 * combinedTransform.M12)
+            let scaleY = sqrt (combinedTransform.M21 * combinedTransform.M21 + combinedTransform.M22 * combinedTransform.M22)
+            t.Scale <- v3 scaleX scaleY t.Scale.Z
+            
+            // Extract rotation (angle in radians from the normalized rotation matrix)
+            let rotation = atan2 (combinedTransform.M12 / scaleX) (combinedTransform.M11 / scaleX)
+            t.Rotation <- Quaternion.CreateFromAxisAngle (Vector3.UnitZ, rotation)
+            
+            World.renderContour
+                { Transform = t
+                  ClipOpt = entity.GetClipOpt world |> Option.toValueOption
+                  Tessellation = tess } world

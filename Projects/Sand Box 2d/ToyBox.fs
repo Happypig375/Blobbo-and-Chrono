@@ -101,7 +101,7 @@ type ToyBoxDispatcher () =
         | Some (draggedEntity, dragOffset, draggedBodyType) when World.isMouseButtonDown MouseLeft world ->
 
             // begin declaration of the mouse sensor - an empty body with the mouse position.
-            World.beginEntity<Sphere2dDispatcher> "Mouse Sensor"
+            World.beginEntity<OrbBody2dDispatcher> "Mouse Sensor"
                 [Entity.BodyShape .= EmptyShape
                  Entity.Visible .= false
                  Entity.Position @= mousePosition] world |> ignore
@@ -166,7 +166,7 @@ type ToyBoxDispatcher () =
 
     static let processMouseScrolling (toyBox : Screen) world =
         let mousePosition = (World.getMousePosition2dWorld false world).V3
-        for event in World.doSubscription "MouseWheel" Game.MouseWheelEvent world do
+        for event in World.doSubscription "MouseScroll" Game.MouseScrollEvent world do
             let physicsAnchors = toyBox.GetEntityRedirects world
             for entity in World.getEntities2dAtPoint mousePosition.V2 (hashSetPlus HashIdentity.Structural []) world do
                 let entity = FMap.tryFind entity physicsAnchors |> Option.defaultValue entity
@@ -329,7 +329,7 @@ type ToyBoxDispatcher () =
         // begin anchor blade declaration
         let x = Gen.randomf1 500f - 250f
         let y = Gen.randomf1 350f - 175f
-        World.beginEntity<Block2dDispatcher> name
+        World.beginEntity<BlockBody2dDispatcher> name
             [Entity.Position |= spawnCenter + v3 x y 0f
              Entity.Size .= v3 64f 8f 0f
              Entity.BodyType .= Kinematic // does not react to forces or collisions, but can be moved by setting its velocity (here angular)
@@ -375,7 +375,7 @@ type ToyBoxDispatcher () =
 
         // begin center ball declaration
         let ballSize = 32f
-        World.beginEntity<Ball2dDispatcher> name
+        World.beginEntity<BallBody2dDispatcher> name
             [Entity.Position |= spawnCenter
              Entity.Size .= v3 ballSize ballSize 0f] world |> ignore
 
@@ -422,7 +422,7 @@ type ToyBoxDispatcher () =
         // begin declaring head as parent
         let ballY = 60f
         let ballSize = 20f
-        World.beginEntity<Ball2dDispatcher> $"{name}"
+        World.beginEntity<BallBody2dDispatcher> $"{name}"
             [Entity.Position |= spawnCenter + v3 0f 60f 0f
              Entity.Size .= v3 ballSize ballSize 0f
              Entity.AngularDamping .= 2f
@@ -529,7 +529,7 @@ type ToyBoxDispatcher () =
         let boxSize = 8f
         let spawnScale = boxSize * boxCount / 8f
         let (spawnX, spawnY) = (0f, 0f)
-        World.beginEntity<Ball2dDispatcher> name
+        World.beginEntity<BallBody2dDispatcher> name
             [Entity.Position |= spawnCenter + v3 spawnX spawnY 0f
              Entity.Size .= v3Dup 16f
              Entity.Visible .= false] world |> ignore
@@ -682,7 +682,7 @@ type ToyBoxDispatcher () =
         let density = Density (1f / objectScale ** 2f)
         let pivot = v3 0f 0.8f 0f
         let wheelAnchor = v3 0f -0.8f 0f
-        World.beginEntity<Box2dDispatcher> $"{name}"
+        World.beginEntity<BoxBody2dDispatcher> $"{name}"
             [Entity.Position |= spawnCenter + pivot * objectScale
              Entity.Size .= v3 5f 2f 0f * objectScale
              Entity.Elevation .= -0.7f
@@ -816,8 +816,6 @@ type ToyBoxDispatcher () =
                     World.doBodyJoint2d $"{name} {directionName} {rotation} Distance Joint {i}"
                         [Entity.BodyJoint |= Box2dNetBodyJoint { CreateBodyJoint = fun toPhysics toPhysicsV2 a b world' ->
                             if i = 0 then
-                                // HACK: the Aether demo uses mutable rotations of the wheel when initializing, doing
-                                // it here won't screw up the joint distances.
                                 wheel.SetRotation (Quaternion.CreateFromAngle2d (rotation * 2f * MathF.PI_OVER_3)) world
                             let mutable jointDef = B2Joints.b2DefaultDistanceJointDef ()
                             jointDef.``base``.bodyIdA <- a
@@ -933,10 +931,17 @@ type ToyBoxDispatcher () =
                  Entity.StaticImage .= Assets.Gameplay.BackgroundImage] world |> ignore
 
             // declare avatar
-            let (avatarBody, _) =
-                World.doCharacter2d "Avatar"
-                    [Entity.Gravity .= GravityWorld] world // characters have 3x gravity by default, get rid of it
+            World.doEntity<ToyCharacter2dDispatcher> "Avatar" [] world
             let avatar = world.DeclaredEntity
+            let avatarBody = avatar.GetBodyId world
+            if World.doSubscriptionAny "GravityChange" Game.Gravity2dChangeEvent world ||
+               World.doSubscriptionAny "AvatarGravityChange" avatar.Gravity.ChangeEvent world then
+                let gravity = avatar.GetGravity world |> Gravity.localize (World.getGravity2d world)
+                if gravity <> v3Zero then
+                    // set avatar right direction and rotation to gravity rotated anticlockwise by 90 degrees
+                    let right = gravity.V2.Rotate MathF.PI_OVER_2
+                    avatar.SetCharacter2dRightDirection right.V3 world
+                    avatar.SetRotation (Quaternion.CreateLookAt2d right) world
 
             // process avatar input
             if World.isKeyboardKeyDown KeyboardKey.Left world then
@@ -1076,7 +1081,7 @@ type ToyBoxDispatcher () =
                      Entity.Text .=
                         "Controls: Left/Right/Up - Move Avatar. Left/Right - Accelerate Car, Down - Brake.\n\
                          Mouse Left - Click button or Drag entity. Mouse Right - Cause an explosion.\n\
-                         Mouse Wheel - Apply rotation to entity.\n\
+                         Mouse Scroll - Apply rotation to entity.\n\
                          Alt+F4 - Close game if not in Editor. Read source code for explanations!"
                      Entity.FontSizing .= Some 10
                      Entity.TextMargin .= v2 5f 0f] world
