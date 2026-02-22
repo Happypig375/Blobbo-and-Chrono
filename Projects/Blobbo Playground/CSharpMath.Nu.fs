@@ -11,11 +11,18 @@ module [<AutoOpen>] Helpers =
     let toDrawingColor (color: Color) =
         Drawing.Color.FromArgb (int color.A8, int color.R8, int color.G8, int color.B8)
 
-type NuCanvas (width, height) =
+type NuCanvas (width, height, strokeThickness) =
     let transformStack = Stack<Matrix3x2> ()
-    member this.Width = width
-    member this.Height = height
-    member val Transform = Matrix3x2.Identity with get, set
+    let mutable _transform = Matrix3x2.Identity
+    let mutable _scale = v2One
+    member this.Transform
+        with get () = _transform
+        and set value =
+            _transform <- value
+            let scaleX = sqrt (this.Transform.M11 * this.Transform.M11 + this.Transform.M12 * this.Transform.M12)
+            let scaleY = sqrt (this.Transform.M21 * this.Transform.M21 + this.Transform.M22 * this.Transform.M22)
+            _scale <- v2 (scaleX * width) (scaleY * height)
+    member _.CurrentScale = _scale
     member val Tessellations = List<ContourTessellation * Matrix3x2> () with get
     member val CurrentColor = Nullable<Drawing.Color> () with get, set
     member val DefaultColor = Drawing.Color.Black with get, set
@@ -35,7 +42,7 @@ type NuCanvas (width, height) =
                        LineTo (v2 x2 y2) |]
                     ContourFill.none
                     (ContourStroke.antiAliased (this.CurrentColor ?^ this.DefaultColor |> toNuColor) lineThickness)
-                    (v2 width height), this.Transform)
+                    this.CurrentScale, this.Transform)
         member this.FillRect (x, y, width, height) =
             this.Tessellations.Add
                 (ContourTessellation.make
@@ -46,7 +53,7 @@ type NuCanvas (width, height) =
                        CloseContour |]
                     (ContourFill.ofColor (this.CurrentColor ?^ this.DefaultColor |> toNuColor))
                     ContourStroke.none
-                    (v2 width height), this.Transform)
+                    this.CurrentScale, this.Transform)
         member this.StrokeRect (x, y, width, height) =
             this.Tessellations.Add
                 (ContourTessellation.make
@@ -56,15 +63,15 @@ type NuCanvas (width, height) =
                        LineTo (v2 x (y + height))
                        CloseContour |]
                     ContourFill.none
-                    (ContourStroke.antiAliased (this.CurrentColor ?^ this.DefaultColor |> toNuColor) 2f)
-                    (v2 width height), this.Transform)
+                    (ContourStroke.antiAliased (this.CurrentColor ?^ this.DefaultColor |> toNuColor) strokeThickness)
+                    this.CurrentScale, this.Transform)
         member this.Save () = transformStack.Push this.Transform
         member this.Restore () = this.Transform <- transformStack.Pop ()
         member this.Translate (dx, dy) = this.Transform <- Matrix3x2.CreateTranslation (v2 dx dy) * this.Transform
         member this.Scale (sx, sy) = this.Scale (sx, sy)
-        member this.StartNewPath () = new NuPath (this)
+        member this.StartNewPath () = new NuPath (this, strokeThickness)
 
-and NuPath (owner : NuCanvas) =
+and NuPath (owner : NuCanvas, strokeThickness : single) =
     inherit CSharpMath.Rendering.FrontEnd.Path ()
     member val ContourCommands = List<ContourCommand> ()
     override this.MoveTo (x, y) = this.ContourCommands.Add (MoveTo (v2 x y))
@@ -80,8 +87,8 @@ and NuPath (owner : NuCanvas) =
             (ContourTessellation.make
                 this.ContourCommands
                 (ContourFill.ofColor (if owner.CurrentStyle = CSharpMath.Rendering.FrontEnd.PaintStyle.Fill then color else Color.Zero))
-                (ContourStroke.antiAliased (if owner.CurrentStyle = CSharpMath.Rendering.FrontEnd.PaintStyle.Stroke then color else Color.Zero) 2f)
-                (v2 owner.Width owner.Height), owner.Transform)
+                (ContourStroke.antiAliased (if owner.CurrentStyle = CSharpMath.Rendering.FrontEnd.PaintStyle.Stroke then color else Color.Zero) strokeThickness)
+                owner.CurrentScale, owner.Transform)
 
 type MathPainter () =
     inherit CSharpMath.Rendering.FrontEnd.MathPainter<NuCanvas, Color> ()
@@ -117,7 +124,7 @@ module [<AutoOpen>] MathFacetExtensions =
 type MathFacet () =
     inherit Facet (false, false, false)
 
-    let rec findNextPlaceholder (mathList: MathList) =
+    static let rec findNextPlaceholder (mathList: MathList) =
         (None, mathList) ||> Seq.foldi (fun i found atom ->
             match found with
             | Some _ -> found
@@ -138,81 +145,71 @@ type MathFacet () =
                 |> Option.orElseWith (fun () -> findNextPlaceholder atom.Superscript |> Option.map (fun subIndex -> MathListIndex.IndexAtLocation (i, MathListSubIndexType.Superscript, subIndex)))
         )
 
-    static let updateOverflowAndTessellation (entity : Entity) world =
-        entity.SetOverflow (entity.GetStrokeThickness world) world
+    static let updateMath (entity : Entity) world =
+        let strokeThickness = entity.GetStrokeThickness world
+        entity.SetOverflow strokeThickness world
         let painter = entity.GetMathPainter world
-        let size = v2 painter.Display.Width (painter.Display.Ascent + painter.Display.Descent)
-        entity.SetSize size.V3 world
-        let width = size.X * (entity.GetScale world).X
-        let height = size.Y * (entity.GetScale world).Y
-        if width > 0f && height > 0f then
-            let transform = entity.GetTransform world
-            let canvas = NuCanvas (width, height)
-            canvas.Scale (1f / width, -1f / height)
-            painter.Draw (canvas, width * -0.5f, (painter.Display.Ascent - painter.Display.Descent) * (entity.GetScale world).Y * 0.5f)
-            entity.SetTessellations canvas.Tessellations world
+        painter.TextColor <- entity.GetFillColor world
+        painter.FontSize <- entity.GetMathFontSize world
+        painter.LaTeX <- entity.GetLaTeX world
+        entity.SetXtensionPropertyWithoutEvent (nameof Entity.LaTeX) painter.LaTeX world
+        entity.SetMathNextInsertion (findNextPlaceholder painter.Content) world
+        let size = painter.Measure 0f
+        if size.Width > 0f then
+            entity.SetSize (v3 size.Width size.Height 0f) world
+            let scale = entity.GetScale world
+            let width = size.Width * scale.X
+            let height = size.Height * scale.Y
+            if width > 0f && height > 0f then
+                let canvas = NuCanvas (width, height, strokeThickness)
+                canvas.Scale (1f / width, -1f / height)
+                painter.Draw (canvas, width * -0.5f, (painter.Display.Ascent - painter.Display.Descent) * (entity.GetScale world).Y * 0.5f)
+                entity.SetTessellations canvas.Tessellations world
         Cascade
 
     static member Properties =
         [define Entity.OverflowAbsolute true
-         nonPersistent Entity.Tessellation ContourTessellation.empty
+         nonPersistent Entity.Tessellations (List ())
          define Entity.LaTeX ""
          define Entity.MathFontSize 12f
-         define Entity.Color Color.White
+         define Entity.FillColor Color.White
+         define Entity.StrokeColor Color.Zero
+         define Entity.StrokeThickness 2f
          nonPersistent Entity.MathPainter Unchecked.defaultof<MathPainter>
          nonPersistent Entity.MathNextInsertion None]
 
     override this.Register (entity, world) =
         entity.Set (nameof Entity.MathPainter) (MathPainter ()) world
-        World.sense (fun event world ->
-            let painter = event.Subscriber.GetMathPainter world
-            painter.LaTeX <- (event.Data : ChangeData).Value :?> string
-            event.Subscriber.SetXtensionPropertyWithoutEvent (nameof Entity.LaTeX) painter.LaTeX world
-            event.Subscriber.SetMathNextInsertion (findNextPlaceholder painter.Content) world
-            let size = painter.Measure 0f
-            event.Subscriber.SetSize (v3 size.Width size.Height 0f) world
-            Cascade) entity.LaTeX.ChangeEvent entity (nameof MathFacet) world
-        World.sense (fun event world ->
-            let painter = event.Subscriber.GetMathPainter world
-            painter.FontSize <- (event.Data : ChangeData).Value :?> single
-            let size = painter.Measure 0f
-            event.Subscriber.SetSize (v3 size.Width size.Height 0f) world
-            Cascade) entity.MathFontSize.ChangeEvent entity (nameof MathFacet) world
-        World.sense (fun event world ->
-            (event.Subscriber.GetMathPainter world).TextColor <- (event.Data : ChangeData).Value :?> Color
-            Cascade) entity.Color.ChangeEvent entity (nameof MathFacet) world
         for propertyName in
-            [nameof Entity.Size; nameof Entity.Scale
-             nameof Entity.FillColor; nameof Entity.FillWinding; nameof Entity.StrokeColor; nameof Entity.StrokeThickness
-             nameof Entity.CornerRadius] do
-            World.sense (constant $ updateOverflowAndTessellation entity) (entity.ChangeEvent propertyName) entity (nameof RectangleRoundedContour2dFacet) world
-        updateOverflowAndTessellation entity world |> ignore<Handling>
+            [nameof Entity.Size; nameof Entity.Scale; nameof Entity.LaTeX; nameof Entity.MathFontSize
+             nameof Entity.FillColor; nameof Entity.StrokeColor; nameof Entity.StrokeThickness] do
+            World.sense (constant $ updateMath entity) (entity.ChangeEvent propertyName) entity (nameof MathFacet) world
+        updateMath entity world |> ignore<Handling>
 
     override this.Render (_, entity, world) =
         let t = entity.GetTransform world
         for (tess, transform) in entity.GetTessellations world do
             let mutable t = t
-
-            // Combine all transformations: stored transform * entity scale * entity rotation * entity translation
-            let combinedTransform = 
-                transform 
-                * Matrix3x2.CreateScale (t.Scale.X, t.Scale.Y)
+            let mutable transform = transform
+            transform.M31 <- transform.M31 * t.Size.X
+            transform.M32 <- transform.M32 * t.Size.Y
+            // combine all transformations: stored transform * entity rotation * entity translation
+            let combinedTransform =
+                transform
                 * Matrix3x2.CreateRotation t.Rotation.Angle2d
                 * Matrix3x2.CreateTranslation (t.Position.X, t.Position.Y)
 
-            // Extract translation
+            // extract all components from the combined transform
             t.Position <- v3 combinedTransform.M31 combinedTransform.M32 t.Position.Z
             
-            // Extract scale and rotation
             let scaleX = sqrt (combinedTransform.M11 * combinedTransform.M11 + combinedTransform.M12 * combinedTransform.M12)
             let scaleY = sqrt (combinedTransform.M21 * combinedTransform.M21 + combinedTransform.M22 * combinedTransform.M22)
             t.Scale <- v3 scaleX scaleY t.Scale.Z
             
-            // Extract rotation (angle in radians from the normalized rotation matrix)
-            let rotation = atan2 (combinedTransform.M12 / scaleX) (combinedTransform.M11 / scaleX)
+            let rotation = atan2 combinedTransform.M12 combinedTransform.M11
             t.Rotation <- Quaternion.CreateFromAxisAngle (Vector3.UnitZ, rotation)
             
             World.renderContour
                 { Transform = t
-                  ClipOpt = entity.GetClipOpt world |> Option.toValueOption
+                  ClipOpt = ValueNone
                   Tessellation = tess } world

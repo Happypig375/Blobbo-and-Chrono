@@ -15,8 +15,7 @@ type MathObjectDispatcher () =
          typeof<RigidBodyFacet>]
 
     static member Properties =
-        [define Entity.Color Color.Black
-         define Entity.BodyType Dynamic]
+        [define Entity.BodyType Dynamic]
 
     override this.Process (entity, world) =
         for penetration in World.doSubscription "Collision" entity.BodyPenetrationEvent world do
