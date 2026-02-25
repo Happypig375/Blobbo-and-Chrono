@@ -5,7 +5,7 @@ open System.Numerics
 open Prime
 open Nu
 
-type RewindRecord = { PropertyName : string; PreviousValue : obj; TimePassed : GameTime }
+type RewindRecord = { PropertyName : string; PreviousValue : Symbol; TimePassed : GameTime }
 type InteractionRecord = { WithOther : Entity Address; WorldTime : GameTime }
 type Rewind = { RewindAnchorOpt : InteractionRecord voption; RewindTime : GameTime }
 module Rewind =
@@ -64,7 +64,7 @@ type RewindableFacet () =
                         if rewindRecord.PropertyName <> Rewind.EventName then
                             rewindProperties[rewindRecord.PropertyName] <- rewindRecord.PreviousValue
                         else
-                            let interactionRecord = rewindRecord.PreviousValue :?> InteractionRecord
+                            let interactionRecord = rewindRecord.PreviousValue |> symbolToValue<InteractionRecord>
                             if rewindAnchorOpt = ValueSome interactionRecord then
                                 rewindAnchorOpt <- ValueNone
                             elif rewindAnchorOpt.IsNone then
@@ -83,7 +83,8 @@ type RewindableFacet () =
                 entity.SetXtensionPropertyWithoutEvent (nameof Entity.AwakeTimeStamp) world.UpdateTime world // otherwise it would sleep
                 entity.SetRewindHistoryActiveInternal false world
                 for KeyValue (property, value) in rewindProperties do
-                    entity.SetProperty property { entity.GetProperty property world with PropertyValue = value } world
+                    let prop = entity.GetProperty property world
+                    entity.SetProperty property { prop with PropertyValue = System.ComponentModel.TypeDescriptor.GetConverter(prop.PropertyType).ConvertFrom value } world
                 entity.SetRewindHistoryActiveInternal true world
             Cascade) entity.RewindEvent entity (nameof RewindableFacet) world
 
@@ -98,7 +99,7 @@ type RewindableFacet () =
                 let mutable continued = true
                 let mutable rewindHistory = entity.GetRewindHistory world
                 let restoreTransform = entity.GetTransform world
-                let restoreXtensions = System.Collections.Generic.Dictionary ()
+                let restoreXtensions = Dictionary ()
                 let mutable rewindTransform = restoreTransform
                 while continued do
                     match rewindHistory with
@@ -106,13 +107,13 @@ type RewindableFacet () =
                         rewindHistory <- rest
                         match rewindRecord.PropertyName with
                         // Intrinsic property list sync point 2/2
-                        | nameof Entity.Position -> rewindTransform.Position <- unbox rewindRecord.PreviousValue
-                        | nameof Entity.Rotation -> rewindTransform.Rotation <- unbox rewindRecord.PreviousValue
-                        | nameof Entity.Size -> rewindTransform.Size <- unbox rewindRecord.PreviousValue
-                        | nameof Entity.Scale -> rewindTransform.Scale <- unbox rewindRecord.PreviousValue
-                        | nameof Entity.Elevation -> rewindTransform.Elevation <- unbox rewindRecord.PreviousValue
+                        | nameof Entity.Position -> rewindTransform.Position <- symbolToValue rewindRecord.PreviousValue
+                        | nameof Entity.Rotation -> rewindTransform.Rotation <- symbolToValue rewindRecord.PreviousValue
+                        | nameof Entity.Size -> rewindTransform.Size <- symbolToValue rewindRecord.PreviousValue
+                        | nameof Entity.Scale -> rewindTransform.Scale <- symbolToValue rewindRecord.PreviousValue
+                        | nameof Entity.Elevation -> rewindTransform.Elevation <- symbolToValue rewindRecord.PreviousValue
                         | Rewind.EventName ->
-                            let interactionRecord = rewindRecord.PreviousValue :?> InteractionRecord
+                            let interactionRecord = rewindRecord.PreviousValue |> symbolToValue<InteractionRecord>
                             if rewindAnchorOpt = ValueSome interactionRecord then
                                 rewindAnchorOpt <- ValueNone
                             elif rewindAnchorOpt.IsNone then
@@ -125,8 +126,9 @@ type RewindableFacet () =
                         | _ ->
                             if not (restoreXtensions.ContainsKey rewindRecord.PropertyName) then
                                 restoreXtensions[rewindRecord.PropertyName] <- entity.GetProperty rewindRecord.PropertyName world
+                            let prop = restoreXtensions[rewindRecord.PropertyName]
                             World.setEntityXtensionPropertyWithoutEvent rewindRecord.PropertyName
-                                { restoreXtensions[rewindRecord.PropertyName] with PropertyValue = rewindRecord.PreviousValue }
+                                { prop with PropertyValue = System.ComponentModel.TypeDescriptor.GetConverter(prop.PropertyType).ConvertFrom rewindRecord.PreviousValue }
                                 entity world |> ignore<struct (bool * bool)>
 
                         if rewindAnchorOpt.IsNone && rewindRecord.TimePassed > GameTime.zero then // only render right before history has a time skip
@@ -154,7 +156,7 @@ type RewindableFacet () =
             World.sense (fun event world ->
                 let entity = event.Subscriber
                 if entity.GetRewindHistoryActiveInternal world then
-                    entity.RewindHistory.Map (List.cons { PropertyName = changeProperty.Name; PreviousValue = event.Data.Previous; TimePassed = entity.GetTimeSinceLastHistoryEntry world }) world
+                    entity.RewindHistory.Map (List.cons { PropertyName = changeProperty.Name; PreviousValue = valueToSymbol event.Data.Previous; TimePassed = entity.GetTimeSinceLastHistoryEntry world }) world
                     entity.SetTimeSinceLastHistoryEntry GameTime.zero world
                 Cascade) changeProperty.ChangeEvent entity (nameof RewindableFacet) world
         senseChangeEvent entity.LinearVelocity
@@ -173,7 +175,7 @@ type RewindableFacet () =
                 entity.RewindHistory.Map (List.cons
                     { PropertyName = Rewind.EventName
                       PreviousValue = { WithOther = collidedWith.EntityAddress
-                                        WorldTime = world.GameTime }
+                                        WorldTime = world.GameTime } |> valueToSymbol
                       TimePassed = entity.GetTimeSinceLastHistoryEntry world }) world
                 entity.SetTimeSinceLastHistoryEntry GameTime.zero world
             Cascade) entity.BodySeparationExplicitEvent entity (nameof RewindableFacet) world
@@ -183,10 +185,10 @@ type RewindableFacet () =
         World.sense (fun event world ->
             let entity = event.Subscriber
             entity.RewindHistory.Map (fun rewindHistory ->
-                [{ PropertyName = nameof Entity.Position; PreviousValue = entity.GetPosition world; TimePassed = GameTime.zero }
-                 { PropertyName = nameof Entity.Rotation; PreviousValue = entity.GetRotation world; TimePassed = GameTime.zero }
-                 { PropertyName = nameof Entity.LinearVelocity; PreviousValue = entity.GetLinearVelocity world; TimePassed = GameTime.zero }
-                 { PropertyName = nameof Entity.AngularVelocity; PreviousValue = entity.GetAngularVelocity world; TimePassed = entity.GetTimeSinceLastHistoryEntry world }
+                [{ PropertyName = nameof Entity.Position; PreviousValue = valueToSymbol <| entity.GetPosition world; TimePassed = GameTime.zero }
+                 { PropertyName = nameof Entity.Rotation; PreviousValue = valueToSymbol <| entity.GetRotation world; TimePassed = GameTime.zero }
+                 { PropertyName = nameof Entity.LinearVelocity; PreviousValue = valueToSymbol <| entity.GetLinearVelocity world; TimePassed = GameTime.zero }
+                 { PropertyName = nameof Entity.AngularVelocity; PreviousValue = valueToSymbol <| entity.GetAngularVelocity world; TimePassed = entity.GetTimeSinceLastHistoryEntry world }
                  yield! rewindHistory]) world
             entity.SetTimeSinceLastHistoryEntry GameTime.zero world
             entity.Physics event.Data.BodyCenter event.Data.BodyRotation event.Data.BodyLinearVelocity event.Data.BodyAngularVelocity world
