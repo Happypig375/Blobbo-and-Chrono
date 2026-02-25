@@ -579,6 +579,7 @@ module Hl =
     type private PhysicalDevice =
         { VkPhysicalDevice : VkPhysicalDevice
           Properties : VkPhysicalDeviceProperties
+          DescriptorIndexingProperties : VkPhysicalDeviceDescriptorIndexingProperties
           Features : VkPhysicalDeviceFeatures
           Extensions : VkExtensionProperties array
           SurfaceCapabilities : VkSurfaceCapabilitiesKHR // NOTE: DJL: keep this here in case we want to use it for device selection.
@@ -592,9 +593,13 @@ module Hl =
         
         /// Get properties.
         static member private getProperties vkPhysicalDevice =
-            let mutable properties = Unchecked.defaultof<VkPhysicalDeviceProperties>
-            Vulkan.vkGetPhysicalDeviceProperties (vkPhysicalDevice, &properties)
-            properties
+            let mutable diProperties = Unchecked.defaultof<VkPhysicalDeviceDescriptorIndexingProperties>
+            diProperties.sType <- Vulkan.VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DESCRIPTOR_INDEXING_PROPERTIES // wrapper stuffed this up
+            let mutable properties = Unchecked.defaultof<VkPhysicalDeviceProperties2>
+            properties.sType <- Vulkan.VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2 // wrapper stuffed this up
+            properties.pNext <- asVoidPtr &diProperties
+            Vulkan.vkGetPhysicalDeviceProperties2 (vkPhysicalDevice, asPointer &properties)
+            (properties.properties, diProperties)
 
         /// Get features.
         static member private getFeatures vkPhysicalDevice =
@@ -661,7 +666,7 @@ module Hl =
 
         /// Attempt to construct PhysicalDevice.
         static member tryCreate vkPhysicalDevice surface =
-            let properties = PhysicalDevice.getProperties vkPhysicalDevice
+            let (properties, diProperties) = PhysicalDevice.getProperties vkPhysicalDevice
             let features = PhysicalDevice.getFeatures vkPhysicalDevice
             let extensions = PhysicalDevice.getExtensions vkPhysicalDevice
             let surfaceCapabilities = getSurfaceCapabilities vkPhysicalDevice surface
@@ -671,6 +676,7 @@ module Hl =
                 let physicalDevice =
                     { VkPhysicalDevice = vkPhysicalDevice
                       Properties = properties
+                      DescriptorIndexingProperties = diProperties
                       Features = features
                       Extensions = extensions
                       SurfaceCapabilities = surfaceCapabilities
@@ -816,8 +822,8 @@ module Hl =
             swapchain.SwapExtent_ <- Swapchain.getSwapExtent vkPhysicalDevice surface swapchain.Window_
         
         /// Check if window is minimized.
-        static member isWindowMinimized swapchain =
-            let flags = SDL.SDL_GetWindowFlags swapchain.Window_
+        static member isWindowMinimized window =
+            let flags = SDL.SDL_GetWindowFlags window
             flags &&& Branchless.reinterpret SDL.SDL_WindowFlags.SDL_WINDOW_MINIMIZED <> 0u
         
         /// Refresh the swapchain for a new swap extent.
@@ -853,9 +859,13 @@ module Hl =
             // get swap extent
             let swapExtent = Swapchain.getSwapExtent physicalDevice.VkPhysicalDevice surface window
             
-            // create first SwapchainInternal
-            let swapchainInternal = SwapchainInternal.create surfaceFormat swapExtent VkSwapchainKHR.Null physicalDevice surface device
-            swapchainInternalOpts.[swapchainIndex] <- Some swapchainInternal
+            // check if window is minimized at startup
+            let windowMinimized = Swapchain.isWindowMinimized window
+            
+            // create first SwapchainInternal if window is not minimized
+            if not windowMinimized then
+                let swapchainInternal = SwapchainInternal.create surfaceFormat swapExtent VkSwapchainKHR.Null physicalDevice surface device
+                swapchainInternalOpts.[swapchainIndex] <- Some swapchainInternal
 
             // make Swapchain
             let swapchain =
@@ -866,7 +876,7 @@ module Hl =
                   SwapchainIndex_ = swapchainIndex }
 
             // fin
-            swapchain
+            (swapchain, windowMinimized)
         
         /// Destroy a Swapchain.
         static member destroy swapchain device =
@@ -1007,6 +1017,9 @@ module Hl =
         
         /// The physical device.
         member this.PhysicalDevice = this.PhysicalDevice_.VkPhysicalDevice
+
+        /// The physical device properties for descriptor indexing.
+        member this.DescriptorIndexingProperties = this.PhysicalDevice_.DescriptorIndexingProperties
 
         /// Anisotropy supported.
         member this.AnisotropySupported = this.PhysicalDevice_.SupportsAnisotropy
@@ -1373,7 +1386,7 @@ module Hl =
 
             // query minimization status
             // NOTE: DJL: this both detects the beginning of minimization and checks for the end.
-            vkc.WindowMinimized_ <- Swapchain.isWindowMinimized vkc.Swapchain_
+            vkc.WindowMinimized_ <- Swapchain.isWindowMinimized vkc.Swapchain_.Window_
 
             // refresh the swapchain if window is not minimized
             // NOTE: DJL: this happens a) when the window size simply changes and b) when minimization ends as detected above.
@@ -1560,7 +1573,7 @@ module Hl =
 
                 // setup swapchain
                 let surfaceFormat = VulkanContext.getSurfaceFormat physicalDevice.SurfaceFormats
-                let swapchain = Swapchain.create surfaceFormat physicalDevice surface window device
+                let (swapchain, windowMinimized) = Swapchain.create surfaceFormat physicalDevice surface window device
                 
                 // render finished semaphores based on swapchain images rather than frames in flight to address
                 // safety issue described in https://docs.vulkan.org/guide/latest/swapchain_semaphore_reuse.html.
@@ -1570,7 +1583,7 @@ module Hl =
                 // make VulkanContext
                 let vulkanContext =
                     { WindowSizeOpt_ = None
-                      WindowMinimized_ = false
+                      WindowMinimized_ = windowMinimized
                       RenderDesired_ = false
                       Instance_ = instance
                       DebugMessengerOpt_ = debugMessengerOpt
