@@ -12,7 +12,7 @@ open System.IO
 open System.Numerics
 open System.Runtime.InteropServices
 open Vortice.Vulkan
-open SDL2
+open SDL
 open Prime
 
 /// A layer from which a 3d terrain's material is composed.
@@ -1205,7 +1205,6 @@ type Renderer3d =
         frustumInterior : Frustum ->
         frustumExterior : Frustum ->
         frustumImposter : Frustum ->
-        lightBox : Box3 ->
         eyeCenter : Vector3 ->
         eyeRotation : Quaternion ->
         eyeFieldOfView : single ->
@@ -1221,13 +1220,15 @@ type [<ReferenceEquality>] StubRenderer3d =
     private
         { StubRenderer3d : unit }
 
-    interface Renderer3d with
-        member renderer.RendererConfig = Renderer3dConfig.defaultConfig
-        member renderer.Render _ _ _ _ _ _ _ _ _ _ = ()
-        member renderer.CleanUp () = ()
-
+    /// Make a StubRenderer3d.
     static member make () =
         { StubRenderer3d = () }
+
+    interface Renderer3d with
+        member renderer.RendererConfig = Renderer3dConfig.defaultConfig
+        member renderer.Render _ _ _ _ _ _ _ _ _ = ()
+        member renderer.CleanUp () = ()
+
 (*
 /// The OpenGL implementation of Renderer3d.
 type [<ReferenceEquality>] GlRenderer3d =
@@ -1436,7 +1437,7 @@ type [<ReferenceEquality>] GlRenderer3d =
         match renderAsset with
         | RawAsset -> () // nothing to do
         | TextureAsset texture -> texture.Destroy ()
-        | FontAsset (_, font) -> SDL_ttf.TTF_CloseFont font
+        | FontAsset (_, font) -> SDL3_ttf.TTF_CloseFont font
         | CubeMapAsset (_, cubeMap, _) -> cubeMap.Destroy ()
         | StaticModelAsset (_, model) -> OpenGL.PhysicallyBased.DestroyPhysicallyBasedModel model
         | AnimatedModelAsset model -> OpenGL.PhysicallyBased.DestroyPhysicallyBasedModel model
@@ -2489,7 +2490,6 @@ type [<ReferenceEquality>] GlRenderer3d =
          frustumInterior : Frustum,
          frustumExterior : Frustum,
          frustumImposter : Frustum,
-         lightBox : Box3,
          renderPass : RenderPass,
          renderTasks : RenderTasks,
          renderer) =
@@ -2518,10 +2518,10 @@ type [<ReferenceEquality>] GlRenderer3d =
                                 | ShadowPass (_, _, shadowLightType, _, _, shadowFrustum) ->
                                     if castShadow then // TODO: see if we should check for CastShadow when constructing the pre-batch.
                                         let shadowFrustumInteriorOpt = if LightType.shouldShadowInterior shadowLightType then ValueSome shadowFrustum else ValueNone
-                                        Presence.intersects3d shadowFrustumInteriorOpt shadowFrustum shadowFrustum ValueNone false false presence bounds
+                                        Presence.intersects3d shadowFrustumInteriorOpt shadowFrustum shadowFrustum false presence bounds
                                     else false
-                                | ReflectionPass (_, reflFrustum) -> Presence.intersects3d ValueNone reflFrustum reflFrustum ValueNone false false presence bounds
-                                | NormalPass -> Presence.intersects3d (ValueSome frustumInterior) frustumExterior frustumImposter (ValueSome lightBox) false false presence bounds
+                                | ReflectionPass (_, reflFrustum) -> Presence.intersects3d ValueNone reflFrustum reflFrustum false presence bounds
+                                | NormalPass -> Presence.intersects3d (ValueSome frustumInterior) frustumExterior frustumImposter false presence bounds
                             if unculled then
                                 renderTasks.Forward.Add struct (subsort, sort, model, castShadow, presence, insetOpt, properties, ValueNone, surface, depthTest)
             | _ -> ()
@@ -2531,7 +2531,6 @@ type [<ReferenceEquality>] GlRenderer3d =
         (frustumInterior : Frustum,
          frustumExterior : Frustum,
          frustumImposter : Frustum,
-         lightBox : Box3,
          model : Matrix4x4 inref,
          castShadow : bool,
          presence : Presence,
@@ -2556,7 +2555,7 @@ type [<ReferenceEquality>] GlRenderer3d =
                     let unculled =
                         match renderPass with
                         | LightMapPass (_, _) -> true // TODO: see if we have enough context to cull here.
-                        | NormalPass -> Presence.intersects3d (ValueSome frustumInterior) frustumExterior frustumImposter (ValueSome lightBox) false true presence lightBounds
+                        | NormalPass -> Presence.intersects3d (ValueSome frustumInterior) frustumExterior frustumImposter false presence lightBounds
                         | _ -> false
                     if unculled then
                         let coneOuter = match light.LightType with SpotLight (_, coneOuter) -> min coneOuter MathF.TWO_PI | _ -> MathF.TWO_PI
@@ -2599,9 +2598,9 @@ type [<ReferenceEquality>] GlRenderer3d =
                         | LightMapPass (_, _) -> true // TODO: see if we have enough context to cull here.
                         | ShadowPass (_, _, shadowLightType, _, _, shadowFrustum) ->
                             let shadowFrustumInteriorOpt = if LightType.shouldShadowInterior shadowLightType then ValueSome shadowFrustum else ValueNone
-                            Presence.intersects3d shadowFrustumInteriorOpt shadowFrustum shadowFrustum ValueNone false false presence surfaceBounds
-                        | ReflectionPass (_, reflFrustum) -> Presence.intersects3d ValueNone reflFrustum reflFrustum ValueNone false false presence surfaceBounds
-                        | NormalPass -> Presence.intersects3d (ValueSome frustumInterior) frustumExterior frustumImposter (ValueSome lightBox) false false presence surfaceBounds
+                            Presence.intersects3d shadowFrustumInteriorOpt shadowFrustum shadowFrustum false presence surfaceBounds
+                        | ReflectionPass (_, reflFrustum) -> Presence.intersects3d ValueNone reflFrustum reflFrustum false presence surfaceBounds
+                        | NormalPass -> Presence.intersects3d (ValueSome frustumInterior) frustumExterior frustumImposter false presence surfaceBounds
                     if unculled then
                         GlRenderer3d.categorizeStaticModelSurface (&surfaceMatrix, castShadow, presence, &insetOpt, &properties, surface, depthTest, renderType, renderPass, ValueSome renderTasks, renderer)
             | _ -> Log.infoOnce ("Cannot render static model with a non-static model asset for '" + scstring staticModel + "'.")
@@ -2857,7 +2856,6 @@ type [<ReferenceEquality>] GlRenderer3d =
         frustumInterior
         frustumExterior
         frustumImposter
-        lightBox
         eyeCenter
         eyeRotation
         renderMessages
@@ -2934,24 +2932,24 @@ type [<ReferenceEquality>] GlRenderer3d =
             | RenderStaticModelSurfacePreBatch rsmsb ->
                 let renderPass = rsmsb.RenderPass
                 let renderTasks = GlRenderer3d.getRenderTasks renderPass renderer
-                GlRenderer3d.categorizeStaticModelSurfacePreBatch (rsmsb.StaticModelSurfacePreBatch.PreBatchId, rsmsb.StaticModelSurfacePreBatch.StaticModelSurfaces, rsmsb.StaticModelSurfacePreBatch.Material, rsmsb.StaticModelSurfacePreBatch.StaticModel, rsmsb.StaticModelSurfacePreBatch.SurfaceIndex, rsmsb.StaticModelSurfacePreBatch.DepthTest, rsmsb.StaticModelSurfacePreBatch.RenderType, frustumInterior, frustumExterior, frustumImposter, lightBox, renderPass, renderTasks, renderer)
+                GlRenderer3d.categorizeStaticModelSurfacePreBatch (rsmsb.StaticModelSurfacePreBatch.PreBatchId, rsmsb.StaticModelSurfacePreBatch.StaticModelSurfaces, rsmsb.StaticModelSurfacePreBatch.Material, rsmsb.StaticModelSurfacePreBatch.StaticModel, rsmsb.StaticModelSurfacePreBatch.SurfaceIndex, rsmsb.StaticModelSurfacePreBatch.DepthTest, rsmsb.StaticModelSurfacePreBatch.RenderType, frustumInterior, frustumExterior, frustumImposter, renderPass, renderTasks, renderer)
             | RenderStaticModelSurfacePreBatches rsmsbs ->
                 let renderPass = rsmsbs.RenderPass
                 let renderTasks = GlRenderer3d.getRenderTasks renderPass renderer
                 for preBatch in rsmsbs.StaticModelSurfacePreBatches do
-                    GlRenderer3d.categorizeStaticModelSurfacePreBatch (preBatch.PreBatchId, preBatch.StaticModelSurfaces, preBatch.Material, preBatch.StaticModel, preBatch.SurfaceIndex, preBatch.DepthTest, preBatch.RenderType, frustumInterior, frustumExterior, frustumImposter, lightBox, renderPass, renderTasks, renderer)
+                    GlRenderer3d.categorizeStaticModelSurfacePreBatch (preBatch.PreBatchId, preBatch.StaticModelSurfaces, preBatch.Material, preBatch.StaticModel, preBatch.SurfaceIndex, preBatch.DepthTest, preBatch.RenderType, frustumInterior, frustumExterior, frustumImposter, renderPass, renderTasks, renderer)
             | RenderStaticModel rsm ->
                 let insetOpt = Option.toValueOption rsm.InsetOpt
                 let renderTasks = GlRenderer3d.getRenderTasks rsm.RenderPass renderer
-                GlRenderer3d.categorizeStaticModel (frustumInterior, frustumExterior, frustumImposter, lightBox, &rsm.ModelMatrix, rsm.CastShadow, rsm.Presence, &insetOpt, &rsm.MaterialProperties, rsm.StaticModel, rsm.Clipped, rsm.DepthTest, rsm.RenderType, rsm.RenderPass, renderTasks, renderer)
+                GlRenderer3d.categorizeStaticModel (frustumInterior, frustumExterior, frustumImposter, &rsm.ModelMatrix, rsm.CastShadow, rsm.Presence, &insetOpt, &rsm.MaterialProperties, rsm.StaticModel, rsm.Clipped, rsm.DepthTest, rsm.RenderType, rsm.RenderPass, renderTasks, renderer)
             | RenderStaticModels rsms ->
                 let renderTasks = GlRenderer3d.getRenderTasks rsms.RenderPass renderer
                 for (model, castShadow, presence, insetOpt, properties) in rsms.StaticModels do // TODO: see if these should be struct tuples.
                     let insetOpt = Option.toValueOption insetOpt
-                    GlRenderer3d.categorizeStaticModel (frustumInterior, frustumExterior, frustumImposter, lightBox, &model, castShadow, presence, &insetOpt, &properties, rsms.StaticModel, rsms.Clipped, rsms.DepthTest, rsms.RenderType, rsms.RenderPass, renderTasks, renderer)
+                    GlRenderer3d.categorizeStaticModel (frustumInterior, frustumExterior, frustumImposter, &model, castShadow, presence, &insetOpt, &properties, rsms.StaticModel, rsms.Clipped, rsms.DepthTest, rsms.RenderType, rsms.RenderPass, renderTasks, renderer)
             | RenderCachedStaticModel csmm ->
                 let renderTasks = GlRenderer3d.getRenderTasks csmm.CachedStaticModelRenderPass renderer
-                GlRenderer3d.categorizeStaticModel (frustumInterior, frustumExterior, frustumImposter, lightBox, &csmm.CachedStaticModelMatrix, csmm.CachedStaticModelCastShadow, csmm.CachedStaticModelPresence, &csmm.CachedStaticModelInsetOpt, &csmm.CachedStaticModelMaterialProperties, csmm.CachedStaticModel, csmm.CachedStaticModelClipped, csmm.CachedStaticModelDepthTest, csmm.CachedStaticModelRenderType, csmm.CachedStaticModelRenderPass, renderTasks, renderer)
+                GlRenderer3d.categorizeStaticModel (frustumInterior, frustumExterior, frustumImposter, &csmm.CachedStaticModelMatrix, csmm.CachedStaticModelCastShadow, csmm.CachedStaticModelPresence, &csmm.CachedStaticModelInsetOpt, &csmm.CachedStaticModelMaterialProperties, csmm.CachedStaticModel, csmm.CachedStaticModelClipped, csmm.CachedStaticModelDepthTest, csmm.CachedStaticModelRenderType, csmm.CachedStaticModelRenderPass, renderTasks, renderer)
             | RenderCachedStaticModelSurface csmsm ->
                 GlRenderer3d.categorizeStaticModelSurfaceByIndex (&csmsm.CachedStaticModelSurfaceMatrix, csmsm.CachedStaticModelSurfaceCastShadow, csmsm.CachedStaticModelSurfacePresence, &csmsm.CachedStaticModelSurfaceInsetOpt, &csmsm.CachedStaticModelSurfaceMaterialProperties, &csmsm.CachedStaticModelSurfaceMaterial, csmsm.CachedStaticModelSurfaceModel, csmsm.CachedStaticModelSurfaceIndex, csmsm.CachedStaticModelSurfaceDepthTest, csmsm.CachedStaticModelSurfaceRenderType, csmsm.CachedStaticModelSurfaceRenderPass, renderer)
             | RenderUserDefinedStaticModel rudsm ->
@@ -2959,7 +2957,7 @@ type [<ReferenceEquality>] GlRenderer3d =
                 let assetTag = asset Assets.Default.PackageName Gen.name // TODO: see if we should instead use a specialized package for temporary assets like these.
                 GlRenderer3d.tryCreateUserDefinedStaticModel rudsm.StaticModelSurfaceDescriptors rudsm.Bounds assetTag renderer
                 let renderTasks = GlRenderer3d.getRenderTasks rudsm.RenderPass renderer
-                GlRenderer3d.categorizeStaticModel (frustumInterior, frustumExterior, frustumImposter, lightBox, &rudsm.ModelMatrix, rudsm.CastShadow, rudsm.Presence, &insetOpt, &rudsm.MaterialProperties, assetTag, rudsm.Clipped, rudsm.DepthTest, rudsm.RenderType, rudsm.RenderPass, renderTasks, renderer)
+                GlRenderer3d.categorizeStaticModel (frustumInterior, frustumExterior, frustumImposter, &rudsm.ModelMatrix, rudsm.CastShadow, rudsm.Presence, &insetOpt, &rudsm.MaterialProperties, assetTag, rudsm.Clipped, rudsm.DepthTest, rudsm.RenderType, rudsm.RenderPass, renderTasks, renderer)
                 userDefinedStaticModelsToDestroy.Add assetTag
             | RenderAnimatedModel rsm ->
                 let insetOpt = Option.toValueOption rsm.InsetOpt
@@ -3026,7 +3024,7 @@ type [<ReferenceEquality>] GlRenderer3d =
             let unculled =
                 castShadow &&
                 let shadowFrustumInteriorOpt = if LightType.shouldShadowInterior shadowLightType then ValueSome shadowFrustum else ValueNone
-                Presence.intersects3d shadowFrustumInteriorOpt shadowFrustum shadowFrustum ValueNone false false presence bounds
+                Presence.intersects3d shadowFrustumInteriorOpt shadowFrustum shadowFrustum false presence bounds
             if unculled then
                 model.ToArray (renderer.InstanceFields, i * Constants.Render.InstanceFieldCount)
                 i <- inc i
@@ -3090,7 +3088,7 @@ type [<ReferenceEquality>] GlRenderer3d =
              parameters.Count, renderer.InstanceFields, lightShadowSamples, lightShadowBias, lightShadowSampleScalar, lightShadowExponent, lightShadowDensity, surface.SurfaceMaterial, surface.PhysicallyBasedGeometry, shader, vao, vertexSize)
 
     static member private renderPhysicallyBasedDeferredSurfacePreBatch
-        frustumInterior frustumExterior frustumImposter lightBox renderPass
+        frustumInterior frustumExterior frustumImposter renderPass
         viewArray projectionArray viewProjectionArray bonesArray eyeCenter (parameters : (Matrix4x4 * bool * Presence * Box2 * MaterialProperties * Box3) array)
         lightShadowSamples lightShadowBias lightShadowSampleScalar lightShadowExponent lightShadowDensity (surface : OpenGL.PhysicallyBased.PhysicallyBasedSurface) shader vao vertexSize renderer =
 
@@ -3109,9 +3107,9 @@ type [<ReferenceEquality>] GlRenderer3d =
                 | LightMapPass (_, _) -> true // TODO: see if we have enough context to cull here.
                 | ShadowPass (_, _, shadowLightType, _, _, shadowFrustum) ->
                     let shadowFrustumInteriorOpt = if LightType.shouldShadowInterior shadowLightType then ValueSome shadowFrustum else ValueNone
-                    Presence.intersects3d shadowFrustumInteriorOpt shadowFrustum shadowFrustum ValueNone false false presence bounds
-                | ReflectionPass (_, reflFrustum) -> Presence.intersects3d ValueNone reflFrustum reflFrustum ValueNone false false presence bounds
-                | NormalPass -> Presence.intersects3d (ValueSome frustumInterior) frustumExterior frustumImposter (ValueSome lightBox) false false presence bounds
+                    Presence.intersects3d shadowFrustumInteriorOpt shadowFrustum shadowFrustum false presence bounds
+                | ReflectionPass (_, reflFrustum) -> Presence.intersects3d ValueNone reflFrustum reflFrustum false presence bounds
+                | NormalPass -> Presence.intersects3d (ValueSome frustumInterior) frustumExterior frustumImposter false presence bounds
             if unculled then
                 model.ToArray (renderer.InstanceFields, i * Constants.Render.InstanceFieldCount)
                 renderer.InstanceFields.[i * Constants.Render.InstanceFieldCount + 16] <- texCoordsOffset.Min.X
@@ -3603,7 +3601,6 @@ type [<ReferenceEquality>] GlRenderer3d =
         frustumInterior
         frustumExterior
         frustumImposter
-        lightBox
         renderPass
         renderTasks
         renderer
@@ -3779,7 +3776,7 @@ type [<ReferenceEquality>] GlRenderer3d =
         for entry in renderTasks.DeferredStaticPreBatches do
             let struct (surface, preBatch) = entry.Value
             GlRenderer3d.renderPhysicallyBasedDeferredSurfacePreBatch
-                frustumInterior frustumExterior frustumImposter lightBox renderPass
+                frustumInterior frustumExterior frustumImposter renderPass
                 viewArray geometryProjectionArray geometryViewProjectionArray [||] eyeCenter preBatch
                 renderer.LightingConfig.LightShadowSamples renderer.LightingConfig.LightShadowBias renderer.LightingConfig.LightShadowSampleScalar renderer.LightingConfig.LightShadowExponent renderer.LightingConfig.LightShadowDensity
                 surface renderer.PhysicallyBasedShaders.DeferredStaticShader renderer.PhysicallyBasedStaticVao OpenGL.PhysicallyBased.StaticVertexSize renderer
@@ -3803,7 +3800,7 @@ type [<ReferenceEquality>] GlRenderer3d =
         for entry in renderTasks.DeferredStaticClippedPreBatches do
             let struct (surface, preBatch) = entry.Value
             GlRenderer3d.renderPhysicallyBasedDeferredSurfacePreBatch
-                frustumInterior frustumExterior frustumImposter lightBox renderPass
+                frustumInterior frustumExterior frustumImposter renderPass
                 viewArray geometryProjectionArray geometryViewProjectionArray [||] eyeCenter preBatch
                 renderer.LightingConfig.LightShadowSamples renderer.LightingConfig.LightShadowBias renderer.LightingConfig.LightShadowSampleScalar renderer.LightingConfig.LightShadowExponent renderer.LightingConfig.LightShadowDensity
                 surface renderer.PhysicallyBasedShaders.DeferredStaticClippedShader renderer.PhysicallyBasedStaticVao OpenGL.PhysicallyBased.StaticVertexSize renderer
@@ -4357,7 +4354,6 @@ type [<ReferenceEquality>] GlRenderer3d =
         frustumInterior
         frustumExterior
         frustumImposter
-        lightBox
         eyeCenter
         eyeRotation
         eyeFieldOfView
@@ -4378,7 +4374,7 @@ type [<ReferenceEquality>] GlRenderer3d =
 
         // categorize messages
         let userDefinedStaticModelsToDestroy =
-            GlRenderer3d.categorize frustumInterior frustumExterior frustumImposter lightBox eyeCenter eyeRotation renderMessages renderer
+            GlRenderer3d.categorize frustumInterior frustumExterior frustumImposter eyeCenter eyeRotation renderMessages renderer
 
         // light map pre-passes
         for (renderPass, renderTasks) in renderer.RenderPasses.Pairs do
@@ -4435,7 +4431,7 @@ type [<ReferenceEquality>] GlRenderer3d =
                         // create reflection map
                         let reflectionMap =
                             OpenGL.LightMap.CreateReflectionMap
-                                (GlRenderer3d.renderGeometry frustumInterior frustumExterior frustumImposter lightBox renderPass (GlRenderer3d.getRenderTasks renderPass renderer) renderer,
+                                (GlRenderer3d.renderGeometry frustumInterior frustumExterior frustumImposter renderPass (GlRenderer3d.getRenderTasks renderPass renderer) renderer,
                                  Constants.Render.ReflectionMapResolution,
                                  lightProbeOrigin,
                                  lightProbeAmbientColor,
@@ -4709,7 +4705,7 @@ type [<ReferenceEquality>] GlRenderer3d =
             let windowProjection = Viewport.getProjection3d eyeFieldOfView windowViewport
             let inner = windowViewport.Inner
             GlRenderer3d.renderGeometry
-                frustumInterior frustumExterior frustumImposter lightBox normalPass normalTasks renderer
+                frustumInterior frustumExterior frustumImposter normalPass normalTasks renderer
                 true None eyeCenter view viewSkyBox frustum geometryProjection geometryViewProjection inner windowProjection
                 framebuffer
 
@@ -4754,12 +4750,11 @@ type [<ReferenceEquality>] GlRenderer3d =
     static member make glContext window geometryViewport windowViewport =
 
         // start lazy texture server
-        let sglWindow = match window with SglWindow sglWindow -> sglWindow.SglWindow
-        if SDL.SDL_GL_MakeCurrent (sglWindow, IntPtr.Zero) <> 0 then Log.error "Could not clear OpenGL context current when desired."
+        if not (SDL3.SDL_GL_MakeCurrent (window, NativePtr.nullPtr)) then Log.error "Could not clear OpenGL context current when desired."
         let lazyTextureQueues = ConcurrentDictionary<OpenGL.Texture.LazyTexture ConcurrentQueue, OpenGL.Texture.LazyTexture ConcurrentQueue> HashIdentity.Reference
-        let textureServer = OpenGL.Texture.TextureServer (lazyTextureQueues, glContext, sglWindow)
+        let textureServer = OpenGL.Texture.TextureServer (lazyTextureQueues, glContext, window)
         textureServer.Start ()
-        if SDL.SDL_GL_MakeCurrent (sglWindow, glContext) <> 0 then Log.error "Could not make OpenGL context current when required."
+        if not (SDL3.SDL_GL_MakeCurrent (window, glContext)) then Log.error "Could not make OpenGL context current when required."
         OpenGL.Hl.Assert ()
 
         // create cube map vao
@@ -4929,9 +4924,15 @@ type [<ReferenceEquality>] GlRenderer3d =
                  environmentFilterFramebuffer)
         OpenGL.Hl.Assert ()
 
+        // compute compressed image file extension
+        let ext =
+            match Constants.Render.TextureBlockCompression with
+            | BcCompression -> ".dds"
+            | AstcCompression -> ".ktx"
+
         // get albedo metadata and texture
         let albedoTexture =
-            match OpenGL.Texture.TryCreateTextureGl (false, OpenGL.TextureMinFilter.LinearMipmapLinear, OpenGL.TextureMagFilter.Linear, true, true, OpenGL.Texture.ColorCompression, "Assets/Default/MaterialAlbedo.dds") with
+            match OpenGL.Texture.TryCreateTextureGl (false, OpenGL.TextureMinFilter.LinearMipmapLinear, OpenGL.TextureMagFilter.Linear, true, true, OpenGL.Texture.ColorCompression, "Assets/Default/MaterialAlbedo" + ext) with
             | Right (metadata, textureId) -> OpenGL.Texture.EagerTexture { TextureMetadata = metadata; TextureId = textureId }
             | Left error -> failwith ("Could not load albedo material texture due to: " + error)
         OpenGL.Hl.Assert ()
@@ -4939,51 +4940,51 @@ type [<ReferenceEquality>] GlRenderer3d =
         // create default physically-based material
         let physicallyBasedMaterial : OpenGL.PhysicallyBased.PhysicallyBasedMaterial =
             let roughnessTexture =
-                match OpenGL.Texture.TryCreateTextureGl (false, OpenGL.TextureMinFilter.LinearMipmapLinear, OpenGL.TextureMagFilter.Linear, true, true, OpenGL.Texture.ColorCompression, "Assets/Default/MaterialRoughness.dds") with
+                match OpenGL.Texture.TryCreateTextureGl (false, OpenGL.TextureMinFilter.LinearMipmapLinear, OpenGL.TextureMagFilter.Linear, true, true, OpenGL.Texture.ColorCompression, "Assets/Default/MaterialRoughness" + ext) with
                 | Right (metadata, textureId) -> OpenGL.Texture.EagerTexture { TextureMetadata = metadata; TextureId = textureId }
                 | Left error -> failwith ("Could not load material roughness texture due to: " + error)
             let metallicTexture =
-                match OpenGL.Texture.TryCreateTextureGl (false, OpenGL.TextureMinFilter.LinearMipmapLinear, OpenGL.TextureMagFilter.Linear, true, true, OpenGL.Texture.ColorCompression, "Assets/Default/MaterialMetallic.dds") with
+                match OpenGL.Texture.TryCreateTextureGl (false, OpenGL.TextureMinFilter.LinearMipmapLinear, OpenGL.TextureMagFilter.Linear, true, true, OpenGL.Texture.ColorCompression, "Assets/Default/MaterialMetallic" + ext) with
                 | Right (metadata, textureId) -> OpenGL.Texture.EagerTexture { TextureMetadata = metadata; TextureId = textureId }
                 | Left error -> failwith ("Could not load material metallic texture due to: " + error)
             let ambientOcclusionTexture =
-                match OpenGL.Texture.TryCreateTextureGl (false, OpenGL.TextureMinFilter.LinearMipmapLinear, OpenGL.TextureMagFilter.Linear, true, true, OpenGL.Texture.ColorCompression, "Assets/Default/MaterialAmbientOcclusion.dds") with
+                match OpenGL.Texture.TryCreateTextureGl (false, OpenGL.TextureMinFilter.LinearMipmapLinear, OpenGL.TextureMagFilter.Linear, true, true, OpenGL.Texture.ColorCompression, "Assets/Default/MaterialAmbientOcclusion" + ext) with
                 | Right (metadata, textureId) -> OpenGL.Texture.EagerTexture { TextureMetadata = metadata; TextureId = textureId }
                 | Left error -> failwith ("Could not load material ambient occlusion texture due to: " + error)
             let emissionTexture =
-                match OpenGL.Texture.TryCreateTextureGl (false, OpenGL.TextureMinFilter.LinearMipmapLinear, OpenGL.TextureMagFilter.Linear, true, true, OpenGL.Texture.ColorCompression, "Assets/Default/MaterialEmission.dds") with
+                match OpenGL.Texture.TryCreateTextureGl (false, OpenGL.TextureMinFilter.LinearMipmapLinear, OpenGL.TextureMagFilter.Linear, true, true, OpenGL.Texture.ColorCompression, "Assets/Default/MaterialEmission" + ext) with
                 | Right (metadata, textureId) -> OpenGL.Texture.EagerTexture { TextureMetadata = metadata; TextureId = textureId }
                 | Left error -> failwith ("Could not load material emission texture due to: " + error)
             let normalTexture =
-                match OpenGL.Texture.TryCreateTextureGl (false, OpenGL.TextureMinFilter.LinearMipmapLinear, OpenGL.TextureMagFilter.Linear, true, true, OpenGL.Texture.NormalCompression, "Assets/Default/MaterialNormal.dds") with
+                match OpenGL.Texture.TryCreateTextureGl (false, OpenGL.TextureMinFilter.LinearMipmapLinear, OpenGL.TextureMagFilter.Linear, true, true, OpenGL.Texture.NormalCompression, "Assets/Default/MaterialNormal" + ext) with
                 | Right (metadata, textureId) -> OpenGL.Texture.EagerTexture { TextureMetadata = metadata; TextureId = textureId }
                 | Left error -> failwith ("Could not load material normal texture due to: " + error)
             let heightTexture =
-                match OpenGL.Texture.TryCreateTextureGl (false, OpenGL.TextureMinFilter.LinearMipmapLinear, OpenGL.TextureMagFilter.Linear, true, true, OpenGL.Texture.ColorCompression, "Assets/Default/MaterialHeight.dds") with
+                match OpenGL.Texture.TryCreateTextureGl (false, OpenGL.TextureMinFilter.LinearMipmapLinear, OpenGL.TextureMagFilter.Linear, true, true, OpenGL.Texture.ColorCompression, "Assets/Default/MaterialHeight" + ext) with
                 | Right (metadata, textureId) -> OpenGL.Texture.EagerTexture { TextureMetadata = metadata; TextureId = textureId }
                 | Left error -> failwith ("Could not load material height texture due to: " + error)
             let subdermalTexture =
-                match OpenGL.Texture.TryCreateTextureGl (false, OpenGL.TextureMinFilter.LinearMipmapLinear, OpenGL.TextureMagFilter.Linear, true, true, OpenGL.Texture.ColorCompression, "Assets/Default/MaterialSubdermal.dds") with
+                match OpenGL.Texture.TryCreateTextureGl (false, OpenGL.TextureMinFilter.LinearMipmapLinear, OpenGL.TextureMagFilter.Linear, true, true, OpenGL.Texture.ColorCompression, "Assets/Default/MaterialSubdermal" + ext) with
                 | Right (metadata, textureId) -> OpenGL.Texture.EagerTexture { TextureMetadata = metadata; TextureId = textureId }
                 | Left error -> failwith ("Could not load material subdermal texture due to: " + error)
             let finenessTexture =
-                match OpenGL.Texture.TryCreateTextureGl (false, OpenGL.TextureMinFilter.LinearMipmapLinear, OpenGL.TextureMagFilter.Linear, true, true, OpenGL.Texture.ColorCompression, "Assets/Default/MaterialFineness.dds") with
+                match OpenGL.Texture.TryCreateTextureGl (false, OpenGL.TextureMinFilter.LinearMipmapLinear, OpenGL.TextureMagFilter.Linear, true, true, OpenGL.Texture.ColorCompression, "Assets/Default/MaterialFineness" + ext) with
                 | Right (metadata, textureId) -> OpenGL.Texture.EagerTexture { TextureMetadata = metadata; TextureId = textureId }
                 | Left error -> failwith ("Could not load material fineness texture due to: " + error)
             let scatterTexture =
-                match OpenGL.Texture.TryCreateTextureGl (false, OpenGL.TextureMinFilter.LinearMipmapLinear, OpenGL.TextureMagFilter.Linear, true, true, OpenGL.Texture.ColorCompression, "Assets/Default/MaterialSubdermal.dds") with
+                match OpenGL.Texture.TryCreateTextureGl (false, OpenGL.TextureMinFilter.LinearMipmapLinear, OpenGL.TextureMagFilter.Linear, true, true, OpenGL.Texture.ColorCompression, "Assets/Default/MaterialSubdermal" + ext) with
                 | Right (metadata, textureId) -> OpenGL.Texture.EagerTexture { TextureMetadata = metadata; TextureId = textureId }
                 | Left error -> failwith ("Could not load material scatter texture due to: " + error)
             let clearCoatTexture =
-                match OpenGL.Texture.TryCreateTextureGl (false, OpenGL.TextureMinFilter.LinearMipmapLinear, OpenGL.TextureMagFilter.Linear, true, true, OpenGL.Texture.ColorCompression, "Assets/Default/MaterialClearCoat.dds") with
+                match OpenGL.Texture.TryCreateTextureGl (false, OpenGL.TextureMinFilter.LinearMipmapLinear, OpenGL.TextureMagFilter.Linear, true, true, OpenGL.Texture.ColorCompression, "Assets/Default/MaterialClearCoat" + ext) with
                 | Right (metadata, textureId) -> OpenGL.Texture.EagerTexture { TextureMetadata = metadata; TextureId = textureId }
                 | Left error -> failwith ("Could not load material clear coat texture due to: " + error)
             let clearCoatRoughnessTexture =
-                match OpenGL.Texture.TryCreateTextureGl (false, OpenGL.TextureMinFilter.LinearMipmapLinear, OpenGL.TextureMagFilter.Linear, true, true, OpenGL.Texture.ColorCompression, "Assets/Default/MaterialClearCoatRoughness.dds") with
+                match OpenGL.Texture.TryCreateTextureGl (false, OpenGL.TextureMinFilter.LinearMipmapLinear, OpenGL.TextureMagFilter.Linear, true, true, OpenGL.Texture.ColorCompression, "Assets/Default/MaterialClearCoatRoughness" + ext) with
                 | Right (metadata, textureId) -> OpenGL.Texture.EagerTexture { TextureMetadata = metadata; TextureId = textureId }
                 | Left error -> failwith ("Could not load material clear coat roughness texture due to: " + error)
             let clearCoatNormalTexture =
-                match OpenGL.Texture.TryCreateTextureGl (false, OpenGL.TextureMinFilter.LinearMipmapLinear, OpenGL.TextureMagFilter.Linear, true, true, OpenGL.Texture.NormalCompression, "Assets/Default/MaterialClearCoatNormal.dds") with
+                match OpenGL.Texture.TryCreateTextureGl (false, OpenGL.TextureMinFilter.LinearMipmapLinear, OpenGL.TextureMagFilter.Linear, true, true, OpenGL.Texture.NormalCompression, "Assets/Default/MaterialClearCoatNormal" + ext) with
                 | Right (metadata, textureId) -> OpenGL.Texture.EagerTexture { TextureMetadata = metadata; TextureId = textureId }
                 | Left error -> failwith ("Could not load material clear coat normal texture due to: " + error)
             { AlbedoTexture = albedoTexture
@@ -5083,8 +5084,8 @@ type [<ReferenceEquality>] GlRenderer3d =
         member renderer.RendererConfig =
             renderer.RendererConfig
 
-        member renderer.Render frustumInterior frustumExterior frustumImposter lightBox eyeCenter eyeRotation eyeFieldOfView geometryViewport windowViewport renderMessages =
-            GlRenderer3d.render frustumInterior frustumExterior frustumImposter lightBox eyeCenter eyeRotation eyeFieldOfView geometryViewport windowViewport 0u renderMessages renderer
+        member renderer.Render frustumInterior frustumExterior frustumImposter eyeCenter eyeRotation eyeFieldOfView geometryViewport windowViewport renderMessages =
+            GlRenderer3d.render frustumInterior frustumExterior frustumImposter eyeCenter eyeRotation eyeFieldOfView geometryViewport windowViewport 0u renderMessages renderer
 
         member renderer.CleanUp () =
 
@@ -5160,11 +5161,17 @@ type [<ReferenceEquality>] VulkanRenderer3d =
         { VulkanContext : Hl.VulkanContext
           mutable GeometryViewport : Viewport
           mutable WindowViewport : Viewport
+          mutable SkyBoxDrawIndex : int
+          mutable ForwardStaticDrawIndex : int
           LazyTextureQueues : ConcurrentDictionary<Texture.LazyTexture ConcurrentQueue, Texture.LazyTexture ConcurrentQueue>
           TextureServer : Texture.TextureServer
           TextureDisposer : Texture.TextureDisposer
-          mutable SkyBoxDrawIndex : int
-          mutable ForwardStaticDrawIndex : int
+          FilteredSampler : Texture.Sampler
+          CubeMapSampler : Texture.Sampler
+          ShadowSampler : Texture.Sampler
+          ColorSampler : Texture.Sampler
+          DepthSampler : Texture.Sampler
+          BrdfSampler : Texture.Sampler
           mutable SkyBoxPipeline : SkyBox.SkyBoxPipeline
           mutable IrradiancePipeline : CubeMap.CubeMapPipeline
           mutable EnvironmentFilterPipeline : LightMap.EnvironmentFilterPipeline
@@ -5347,7 +5354,7 @@ type [<ReferenceEquality>] VulkanRenderer3d =
         match renderAsset with
         | RawAsset -> () // nothing to do
         | TextureAsset texture -> texture.Destroy renderer.VulkanContext
-        | FontAsset (_, font) -> SDL_ttf.TTF_CloseFont font
+        | FontAsset (_, font) -> SDL3_ttf.TTF_CloseFont font
         | CubeMapAsset (_, cubeMap, irradianceAndEnvironmentMapOptRef) ->
             cubeMap.Destroy renderer.VulkanContext
             match irradianceAndEnvironmentMapOptRef.Value with
@@ -5557,6 +5564,12 @@ type [<ReferenceEquality>] VulkanRenderer3d =
                 (lightAmbientColor, lightAmbientBrightness, None)
         | None -> (Color.White, 1.0f, None)
     
+    static member private handleReloadShaders renderer =
+        Pipeline.Pipeline.reloadShaders renderer.SkyBoxPipeline.SkyBoxPipeline renderer.VulkanContext
+        Pipeline.Pipeline.reloadShaders renderer.IrradiancePipeline.Pipeline renderer.VulkanContext
+        Pipeline.Pipeline.reloadShaders renderer.EnvironmentFilterPipeline.Pipeline renderer.VulkanContext
+        PhysicallyBased.ReloadPhysicallyBasedShaders renderer.PhysicallyBasedPipelines renderer.VulkanContext
+    
     static member private handleLoadRenderPackage hintPackageName renderer =
         VulkanRenderer3d.tryLoadRenderPackage hintPackageName renderer
 
@@ -5573,8 +5586,7 @@ type [<ReferenceEquality>] VulkanRenderer3d =
     static member private handleReloadRenderAssets renderer =
         VulkanRenderer3d.invalidateCaches renderer
         VulkanRenderer3d.clearRenderPasses renderer // invalidate render task keys that now contain potentially stale data
-        
-        // TODO: DJL: handle shader reload once applicable.
+        VulkanRenderer3d.handleReloadShaders renderer
         for packageName in renderer.RenderPackages |> Seq.map (fun entry -> entry.Key) |> Array.ofSeq do
             VulkanRenderer3d.tryLoadRenderPackage packageName renderer
     
@@ -5642,7 +5654,6 @@ type [<ReferenceEquality>] VulkanRenderer3d =
         (frustumInterior : Frustum,
          frustumExterior : Frustum,
          frustumImposter : Frustum,
-         lightBox : Box3,
          model : Matrix4x4 inref,
          castShadow : bool,
          presence : Presence,
@@ -5667,7 +5678,7 @@ type [<ReferenceEquality>] VulkanRenderer3d =
                     let unculled =
                         match renderPass with
                         | LightMapPass (_, _) -> true // TODO: see if we have enough context to cull here.
-                        | NormalPass -> Presence.intersects3d (ValueSome frustumInterior) frustumExterior frustumImposter (ValueSome lightBox) false true presence lightBounds
+                        | NormalPass -> Presence.intersects3d (ValueSome frustumInterior) frustumExterior frustumImposter false presence lightBounds
                         | _ -> false
                     if unculled then
                         let coneOuter = match light.LightType with SpotLight (_, coneOuter) -> min coneOuter MathF.TWO_PI | _ -> MathF.TWO_PI
@@ -5710,9 +5721,9 @@ type [<ReferenceEquality>] VulkanRenderer3d =
                         | LightMapPass (_, _) -> true // TODO: see if we have enough context to cull here.
                         | ShadowPass (_, _, shadowLightType, _, _, shadowFrustum) ->
                             let shadowFrustumInteriorOpt = if LightType.shouldShadowInterior shadowLightType then ValueSome shadowFrustum else ValueNone
-                            Presence.intersects3d shadowFrustumInteriorOpt shadowFrustum shadowFrustum ValueNone false false presence surfaceBounds
-                        | ReflectionPass (_, reflFrustum) -> Presence.intersects3d ValueNone reflFrustum reflFrustum ValueNone false false presence surfaceBounds
-                        | NormalPass -> Presence.intersects3d (ValueSome frustumInterior) frustumExterior frustumImposter (ValueSome lightBox) false false presence surfaceBounds
+                            Presence.intersects3d shadowFrustumInteriorOpt shadowFrustum shadowFrustum false presence surfaceBounds
+                        | ReflectionPass (_, reflFrustum) -> Presence.intersects3d ValueNone reflFrustum reflFrustum false presence surfaceBounds
+                        | NormalPass -> Presence.intersects3d (ValueSome frustumInterior) frustumExterior frustumImposter false presence surfaceBounds
                     if unculled then
                         VulkanRenderer3d.categorizeStaticModelSurface (&surfaceMatrix, castShadow, presence, &insetOpt, &properties, surface, depthTest, renderType, renderPass, ValueSome renderTasks, renderer)
             | _ -> Log.infoOnce ("Cannot render static model with a non-static model asset for '" + scstring staticModel + "'.")
@@ -5722,7 +5733,6 @@ type [<ReferenceEquality>] VulkanRenderer3d =
         frustumInterior
         frustumExterior
         frustumImposter
-        lightBox
         eyeCenter
         eyeRotation
         renderMessages
@@ -5745,15 +5755,15 @@ type [<ReferenceEquality>] VulkanRenderer3d =
             | RenderStaticModel rsm ->
                 let insetOpt = Option.toValueOption rsm.InsetOpt
                 let renderTasks = VulkanRenderer3d.getRenderTasks rsm.RenderPass renderer
-                VulkanRenderer3d.categorizeStaticModel (frustumInterior, frustumExterior, frustumImposter, lightBox, &rsm.ModelMatrix, rsm.CastShadow, rsm.Presence, &insetOpt, &rsm.MaterialProperties, rsm.StaticModel, rsm.Clipped, rsm.DepthTest, rsm.RenderType, rsm.RenderPass, renderTasks, renderer)
+                VulkanRenderer3d.categorizeStaticModel (frustumInterior, frustumExterior, frustumImposter, &rsm.ModelMatrix, rsm.CastShadow, rsm.Presence, &insetOpt, &rsm.MaterialProperties, rsm.StaticModel, rsm.Clipped, rsm.DepthTest, rsm.RenderType, rsm.RenderPass, renderTasks, renderer)
             | RenderStaticModels rsms ->
                 let renderTasks = VulkanRenderer3d.getRenderTasks rsms.RenderPass renderer
                 for (model, castShadow, presence, insetOpt, properties) in rsms.StaticModels do // TODO: see if these should be struct tuples.
                     let insetOpt = Option.toValueOption insetOpt
-                    VulkanRenderer3d.categorizeStaticModel (frustumInterior, frustumExterior, frustumImposter, lightBox, &model, castShadow, presence, &insetOpt, &properties, rsms.StaticModel, rsms.Clipped, rsms.DepthTest, rsms.RenderType, rsms.RenderPass, renderTasks, renderer)
+                    VulkanRenderer3d.categorizeStaticModel (frustumInterior, frustumExterior, frustumImposter, &model, castShadow, presence, &insetOpt, &properties, rsms.StaticModel, rsms.Clipped, rsms.DepthTest, rsms.RenderType, rsms.RenderPass, renderTasks, renderer)
             | RenderCachedStaticModel csmm ->
                 let renderTasks = VulkanRenderer3d.getRenderTasks csmm.CachedStaticModelRenderPass renderer
-                VulkanRenderer3d.categorizeStaticModel (frustumInterior, frustumExterior, frustumImposter, lightBox, &csmm.CachedStaticModelMatrix, csmm.CachedStaticModelCastShadow, csmm.CachedStaticModelPresence, &csmm.CachedStaticModelInsetOpt, &csmm.CachedStaticModelMaterialProperties, csmm.CachedStaticModel, csmm.CachedStaticModelClipped, csmm.CachedStaticModelDepthTest, csmm.CachedStaticModelRenderType, csmm.CachedStaticModelRenderPass, renderTasks, renderer)
+                VulkanRenderer3d.categorizeStaticModel (frustumInterior, frustumExterior, frustumImposter, &csmm.CachedStaticModelMatrix, csmm.CachedStaticModelCastShadow, csmm.CachedStaticModelPresence, &csmm.CachedStaticModelInsetOpt, &csmm.CachedStaticModelMaterialProperties, csmm.CachedStaticModel, csmm.CachedStaticModelClipped, csmm.CachedStaticModelDepthTest, csmm.CachedStaticModelRenderType, csmm.CachedStaticModelRenderPass, renderTasks, renderer)
             | LoadRenderPackage3d packageName ->
                 VulkanRenderer3d.handleLoadRenderPackage packageName renderer
             | UnloadRenderPackage3d packageName ->
@@ -5844,7 +5854,6 @@ type [<ReferenceEquality>] VulkanRenderer3d =
         frustumInterior
         frustumExterior
         frustumImposter
-        lightBox
         renderPass
         (renderTasks : RenderTasks)
         renderer
@@ -6079,7 +6088,6 @@ type [<ReferenceEquality>] VulkanRenderer3d =
         frustumInterior
         frustumExterior
         frustumImposter
-        lightBox
         eyeCenter
         eyeRotation
         eyeFieldOfView
@@ -6108,8 +6116,14 @@ type [<ReferenceEquality>] VulkanRenderer3d =
         
         // categorize messages
         let userDefinedStaticModelsToDestroy =
-            VulkanRenderer3d.categorize frustumInterior frustumExterior frustumImposter lightBox eyeCenter eyeRotation renderMessages renderer
+            VulkanRenderer3d.categorize frustumInterior frustumExterior frustumImposter eyeCenter eyeRotation renderMessages renderer
         
+        // reload render assets upon request
+        // NOTE: DJL: doing this *before* rendering because you can't record commands with a VkPipeline then destroy it before submission.
+        if renderer.ReloadAssetsRequested then
+            VulkanRenderer3d.handleReloadRenderAssets renderer
+            renderer.ReloadAssetsRequested <- false
+
         // light map pre-passes
         let cb = vkc.RenderCommandBuffer
         let mutable irradianceMapIndex = 0
@@ -6176,7 +6190,7 @@ type [<ReferenceEquality>] VulkanRenderer3d =
                             // create reflection map
                             let reflectionMap =
                                 LightMap.CreateReflectionMap
-                                    (VulkanRenderer3d.renderGeometry frustumInterior frustumExterior frustumImposter lightBox renderPass (VulkanRenderer3d.getRenderTasks renderPass renderer) renderer,
+                                    (VulkanRenderer3d.renderGeometry frustumInterior frustumExterior frustumImposter renderPass (VulkanRenderer3d.getRenderTasks renderPass renderer) renderer,
                                      cb,
                                      Constants.Render.ReflectionMapResolution,
                                      lightProbeOrigin,
@@ -6244,14 +6258,9 @@ type [<ReferenceEquality>] VulkanRenderer3d =
                      uint renderer.WindowViewport.Inner.Size.X,
                      uint renderer.WindowViewport.Inner.Size.Y)
             VulkanRenderer3d.renderGeometry
-                frustumInterior frustumExterior frustumImposter lightBox normalPass normalTasks renderer
+                frustumInterior frustumExterior frustumImposter normalPass normalTasks renderer
                 true None eyeCenter view viewSkyBox frustum geometryProjection geometryViewProjection windowProjection targetBounds 0 vkc.SwapchainImage
         
-        // reload render assets upon request
-        if renderer.ReloadAssetsRequested then
-            VulkanRenderer3d.handleReloadRenderAssets renderer
-            renderer.ReloadAssetsRequested <- false
-
         // swap render passes
         for renderTasks in renderer.RenderPasses.Values do if renderTasks.ShadowBufferIndexOpt.IsNone then RenderTasks.clear renderTasks
         for renderTasks in renderer.RenderPasses2.Values do RenderTasks.clear renderTasks
@@ -6270,23 +6279,43 @@ type [<ReferenceEquality>] VulkanRenderer3d =
         // create texture disposer
         let textureDisposer = Texture.TextureDisposer.create ()
         
+        // create samplers
+        let filteredSampler = Texture.Sampler.create VkSamplerAddressMode.Repeat VkFilter.Linear VkFilter.Linear true vkc
+        let cubeMapSampler = Texture.Sampler.create VkSamplerAddressMode.ClampToEdge VkFilter.Linear VkFilter.Linear false vkc
+        let shadowSampler = Texture.Sampler.create VkSamplerAddressMode.ClampToEdge VkFilter.Linear VkFilter.Linear false vkc
+        let colorSampler = Texture.Sampler.create VkSamplerAddressMode.ClampToEdge VkFilter.Nearest VkFilter.Nearest false vkc
+        let depthSampler = Texture.Sampler.create VkSamplerAddressMode.ClampToEdge VkFilter.Linear VkFilter.Linear false vkc // using linear filtering since coloring depth attachment is the source for a down-sampling filter
+        let brdfSampler = Texture.Sampler.create VkSamplerAddressMode.ClampToEdge VkFilter.Linear VkFilter.Linear false vkc
+        
         // create physically-based attachments using the geometry viewport
         let physicallyBasedAttachments = PhysicallyBased.CreatePhysicallyBasedAttachments (geometryViewport, vkc)
         
         // create sky box pipeline
         let (compositionAttachment, compositionDepthAttachment) = physicallyBasedAttachments.CompositionAttachments
-        let skyBoxPipeline = SkyBox.CreateSkyBoxPipeline compositionAttachment.VkFormat compositionDepthAttachment.VkFormat vkc
+        let skyBoxPipeline = SkyBox.CreateSkyBoxPipeline compositionAttachment.VkFormat compositionDepthAttachment.VkFormat cubeMapSampler vkc
         
         // create irradiance pipeline
         let irradianceFormat = Hl.Rgba16f
-        let irradiancePipeline = CubeMap.CreateCubeMapPipeline (Constants.Paths.IrradianceShaderFilePath, irradianceFormat.VkFormat, vkc)
+        let irradiancePipeline = CubeMap.CreateCubeMapPipeline (Constants.Paths.IrradianceShaderFilePath, irradianceFormat.VkFormat, cubeMapSampler, vkc)
         
         // create environment filter pipeline
         let environmentFilterFormat = Hl.Rgba16f
-        let environmentFilterPipeline = LightMap.CreateEnvironmentFilterPipeline (Constants.Paths.EnvironmentFilterShaderFilePath, environmentFilterFormat.VkFormat, vkc)
+        let environmentFilterPipeline = LightMap.CreateEnvironmentFilterPipeline (Constants.Paths.EnvironmentFilterShaderFilePath, environmentFilterFormat.VkFormat, cubeMapSampler, vkc)
         
         // create physically-based pipelines
-        let physicallyBasedPipelines = PhysicallyBased.CreatePhysicallyBasedPipelines (Constants.Render.LightMapsMaxDeferred, Constants.Render.LightsMaxDeferred, compositionAttachment.VkFormat, compositionDepthAttachment.VkFormat, vkc)
+        let physicallyBasedPipelines =
+            PhysicallyBased.CreatePhysicallyBasedPipelines
+                (Constants.Render.LightMapsMaxDeferred,
+                 Constants.Render.LightsMaxDeferred,
+                 compositionAttachment.VkFormat,
+                 compositionDepthAttachment.VkFormat,
+                 filteredSampler,
+                 cubeMapSampler,
+                 shadowSampler,
+                 colorSampler,
+                 depthSampler,
+                 brdfSampler,
+                 vkc)
         
         // create shadow matrices buffer
         let shadowMatricesCount = Constants.Render.ShadowTexturesMax + Constants.Render.ShadowCascadesMax * Constants.Render.ShadowCascadeLevels
@@ -6307,13 +6336,13 @@ type [<ReferenceEquality>] VulkanRenderer3d =
         
         // create white texture
         let whiteTexture =
-            match Texture.TryCreateTextureVulkan (false, VkFilter.Linear, VkFilter.Linear, true, true, Texture.Uncompressed, "Assets/Default/White.png", Texture.RenderThread, vkc) with
+            match Texture.TryCreateTextureVulkan (false, true, Texture.Uncompressed, "Assets/Default/White.png", Texture.RenderThread, vkc) with
             | Right (metadata, textureInternal) -> Texture.EagerTexture { TextureMetadata = metadata; TextureInternal = textureInternal }
             | Left error -> failwith ("Could not load white texture due to: " + error)
 
         // create black texture
         let blackTexture =
-            match Texture.TryCreateTextureVulkan (false, VkFilter.Linear, VkFilter.Linear, true, true, Texture.Uncompressed, "Assets/Default/Black.png", Texture.RenderThread, vkc) with
+            match Texture.TryCreateTextureVulkan (false, true, Texture.Uncompressed, "Assets/Default/Black.png", Texture.RenderThread, vkc) with
             | Right (metadata, textureInternal) -> Texture.EagerTexture { TextureMetadata = metadata; TextureInternal = textureInternal }
             | Left error -> failwith ("Could not load black texture due to: " + error)
         
@@ -6336,11 +6365,7 @@ type [<ReferenceEquality>] VulkanRenderer3d =
                     File.WriteAllBytes (brdfFilePath, brdfBuffer)
                     brdfBuffer
             let brdfMetadata = Texture.TextureMetadata.make Constants.Render.BrdfResolution Constants.Render.BrdfResolution
-            let brdfTextureInternal =
-                Texture.TextureInternal.create
-                    VkSamplerAddressMode.ClampToEdge VkFilter.Linear VkFilter.Linear false
-                    Texture.MipmapNone Texture.AttachmentNone Texture.Texture2d [||]
-                    Hl.Rg32f Hl.Rg brdfMetadata vkc
+            let brdfTextureInternal = Texture.TextureInternal.create Texture.MipmapNone Texture.AttachmentNone Texture.Texture2d [||] Hl.Rg32f Hl.Rg brdfMetadata vkc
             Texture.TextureInternal.uploadArray brdfMetadata 0 0 brdfBuffer Texture.RenderThread brdfTextureInternal vkc
             Texture.EagerTexture { TextureMetadata = brdfMetadata; TextureInternal = brdfTextureInternal }
         
@@ -6371,61 +6396,67 @@ type [<ReferenceEquality>] VulkanRenderer3d =
         let fence = Hl.createFence false vkc.Device
         Hl.Queue.executeTransient cb vkc.TransientCommandPool fence vkc.RenderQueue vkc.Device
         Vulkan.vkDestroyFence (vkc.Device, fence, nullPtr)
+
+        // compute compressed image file extension
+        let ext =
+            match Constants.Render.TextureBlockCompression with
+            | BcCompression -> ".dds"
+            | AstcCompression -> ".ktx"
         
         // get albedo metadata and texture
         let albedoTexture =
-            match Texture.TryCreateTextureVulkan (false, VkFilter.Linear, VkFilter.Linear, true, true, Texture.ColorCompression, "Assets/Default/MaterialAlbedo.dds", Texture.RenderThread, vkc) with
+            match Texture.TryCreateTextureVulkan (false, true, Texture.ColorCompression, "Assets/Default/MaterialAlbedo" + ext, Texture.RenderThread, vkc) with
             | Right (metadata, vulkanTexture) -> Texture.EagerTexture { TextureMetadata = metadata; TextureInternal = vulkanTexture }
             | Left error -> failwith ("Could not load albedo material texture due to: " + error)
 
         // create default physically-based material
         let physicallyBasedMaterial : PhysicallyBased.PhysicallyBasedMaterial =
             let roughnessTexture =
-                match Texture.TryCreateTextureVulkan (false, VkFilter.Linear, VkFilter.Linear, true, true, Texture.ColorCompression, "Assets/Default/MaterialRoughness.dds", Texture.RenderThread, vkc) with
+                match Texture.TryCreateTextureVulkan (false, true, Texture.ColorCompression, "Assets/Default/MaterialRoughness" + ext, Texture.RenderThread, vkc) with
                 | Right (metadata, vulkanTexture) -> Texture.EagerTexture { TextureMetadata = metadata; TextureInternal = vulkanTexture }
                 | Left error -> failwith ("Could not load material roughness texture due to: " + error)
             let metallicTexture =
-                match Texture.TryCreateTextureVulkan (false, VkFilter.Linear, VkFilter.Linear, true, true, Texture.ColorCompression, "Assets/Default/MaterialMetallic.dds", Texture.RenderThread, vkc) with
+                match Texture.TryCreateTextureVulkan (false, true, Texture.ColorCompression, "Assets/Default/MaterialMetallic" + ext, Texture.RenderThread, vkc) with
                 | Right (metadata, vulkanTexture) -> Texture.EagerTexture { TextureMetadata = metadata; TextureInternal = vulkanTexture }
                 | Left error -> failwith ("Could not load material metallic texture due to: " + error)
             let ambientOcclusionTexture =
-                match Texture.TryCreateTextureVulkan (false, VkFilter.Linear, VkFilter.Linear, true, true, Texture.ColorCompression, "Assets/Default/MaterialAmbientOcclusion.dds", Texture.RenderThread, vkc) with
+                match Texture.TryCreateTextureVulkan (false, true, Texture.ColorCompression, "Assets/Default/MaterialAmbientOcclusion" + ext, Texture.RenderThread, vkc) with
                 | Right (metadata, vulkanTexture) -> Texture.EagerTexture { TextureMetadata = metadata; TextureInternal = vulkanTexture }
                 | Left error -> failwith ("Could not load material ambient occlusion texture due to: " + error)
             let emissionTexture =
-                match Texture.TryCreateTextureVulkan (false, VkFilter.Linear, VkFilter.Linear, true, true, Texture.ColorCompression, "Assets/Default/MaterialEmission.dds", Texture.RenderThread, vkc) with
+                match Texture.TryCreateTextureVulkan (false, true, Texture.ColorCompression, "Assets/Default/MaterialEmission" + ext, Texture.RenderThread, vkc) with
                 | Right (metadata, vulkanTexture) -> Texture.EagerTexture { TextureMetadata = metadata; TextureInternal = vulkanTexture }
                 | Left error -> failwith ("Could not load material emission texture due to: " + error)
             let normalTexture =
-                match Texture.TryCreateTextureVulkan (false, VkFilter.Linear, VkFilter.Linear, true, true, Texture.NormalCompression, "Assets/Default/MaterialNormal.dds", Texture.RenderThread, vkc) with
+                match Texture.TryCreateTextureVulkan (false, true, Texture.NormalCompression, "Assets/Default/MaterialNormal" + ext, Texture.RenderThread, vkc) with
                 | Right (metadata, vulkanTexture) -> Texture.EagerTexture { TextureMetadata = metadata; TextureInternal = vulkanTexture }
                 | Left error -> failwith ("Could not load material normal texture due to: " + error)
             let heightTexture =
-                match Texture.TryCreateTextureVulkan (false, VkFilter.Linear, VkFilter.Linear, true, true, Texture.ColorCompression, "Assets/Default/MaterialHeight.dds", Texture.RenderThread, vkc) with
+                match Texture.TryCreateTextureVulkan (false, true, Texture.ColorCompression, "Assets/Default/MaterialHeight" + ext, Texture.RenderThread, vkc) with
                 | Right (metadata, vulkanTexture) -> Texture.EagerTexture { TextureMetadata = metadata; TextureInternal = vulkanTexture }
                 | Left error -> failwith ("Could not load material height texture due to: " + error)
             let subdermalTexture =
-                match Texture.TryCreateTextureVulkan (false, VkFilter.Linear, VkFilter.Linear, true, true, Texture.ColorCompression, "Assets/Default/MaterialSubdermal.dds", Texture.RenderThread, vkc) with
+                match Texture.TryCreateTextureVulkan (false, true, Texture.ColorCompression, "Assets/Default/MaterialSubdermal" + ext, Texture.RenderThread, vkc) with
                 | Right (metadata, vulkanTexture) -> Texture.EagerTexture { TextureMetadata = metadata; TextureInternal = vulkanTexture }
                 | Left error -> failwith ("Could not load material subdermal texture due to: " + error)
             let finenessTexture =
-                match Texture.TryCreateTextureVulkan (false, VkFilter.Linear, VkFilter.Linear, true, true, Texture.ColorCompression, "Assets/Default/MaterialFineness.dds", Texture.RenderThread, vkc) with
+                match Texture.TryCreateTextureVulkan (false, true, Texture.ColorCompression, "Assets/Default/MaterialFineness" + ext, Texture.RenderThread, vkc) with
                 | Right (metadata, vulkanTexture) -> Texture.EagerTexture { TextureMetadata = metadata; TextureInternal = vulkanTexture }
                 | Left error -> failwith ("Could not load material fineness texture due to: " + error)
             let scatterTexture =
-                match Texture.TryCreateTextureVulkan (false, VkFilter.Linear, VkFilter.Linear, true, true, Texture.ColorCompression, "Assets/Default/MaterialSubdermal.dds", Texture.RenderThread, vkc) with
+                match Texture.TryCreateTextureVulkan (false, true, Texture.ColorCompression, "Assets/Default/MaterialSubdermal" + ext, Texture.RenderThread, vkc) with
                 | Right (metadata, vulkanTexture) -> Texture.EagerTexture { TextureMetadata = metadata; TextureInternal = vulkanTexture }
                 | Left error -> failwith ("Could not load material scatter texture due to: " + error)
             let clearCoatTexture =
-                match Texture.TryCreateTextureVulkan (false, VkFilter.Linear, VkFilter.Linear, true, true, Texture.ColorCompression, "Assets/Default/MaterialClearCoat.dds", Texture.RenderThread, vkc) with
+                match Texture.TryCreateTextureVulkan (false, true, Texture.ColorCompression, "Assets/Default/MaterialClearCoat" + ext, Texture.RenderThread, vkc) with
                 | Right (metadata, vulkanTexture) -> Texture.EagerTexture { TextureMetadata = metadata; TextureInternal = vulkanTexture }
                 | Left error -> failwith ("Could not load material clear coat texture due to: " + error)
             let clearCoatRoughnessTexture =
-                match Texture.TryCreateTextureVulkan (false, VkFilter.Linear, VkFilter.Linear, true, true, Texture.ColorCompression, "Assets/Default/MaterialClearCoatRoughness.dds", Texture.RenderThread, vkc) with
+                match Texture.TryCreateTextureVulkan (false, true, Texture.ColorCompression, "Assets/Default/MaterialClearCoatRoughness" + ext, Texture.RenderThread, vkc) with
                 | Right (metadata, vulkanTexture) -> Texture.EagerTexture { TextureMetadata = metadata; TextureInternal = vulkanTexture }
                 | Left error -> failwith ("Could not load material clear coat roughness texture due to: " + error)
             let clearCoatNormalTexture =
-                match Texture.TryCreateTextureVulkan (false, VkFilter.Linear, VkFilter.Linear, true, true, Texture.NormalCompression, "Assets/Default/MaterialClearCoatNormal.dds", Texture.RenderThread, vkc) with
+                match Texture.TryCreateTextureVulkan (false, true, Texture.NormalCompression, "Assets/Default/MaterialClearCoatNormal" + ext, Texture.RenderThread, vkc) with
                 | Right (metadata, vulkanTexture) -> Texture.EagerTexture { TextureMetadata = metadata; TextureInternal = vulkanTexture }
                 | Left error -> failwith ("Could not load material clear coat normal texture due to: " + error)
             { AlbedoTexture = albedoTexture
@@ -6464,11 +6495,17 @@ type [<ReferenceEquality>] VulkanRenderer3d =
             { VulkanContext = vkc
               GeometryViewport = geometryViewport
               WindowViewport = windowViewport
+              SkyBoxDrawIndex = 0
+              ForwardStaticDrawIndex = 0
               LazyTextureQueues = lazyTextureQueues
               TextureServer = textureServer
               TextureDisposer = textureDisposer
-              SkyBoxDrawIndex = 0
-              ForwardStaticDrawIndex = 0
+              FilteredSampler = filteredSampler
+              CubeMapSampler = cubeMapSampler
+              ShadowSampler = shadowSampler
+              ColorSampler = colorSampler
+              DepthSampler = depthSampler
+              BrdfSampler = brdfSampler
               SkyBoxPipeline = skyBoxPipeline
               IrradiancePipeline = irradiancePipeline
               EnvironmentFilterPipeline = environmentFilterPipeline
@@ -6507,12 +6544,19 @@ type [<ReferenceEquality>] VulkanRenderer3d =
         member renderer.RendererConfig =
             renderer.RendererConfig
         
-        member renderer.Render frustumInterior frustumExterior frustumImposter lightBox eyeCenter eyeRotation eyeFieldOfView geometryViewport windowViewport renderMessages =
-            VulkanRenderer3d.render frustumInterior frustumExterior frustumImposter lightBox eyeCenter eyeRotation eyeFieldOfView geometryViewport windowViewport renderMessages renderer
+        member renderer.Render frustumInterior frustumExterior frustumImposter eyeCenter eyeRotation eyeFieldOfView geometryViewport windowViewport renderMessages =
+            VulkanRenderer3d.render frustumInterior frustumExterior frustumImposter eyeCenter eyeRotation eyeFieldOfView geometryViewport windowViewport renderMessages renderer
         
         member renderer.CleanUp () =
             
             let vkc = renderer.VulkanContext
+            
+            Texture.Sampler.destroy renderer.FilteredSampler vkc
+            Texture.Sampler.destroy renderer.CubeMapSampler vkc
+            Texture.Sampler.destroy renderer.ShadowSampler vkc
+            Texture.Sampler.destroy renderer.ColorSampler vkc
+            Texture.Sampler.destroy renderer.DepthSampler vkc
+            Texture.Sampler.destroy renderer.BrdfSampler vkc
             
             SkyBox.DestroySkyBoxPipeline renderer.SkyBoxPipeline vkc
             CubeMap.DestroyCubeMapPipeline (renderer.IrradiancePipeline, vkc)

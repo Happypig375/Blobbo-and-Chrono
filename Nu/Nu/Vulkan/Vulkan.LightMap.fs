@@ -18,7 +18,6 @@ module LightMap =
         let metadata = Texture.TextureMetadata.make resolution resolution
         let reflectionCubeMapInternal =
             Texture.TextureInternal.create
-                VkSamplerAddressMode.ClampToEdge VkFilter.Linear VkFilter.Linear false
                 Texture.MipmapNone (Texture.AttachmentColor false) Texture.TextureCubeMap [|VkImageUsageFlags.Sampled; VkImageUsageFlags.TransferDst|]
                 Hl.Rgba16f Hl.Rgba metadata vkc
         let reflectionCubeMap = Texture.EagerTexture { TextureMetadata = Texture.TextureMetadata.empty; TextureInternal = reflectionCubeMapInternal }
@@ -79,7 +78,6 @@ module LightMap =
         let metadata = Texture.TextureMetadata.make resolution resolution
         let cubeMapInternal =
             Texture.TextureInternal.create
-                VkSamplerAddressMode.ClampToEdge VkFilter.Linear VkFilter.Linear false
                 Texture.MipmapNone (Texture.AttachmentColor false) Texture.TextureCubeMap [|VkImageUsageFlags.Sampled|]
                 colorFormat Hl.Rgba metadata vkc
         let cubeMap = Texture.EagerTexture { TextureMetadata = Texture.TextureMetadata.empty; TextureInternal = cubeMapInternal }
@@ -131,7 +129,7 @@ module LightMap =
           Pipeline : Pipeline.Pipeline }
     
     /// Create an EnvironmentFilterPipeline.
-    let CreateEnvironmentFilterPipeline (shaderPath, colorAttachmentFormat, vkc : Hl.VulkanContext) =
+    let CreateEnvironmentFilterPipeline (shaderPath, colorAttachmentFormat, sampler, vkc : Hl.VulkanContext) =
 
         // create pipeline
         let pipeline =
@@ -141,17 +139,22 @@ module LightMap =
                 [|Pipeline.vertex 0 ((3 (*position*)) * sizeof<single>) VkVertexInputRate.Vertex
                     [|Pipeline.attribute 0 Hl.Single3 0|]|]
                 [|Pipeline.descriptorSet true
-                    [|Pipeline.descriptor 0 Hl.UniformBuffer Hl.VertexStage (6 * Constants.Render.EnvironmentFilterMips)
-                      Pipeline.descriptor 1 Hl.UniformBuffer Hl.FragmentStage (6 * Constants.Render.EnvironmentFilterMips)
-                      Pipeline.descriptor 2 Hl.CombinedImageSampler Hl.FragmentStage (6 * Constants.Render.EnvironmentFilterMips)|]|]
+                    [|Pipeline.descriptor 0 Hl.StorageBuffer Hl.VertexStage (6 * Constants.Render.EnvironmentFilterMips)
+                      Pipeline.descriptor 1 Hl.StorageBuffer Hl.FragmentStage (6 * Constants.Render.EnvironmentFilterMips)
+                      Pipeline.descriptor 2 Hl.SampledImage Hl.FragmentStage (6 * Constants.Render.EnvironmentFilterMips)|]
+                  Pipeline.descriptorSet false
+                    [|Pipeline.descriptor 0 Hl.Sampler Hl.FragmentStage 1|]|]
                 [|Pipeline.pushConstant 0 sizeof<int> Hl.VertexFragmentStage|]
                 [|colorAttachmentFormat|]
                 None
                 vkc
 
+        // setup sampler
+        Pipeline.Pipeline.writeDescriptorSampler 1 0 sampler pipeline vkc
+        
         // create uniform buffers
-        let transformUniform = Buffer.Buffer.create sizeof<Transform> Buffer.Uniform vkc
-        let environmentFilterUniform = Buffer.Buffer.create sizeof<EnvironmentFilter> Buffer.Uniform vkc
+        let transformUniform = Buffer.Buffer.create sizeof<Transform> Buffer.Storage vkc
+        let environmentFilterUniform = Buffer.Buffer.create sizeof<EnvironmentFilter> Buffer.Storage vkc
 
         // fin
         { TransformUniform = transformUniform; EnvironmentFilterUniform = environmentFilterUniform; Pipeline = pipeline }
@@ -178,64 +181,78 @@ module LightMap =
          pipeline : EnvironmentFilterPipeline,
          vkc : Hl.VulkanContext) =
 
-        // upload uniforms
-        let mutable transform = Transform ()
-        let mutable environmentFilter = EnvironmentFilter ()
-        transform.view <- view
-        transform.projection <- projection
-        transform.viewProjection <- viewProjection
-        environmentFilter.roughness <- roughness
-        environmentFilter.resolution <- resolution
-        Buffer.Buffer.uploadValue drawIndex 0 0 transform pipeline.TransformUniform vkc
-        Buffer.Buffer.uploadValue drawIndex 0 0 environmentFilter pipeline.EnvironmentFilterUniform vkc
-    
-        // update uniform descriptors
-        Pipeline.Pipeline.updateDescriptorsUniform 0 0 pipeline.TransformUniform pipeline.Pipeline vkc
-        Pipeline.Pipeline.updateDescriptorsUniform 0 1 pipeline.EnvironmentFilterUniform pipeline.Pipeline vkc
-
-        // bind texture
-        Pipeline.Pipeline.writeDescriptorTexture drawIndex 0 2 cubeMap pipeline.Pipeline vkc
-
-        // make viewport and scissor
-        let mutable renderArea = VkRect2D (0, 0, uint resolution, uint resolution)
-        let mutable vkViewport = Hl.makeViewport invertY renderArea
-        let mutable scissor = renderArea
-
-        // only draw if scissor (and therefore also viewport) is valid
-        if Hl.validateRect scissor then
-
-            // init render
-            let mutable rendering = Hl.makeRenderingInfo [|colorAttachment|] None renderArea None
-            Vulkan.vkCmdBeginRendering (cb, asPointer &rendering)
-
-            // bind pipeline
-            let vkPipeline = Pipeline.Pipeline.getVkPipeline Pipeline.NoBlend false pipeline.Pipeline
-            Vulkan.vkCmdBindPipeline (cb, VkPipelineBindPoint.Graphics, vkPipeline)
-
-            // set viewport and scissor
-            Vulkan.vkCmdSetViewport (cb, 0u, 1u, asPointer &vkViewport)
-            Vulkan.vkCmdSetScissor (cb, 0u, 1u, asPointer &scissor)
-            
-            // bind vertex and index buffer
-            let mutable vertexBuffer = geometry.VertexBuffer.VkBuffer
-            let mutable vertexOffset = 0UL
-            Vulkan.vkCmdBindVertexBuffers (cb, 0u, 1u, asPointer &vertexBuffer, asPointer &vertexOffset)
-            Vulkan.vkCmdBindIndexBuffer (cb, geometry.IndexBuffer.VkBuffer, 0UL, VkIndexType.Uint32)
-
-            // bind descriptor set
-            let mutable descriptorSet = pipeline.Pipeline.VkDescriptorSet 0
-            Vulkan.vkCmdBindDescriptorSets (cb, VkPipelineBindPoint.Graphics, pipeline.Pipeline.PipelineLayout, 0u, 1u, asPointer &descriptorSet, 0u, nullPtr)
-            
-            // push draw index
-            let mutable drawIndex = drawIndex
-            Vulkan.vkCmdPushConstants (cb, pipeline.Pipeline.PipelineLayout, Hl.VertexFragmentStage.VkShaderStageFlags, 0u, 4u, asVoidPtr &drawIndex)
-            
-            // draw
-            Vulkan.vkCmdDrawIndexed (cb, uint geometry.ElementCount, 1u, 0u, 0, 0u)
-            Hl.reportDrawCall 1
+        // ensure pipeline draw limit is not exceeded
+        if drawIndex < pipeline.Pipeline.DrawLimit then
         
-            // end render
-            Vulkan.vkCmdEndRendering cb
+            // upload uniforms
+            let mutable transform = Transform ()
+            let mutable environmentFilter = EnvironmentFilter ()
+            transform.view <- view
+            transform.projection <- projection
+            transform.viewProjection <- viewProjection
+            environmentFilter.roughness <- roughness
+            environmentFilter.resolution <- resolution
+            Buffer.Buffer.uploadValue drawIndex 0 0 transform pipeline.TransformUniform vkc
+            Buffer.Buffer.uploadValue drawIndex 0 0 environmentFilter pipeline.EnvironmentFilterUniform vkc
+    
+            // update uniform descriptors
+            Pipeline.Pipeline.updateBufferDescriptorsStorage 0 0 pipeline.TransformUniform pipeline.Pipeline vkc
+            Pipeline.Pipeline.updateBufferDescriptorsStorage 0 1 pipeline.EnvironmentFilterUniform pipeline.Pipeline vkc
+
+            // bind texture
+            Pipeline.Pipeline.writeDescriptorSampledImage drawIndex 0 2 cubeMap pipeline.Pipeline vkc
+
+            // make viewport and scissor
+            let mutable renderArea = VkRect2D (0, 0, uint resolution, uint resolution)
+            let mutable vkViewport = Hl.makeViewport invertY renderArea
+            let mutable scissor = renderArea
+
+            // only draw if scissor (and therefore also viewport) is valid
+            if Hl.validateRect scissor then
+
+                // only draw if required vkPipeline exists
+                match Pipeline.Pipeline.tryGetVkPipeline Pipeline.NoBlend false pipeline.Pipeline with
+                | Some vkPipeline ->
+                
+                    // init render
+                    let mutable rendering = Hl.makeRenderingInfo [|colorAttachment|] None renderArea None
+                    Vulkan.vkCmdBeginRendering (cb, asPointer &rendering)
+
+                    // bind pipeline
+                    Vulkan.vkCmdBindPipeline (cb, VkPipelineBindPoint.Graphics, vkPipeline)
+
+                    // set viewport and scissor
+                    Vulkan.vkCmdSetViewport (cb, 0u, 1u, asPointer &vkViewport)
+                    Vulkan.vkCmdSetScissor (cb, 0u, 1u, asPointer &scissor)
+                    
+                    // bind vertex and index buffer
+                    let mutable vertexBuffer = geometry.VertexBuffer.VkBuffer
+                    let mutable vertexOffset = 0UL
+                    Vulkan.vkCmdBindVertexBuffers (cb, 0u, 1u, asPointer &vertexBuffer, asPointer &vertexOffset)
+                    Vulkan.vkCmdBindIndexBuffer (cb, geometry.IndexBuffer.VkBuffer, 0UL, VkIndexType.Uint32)
+
+                    // bind descriptor sets
+                    let mutable mainDescriptorSet = pipeline.Pipeline.VkDescriptorSet 0
+                    let mutable samplerDescriptorSet = pipeline.Pipeline.VkDescriptorSet 1
+                    Vulkan.vkCmdBindDescriptorSets (cb, VkPipelineBindPoint.Graphics, pipeline.Pipeline.PipelineLayout, 0u, 1u, asPointer &mainDescriptorSet, 0u, nullPtr)
+                    Vulkan.vkCmdBindDescriptorSets (cb, VkPipelineBindPoint.Graphics, pipeline.Pipeline.PipelineLayout, 1u, 1u, asPointer &samplerDescriptorSet, 0u, nullPtr)
+                    
+                    // push draw index
+                    let mutable drawIndex = drawIndex
+                    Vulkan.vkCmdPushConstants (cb, pipeline.Pipeline.PipelineLayout, Hl.VertexFragmentStage.VkShaderStageFlags, 0u, 4u, asVoidPtr &drawIndex)
+                    
+                    // draw
+                    Vulkan.vkCmdDrawIndexed (cb, uint geometry.ElementCount, 1u, 0u, 0, 0u)
+                    Hl.reportDrawCall 1
+            
+                    // end render
+                    Vulkan.vkCmdEndRendering cb
+
+                // abort
+                | None -> Log.warnOnce "Cannot draw because VkPipeline does not exist."
+
+        // draw not possible
+        else Log.warnOnce "Rendering incomplete due to insufficient gpu resources."
 
     
     /// Create an environment filter map.
@@ -245,7 +262,6 @@ module LightMap =
         let metadata = Texture.TextureMetadata.make resolution resolution
         let cubeMapInternal =
             Texture.TextureInternal.create
-                VkSamplerAddressMode.ClampToEdge VkFilter.Linear VkFilter.Linear false
                 (Texture.MipmapManual Constants.Render.EnvironmentFilterMips) (Texture.AttachmentColor false) Texture.TextureCubeMap [|VkImageUsageFlags.Sampled|]
                 colorFormat Hl.Rgba metadata vkc
         let cubeMap = Texture.EagerTexture { TextureMetadata = Texture.TextureMetadata.empty; TextureInternal = cubeMapInternal }

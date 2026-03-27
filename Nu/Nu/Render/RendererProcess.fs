@@ -11,7 +11,7 @@ open System.Collections.Generic
 open System.Numerics
 open System.Threading
 open Vortice.Vulkan
-open SDL2
+open SDL
 open ImGuiNET
 open Prime
 
@@ -21,7 +21,7 @@ type RendererProcess =
     interface
         
         /// Start the rendering process.
-        abstract Start : ImFontAtlasPtr -> Window option -> Viewport -> Viewport -> unit
+        abstract Start : ImFontAtlasPtr -> SDL_Window nativeptr option -> Viewport -> Viewport -> unit
         
         /// The current configuration of the 3d renderer.
         abstract Renderer3dConfig : Renderer3dConfig
@@ -54,7 +54,7 @@ type RendererProcess =
         abstract ClearMessages : unit -> unit
         
         /// Submit enqueued render messages for processing.
-        abstract SubmitMessages : Frustum -> Frustum -> Frustum -> Box3 -> Vector3 -> Quaternion -> single -> Vector2 -> Vector2 -> Vector2i -> Viewport -> Viewport -> ImDrawDataPtr -> unit
+        abstract SubmitMessages : Frustum -> Frustum -> Frustum -> Vector3 -> Quaternion -> single -> Vector2 -> Vector2 -> Vector2i -> Viewport -> Viewport -> ImDrawDataPtr -> unit
         
         /// Request to swap the underlying render buffer.
         abstract RequestSwap : unit -> unit
@@ -68,7 +68,7 @@ type RendererInline () =
 
     let mutable started = false
     let mutable terminated = false
-    let mutable windowOpt = Option<Window>.None
+    let mutable windowOpt = Option<SDL_Window nativeptr>.None
     let mutable messages3d = List ()
     let mutable messages2d = List ()
     let mutable messagesImGui = List ()
@@ -91,9 +91,6 @@ type RendererInline () =
                 match windowOpt with
                 | Some window ->
 
-                    // extract window
-                    let window = match window with SglWindow window -> window.SglWindow
-
                     // attempt to create VulkanContext, storing reference to it
                     let vkc =
                         match Hl.VulkanContext.tryCreate window with
@@ -105,7 +102,7 @@ type RendererInline () =
                         let defaultImageTag = AssetTag.make Assets.Default.PackageName Assets.Default.ImageName
                         match Metadata.tryGetFilePath defaultImageTag with
                         | Some filePath ->
-                            match Texture.TryCreateTextureVulkan (true, VkFilter.Nearest, VkFilter.Nearest, false, false, Texture.Uncompressed, filePath, Texture.RenderThread, vkc) with
+                            match Texture.TryCreateTextureVulkan (true, false, Texture.Uncompressed, filePath, Texture.RenderThread, vkc) with
                             | Right (_, textureInternal) -> textureInternal
                             | Left _ -> Texture.TextureInternal.createEmpty vkc
                         | None -> Texture.TextureInternal.createEmpty vkc
@@ -183,7 +180,7 @@ type RendererInline () =
             messages2d.Clear ()
             messagesImGui.Clear ()
 
-        member ri.SubmitMessages frustumInterior frustumExterior frustumImposter lightBox eye3dCenter eye3dRotation eye3dFieldOfView eye2dCenter eye2dSize windowSize geometryViewport windowViewport drawData =
+        member ri.SubmitMessages frustumInterior frustumExterior frustumImposter eye3dCenter eye3dRotation eye3dFieldOfView eye2dCenter eye2dSize windowSize geometryViewport windowViewport drawData =
             match dependenciesOpt with
             | Some (renderer3d, renderer2d, rendererImGui, vkc) ->
 
@@ -191,7 +188,7 @@ type RendererInline () =
                 Hl.VulkanContext.beginFrame windowSize windowViewport vkc
 
                 // render 3d
-                renderer3d.Render frustumInterior frustumExterior frustumImposter lightBox eye3dCenter eye3dRotation eye3dFieldOfView geometryViewport windowViewport messages3d
+                renderer3d.Render frustumInterior frustumExterior frustumImposter eye3dCenter eye3dRotation eye3dFieldOfView geometryViewport windowViewport messages3d
                 messages3d.Clear ()
 
                 // render 2d
@@ -232,7 +229,7 @@ type RendererThread () =
     let [<VolatileField>] mutable threadOpt = None
     let [<VolatileField>] mutable started = false
     let [<VolatileField>] mutable terminated = false
-    let [<VolatileField>] mutable submissionOpt = Option<Frustum * Frustum * Frustum * Box3 * RenderMessage3d List * RenderMessage2d List * RenderMessageImGui List * Vector3 * Quaternion * single * Vector2 * Vector2 * Vector2i * Viewport * Viewport * ImDrawDataPtr>.None
+    let [<VolatileField>] mutable submissionOpt = Option<Frustum * Frustum * Frustum * RenderMessage3d List * RenderMessage2d List * RenderMessageImGui List * Vector3 * Quaternion * single * Vector2 * Vector2 * Vector2i * Viewport * Viewport * ImDrawDataPtr>.None
     let [<VolatileField>] mutable swapRequested = false
     let [<VolatileField>] mutable swapRequestAcknowledged = false
     let [<VolatileField>] mutable renderer3dConfig = Renderer3dConfig.defaultConfig
@@ -254,6 +251,7 @@ type RendererThread () =
     let cachedSpriteMessagesLock = obj ()
     let cachedSpriteMessages = System.Collections.Generic.Queue ()
     let [<VolatileField>] mutable cachedSpriteMessagesCapacity = Constants.Render.SpriteMessagesPrealloc
+    let mutable vkcOpt = None
 
     let allocStaticModelMessage () =
         lock cachedStaticModelMessagesLock (fun () ->
@@ -363,23 +361,14 @@ type RendererThread () =
                     | _ -> ()
                 | _ -> ())
 
-    member private rt.Run fonts window geometryViewport windowViewport =
-
-        // extract window
-        let window = match window with SglWindow window -> window.SglWindow
-
-        // attempt to create VulkanContext
-        let vkc =
-            match Hl.VulkanContext.tryCreate window with
-            | Some vkc -> vkc
-            | None -> Log.fail "Could not create Vulkan context." // TODO: P0: handle failure more gracefully here?
+    member private rt.Run fonts geometryViewport windowViewport vkc =
 
         // create and populate empty TextureInternal
         let empty = 
             let defaultImageTag = AssetTag.make Assets.Default.PackageName Assets.Default.ImageName
             match Metadata.tryGetFilePath defaultImageTag with
             | Some filePath ->
-                match Texture.TryCreateTextureVulkan (true, VkFilter.Nearest, VkFilter.Nearest, false, false, Texture.Uncompressed, filePath, Texture.RenderThread, vkc) with
+                match Texture.TryCreateTextureVulkan (true, false, Texture.Uncompressed, filePath, Texture.RenderThread, vkc) with
                 | Right (_, textureInternal) -> textureInternal
                 | Left _ -> Texture.TextureInternal.createEmpty vkc
             | None -> Texture.TextureInternal.createEmpty vkc
@@ -402,7 +391,7 @@ type RendererThread () =
 
             // wait until submission is provided
             while Option.isNone submissionOpt && not terminated do Thread.Yield () |> ignore<bool>
-            let (frustumInterior, frustumExterior, frustumImposter, lightBox, messages3d, messages2d, messagesImGui, eye3dCenter, eye3dRotation, eye3dFieldOfView, eye2dCenter, eye2dSize, windowSize, geometryViewport, windowViewport, drawData) = Option.get submissionOpt
+            let (frustumInterior, frustumExterior, frustumImposter, messages3d, messages2d, messagesImGui, eye3dCenter, eye3dRotation, eye3dFieldOfView, eye2dCenter, eye2dSize, windowSize, geometryViewport, windowViewport, drawData) = Option.get submissionOpt
             submissionOpt <- None
 
             // guard against early termination
@@ -413,7 +402,7 @@ type RendererThread () =
                 Hl.VulkanContext.beginFrame windowSize windowViewport vkc
 
                 // render 3d
-                renderer3d.Render frustumInterior frustumExterior frustumImposter lightBox eye3dCenter eye3dRotation eye3dFieldOfView geometryViewport windowViewport messages3d
+                renderer3d.Render frustumInterior frustumExterior frustumImposter eye3dCenter eye3dRotation eye3dFieldOfView geometryViewport windowViewport messages3d
                 freeStaticModelMessages messages3d
                 freeStaticModelSurfaceMessages messages3d
                 freeAnimatedModelMessages messages3d
@@ -445,14 +434,12 @@ type RendererThread () =
                         // present
                         Hl.VulkanContext.present vkc
 
-
         // clean up
         Hl.VulkanContext.waitIdle vkc
         renderer3d.CleanUp ()
         renderer2d.CleanUp ()
         rendererImGui.CleanUp ()
         Texture.TextureInternal.destroy Texture.TextureInternal.empty vkc
-        Hl.VulkanContext.cleanup vkc
 
     interface RendererProcess with
 
@@ -465,8 +452,15 @@ type RendererThread () =
             match windowOpt with
             | Some window ->
 
+                // attempt to create VulkanContext (on main thread, unlike OpenGL), storing a reference for clean-up.
+                let vkc =
+                    match Hl.VulkanContext.tryCreate window with
+                    | Some vkc -> vkc
+                    | None -> Log.fail "Could not create Vulkan context." // TODO: P0: handle failure more gracefully here?
+                vkcOpt <- Some vkc
+
                 // start real thread
-                let thread = Thread (ThreadStart (fun () -> rt.Run fonts window geometryViewport windowViewport))
+                let thread = Thread (ThreadStart (fun () -> rt.Run fonts geometryViewport windowViewport vkc))
                 threadOpt <- Some thread
                 thread.IsBackground <- true
                 thread.Start ()
@@ -669,7 +663,7 @@ type RendererThread () =
             messageBuffers2d.[messageBufferIndex].Clear ()
             messageBuffersImGui.[messageBufferIndex].Clear ()
 
-        member rt.SubmitMessages frustumInterior frustumExterior frustumImposter lightBox eye3dCenter eye3dRotation eye3dFieldOfView eye2dCenter eye2dSize eyeMargin geometryViewport windowViewport drawData =
+        member rt.SubmitMessages frustumInterior frustumExterior frustumImposter eye3dCenter eye3dRotation eye3dFieldOfView eye2dCenter eye2dSize eyeMargin geometryViewport windowViewport drawData =
             if Option.isNone threadOpt then raise (InvalidOperationException "Render process not yet started or already terminated.")
             let messages3d = messageBuffers3d.[messageBufferIndex]
             let messages2d = messageBuffers2d.[messageBufferIndex]
@@ -678,7 +672,7 @@ type RendererThread () =
             messageBuffers3d.[messageBufferIndex].Clear ()
             messageBuffers2d.[messageBufferIndex].Clear ()
             messageBuffersImGui.[messageBufferIndex].Clear ()
-            submissionOpt <- Some (frustumInterior, frustumExterior, frustumImposter, lightBox, messages3d, messages2d, messagesImGui, eye3dCenter, eye3dRotation, eye3dFieldOfView, eye2dCenter, eye2dSize, eyeMargin, geometryViewport, windowViewport, drawData)
+            submissionOpt <- Some (frustumInterior, frustumExterior, frustumImposter, messages3d, messages2d, messagesImGui, eye3dCenter, eye3dRotation, eye3dFieldOfView, eye2dCenter, eye2dSize, eyeMargin, geometryViewport, windowViewport, drawData)
 
         member rt.RequestSwap () =
             if Option.isNone threadOpt then raise (InvalidOperationException "Render process not yet started or already terminated.")
@@ -692,4 +686,9 @@ type RendererThread () =
             if terminated then raise (InvalidOperationException "Redundant Terminate calls.")
             terminated <- true
             thread.Join ()
+            match vkcOpt with
+            | Some vkc ->
+                Hl.VulkanContext.cleanup vkc
+                vkcOpt <- None
+            | None -> ()
             threadOpt <- None

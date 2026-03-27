@@ -9,7 +9,7 @@ open System.Collections.Generic
 open System.IO
 open System.Numerics
 open FSharp.NativeInterop
-open SDL2
+open SDL
 open Vortice.ShaderCompiler
 open Prime
 open Nu
@@ -37,6 +37,9 @@ module Hl =
     /// TODO: DJL: figure out how to prevent potential outside mutation.
     let mutable internal CurrentFrame = 0
 
+    /// The number of Pipelines that have been created.
+    let mutable internal PipelinesCreated = 0
+    
     /// The format of an image.
     type ImageFormat =
         | Rgba8
@@ -47,6 +50,7 @@ module Hl =
         | R32f
         | Bc3
         | Bc5
+        | Astc
         | D32f
 
         /// The VkFormat.
@@ -60,6 +64,7 @@ module Hl =
             | R32f -> VkFormat.R32Sfloat
             | Bc3 -> VkFormat.Bc3UnormBlock
             | Bc5 -> VkFormat.Bc5UnormBlock
+            | Astc -> VkFormat.Astc4x4UnormBlock
             | D32f -> VkFormat.D32Sfloat
 
         /// The VkImageAspectFlags.
@@ -73,6 +78,7 @@ module Hl =
             | R32f -> VkImageAspectFlags.Color
             | Bc3 -> VkImageAspectFlags.Color
             | Bc5 -> VkImageAspectFlags.Color
+            | Astc -> VkImageAspectFlags.Color
             | D32f -> VkImageAspectFlags.Depth
         
         /// Get the size in bytes of an image with given width, height and format.
@@ -85,7 +91,8 @@ module Hl =
             | R16f -> width * height * 2
             | R32f -> width * height * 4
             | Bc3
-            | Bc5 ->
+            | Bc5 
+            | Astc ->
                 let x = if width % 4 = 0 then width else (width / 4 + 1) * 4
                 let y = if height % 4 = 0 then height else (height / 4 + 1) * 4
                 x * y
@@ -227,14 +234,20 @@ module Hl =
     
     /// The type of a resource descriptor.
     type DescriptorType =
-        | UniformBuffer
+        | Sampler
         | CombinedImageSampler
+        | SampledImage
+        | UniformBuffer
+        | StorageBuffer
 
         /// The VkDescriptorType.
         member this.VkDescriptorType =
             match this with
-            | UniformBuffer -> VkDescriptorType.UniformBuffer
+            | Sampler -> VkDescriptorType.Sampler
             | CombinedImageSampler -> VkDescriptorType.CombinedImageSampler
+            | SampledImage -> VkDescriptorType.SampledImage
+            | UniformBuffer -> VkDescriptorType.UniformBuffer
+            | StorageBuffer -> VkDescriptorType.StorageBuffer
     
     /// Convert VkExtensionProperties.extensionName to a string.
     /// TODO: see if we can inline functions like these once F# supports C#'s representation of this fixed buffer type.
@@ -431,12 +444,6 @@ module Hl =
             Log.error message
 #endif            
 
-    let private sdlGetInstanceExtensionsFail = "SDL_Vulkan_GetInstanceExtensions failed."
-    let private sdlCreateSurfaceFail = "SDL_Vulkan_CreateSurface failed."
-    
-    let private checkSdl errMsg result =
-        if int result = 0 then Log.error ("SDL error, " + errMsg)
-
     /// Report the fact that a draw call has just been made with the given number of instances.
     let reportDrawCall drawInstances =
         lock DrawReportLock (fun () ->
@@ -457,28 +464,29 @@ module Hl =
     let getDrawInstanceCount () =
         lock DrawReportLock (fun () -> DrawInstanceCount)
 
-    /// Compile GLSL file to SPIR-V code.
-    let compileShader shaderPath shaderKind =
+    /// Try to compile GLSL file to SPIR-V code.
+    let tryCompileShader shaderPath shaderKind =
         use shaderStream = new StreamReader (File.OpenRead shaderPath)
         let shaderStr = shaderStream.ReadToEnd ()
         use compiler = new Compiler ()
         let options = CompilerOptions ()
         options.ShaderStage <- shaderKind
         let result = compiler.Compile (shaderStr, shaderPath, options)
-        if result.Status <> CompilationStatus.Success then
-            Log.fail ("Vulkan shader compilation failed due to:\n" + result.ErrorMessage)
-        let shaderCode = result.Bytecode
-        shaderCode
+        if result.Status = CompilationStatus.Success
+        then Right result.Bytecode
+        else Left ("Vulkan shader compilation failed due to:\n" + result.ErrorMessage)
 
-    /// Create a shader module from a GLSL file.
-    let createShaderModuleFromGlsl shaderPath shaderKind device =
-        let shader = compileShader shaderPath shaderKind
-        let mutable shaderModule = Unchecked.defaultof<VkShaderModule>
+    /// Try to create a shader module from a GLSL file.
+    let tryCreateShaderModuleFromGlsl shaderPath shaderKind device =
+        match tryCompileShader shaderPath shaderKind with
+        | Right shader ->
 
-        // NOTE: DJL: using a high level overload here to avoid questions about reinterpret casting and memory alignment,
-        // see https://vulkan-tutorial.com/Drawing_a_triangle/Graphics_pipeline_basics/Shader_modules#page_Creating-shader-modules.
-        Vulkan.vkCreateShaderModule (device, shader, nullPtr, &shaderModule) |> check
-        shaderModule
+            // NOTE: DJL: using a high level overload here to avoid questions about reinterpret casting and memory alignment,
+            // see https://vulkan-tutorial.com/Drawing_a_triangle/Graphics_pipeline_basics/Shader_modules#page_Creating-shader-modules.
+            let mutable shaderModule = Unchecked.defaultof<VkShaderModule>
+            Vulkan.vkCreateShaderModule (device, shader, nullPtr, &shaderModule) |> check
+            Right shaderModule
+        | Left msg -> Left msg
 
     /// Record command to transition image layout.
     let recordTransitionLayout cb allLevels mipNumber layer layerCount imageAspect (oldLayout : ImageLayout) (newLayout : ImageLayout) vkImage =
@@ -789,7 +797,7 @@ module Hl =
     /// A swapchain and its assets that may be refreshed for a different screen size.
     type private Swapchain =
         { SwapchainInternalOpts_ : SwapchainInternal option array
-          Window_ : nativeint
+          Window_ : SDL_Window nativeptr
           SurfaceFormat_ : VkSurfaceFormatKHR
           mutable SwapExtent_ : VkExtent2D
           mutable SwapchainIndex_ : int }
@@ -824,7 +832,8 @@ module Hl =
                 // NOTE: DJL: unlike the GLFW counterpart, this does NOT return 0 when minimized.
                 let mutable width = Unchecked.defaultof<int>
                 let mutable height = Unchecked.defaultof<int>
-                SDL.SDL_Vulkan_GetDrawableSize (window, &width, &height)
+                if not (SDL3.SDL_GetWindowSizeInPixels (window, &&width, &&height)) then
+                    Log.fail (SDL3.SDL_GetError ())
 
                 // clamp resolution to size limits
                 width <- max width (int capabilities.minImageExtent.width)
@@ -841,8 +850,7 @@ module Hl =
         
         /// Check if window is minimized.
         static member isWindowMinimized window =
-            let flags = SDL.SDL_GetWindowFlags window
-            flags &&& Branchless.reinterpret SDL.SDL_WindowFlags.SDL_WINDOW_MINIMIZED <> 0u
+            SDL3.SDL_GetWindowFlags window &&& SDL_WindowFlags.SDL_WINDOW_MINIMIZED <> LanguagePrimitives.EnumOfValue 0UL
         
         /// Refresh the swapchain for a new swap extent.
         static member refresh physicalDevice surface swapchain device =
@@ -927,6 +935,10 @@ module Hl =
             // fin
             queue
 
+        /// Wait for Queue to finish execution.
+        static member waitIdle queue =
+            lock queue.Lock (fun () -> Vulkan.vkQueueWaitIdle queue.VkQueue |> check)
+        
         /// Submit persistent command buffer for execution.
         static member submit cb waitSemaphoresStages (signalSemaphores : VkSemaphore array) signalFence (queue : Queue) =
             lock queue.Lock (fun () ->
@@ -1101,7 +1113,7 @@ module Hl =
             (pUserData : nativeint) : uint32 =
 
             // get callback data
-            let callbackData = NativePtr.ofNativeInt<VkDebugUtilsMessengerCallbackDataEXT> pCallbackData |> NativePtr.read
+            let callbackData = NativePtr.toByRef (NativePtr.ofNativeInt<VkDebugUtilsMessengerCallbackDataEXT> pCallbackData)
             let message = NativePtr.unmanagedToString callbackData.pMessage
 
             // construct log header
@@ -1122,8 +1134,10 @@ module Hl =
             
             // decide when to log
             if not
-                (messageType = VkDebugUtilsMessageTypeFlagsEXT.General &&
-                 messageSeverity <= VkDebugUtilsMessageSeverityFlagsEXT.Info)
+                ((messageType = VkDebugUtilsMessageTypeFlagsEXT.General &&
+                  messageSeverity <= VkDebugUtilsMessageSeverityFlagsEXT.Info) ||
+                 (messageType = VkDebugUtilsMessageTypeFlagsEXT.Performance &&
+                  messageSeverity <= VkDebugUtilsMessageSeverityFlagsEXT.Warning))
             then Log.custom header message
             
             // decide when to fail
@@ -1154,7 +1168,7 @@ module Hl =
             Branchless.reinterpret info : VkDebugUtilsMessengerCreateInfoEXT // reinterpret as the "real" struct
         
         /// Create the Vulkan instance.
-        static member private createVulkanInstance debugInfo window =
+        static member private createVulkanInstance debugInfo =
 
             // get available instance layers
             let mutable layerCount = 0u
@@ -1173,18 +1187,17 @@ module Hl =
 
             // get sdl extensions
             let mutable sdlExtensionCount = 0u
-            SDL.SDL_Vulkan_GetInstanceExtensions (window, &sdlExtensionCount, null) |> checkSdl sdlGetInstanceExtensionsFail
-            let sdlExtensionsOut = Array.zeroCreate<nativeint> (int sdlExtensionCount)
-            SDL.SDL_Vulkan_GetInstanceExtensions (window, &sdlExtensionCount, sdlExtensionsOut) |> checkSdl sdlGetInstanceExtensionsFail
-            let sdlExtensions = Array.zeroCreate<nativeptr<byte>> (int sdlExtensionCount)
-            for i in 0 .. dec (int sdlExtensionCount) do sdlExtensions.[i] <- NativePtr.nativeintToBytePtr sdlExtensionsOut.[i]
+            let sdlExtensions = SDL3.SDL_Vulkan_GetInstanceExtensions &&sdlExtensionCount
+            let sdlExtensionCountInt = int sdlExtensionCount
+            if NativePtr.isNullPtr sdlExtensions then Log.fail (SDL3.SDL_GetError ())
 
             // choose extensions
             use debugUtilsWrap = new StringWrap (Vulkan.VK_EXT_DEBUG_UTILS_EXTENSION_NAME)
-            let debugUtilsArray = if ValidationLayersActivated then [|debugUtilsWrap.Pointer|] else [||]
-            let extensions = Array.append sdlExtensions debugUtilsArray
+            let extensions =
+                Array.init (sdlExtensionCountInt + if ValidationLayersActivated then 1 else 0)
+                    (fun i -> if i < sdlExtensionCountInt then NativePtr.get sdlExtensions i else debugUtilsWrap.Pointer)
             use extensionsPin = new ArrayPin<_> (extensions)
-            
+                
             // TODO: P1: DJL: complete VkApplicationInfo before merging to master
             // and check for available vulkan version (for the instance, NOT the physical device) as described in 
             // https://registry.khronos.org/vulkan/specs/1.3-extensions/html/chap4.html#VkApplicationInfo.
@@ -1218,9 +1231,11 @@ module Hl =
         
         /// Create vulkan surface.
         static member private createVulkanSurface window instance =
-            let mutable surface = Unchecked.defaultof<VkSurfaceKHR>
-            SDL.SDL_Vulkan_CreateSurface (window, instance, &(NativePtr.reinterpretRef<VkSurfaceKHR, uint64> &surface)) |> checkSdl sdlCreateSurfaceFail
-            surface
+            let mutable surface = Unchecked.defaultof<VkSurfaceKHR_T nativeptr>
+            let instance = NativePtr.ofNativeInt (VkInstance.op_Implicit instance)
+            if not (SDL3.SDL_Vulkan_CreateSurface (window, instance, NativePtr.nullPtr, &&surface)) then
+                Log.fail (SDL3.SDL_GetError ())
+            NativePtr.toNativeInt surface |> uint64 |> VkSurfaceKHR.op_Implicit
 
         /// Select compatible physical device if available.
         static member private trySelectPhysicalDevice surface instance =
@@ -1246,7 +1261,9 @@ module Hl =
                 swapchainSupported &&
                 physicalDevice.SurfaceFormats.Length > 0 &&
                 physicalDevice.Properties.apiVersion >= VkVersion.Version_1_3 &&
-                physicalDevice.Features.textureCompressionBC
+                match Constants.Render.TextureBlockCompression with
+                | BcCompression -> physicalDevice.Features.textureCompressionBC
+                | AstcCompression -> physicalDevice.Features.textureCompressionASTC_LDR
 
             // preferability criteria: device ought to be discrete
             let isPreferable physicalDevice =
@@ -1286,8 +1303,12 @@ module Hl =
             // descriptor indexing features
             let mutable descriptorIndexing = VkPhysicalDeviceDescriptorIndexingFeatures ()
             descriptorIndexing.pNext <- asVoidPtr &vulkan13
+            descriptorIndexing.shaderUniformBufferArrayNonUniformIndexing <- true
+            descriptorIndexing.shaderStorageBufferArrayNonUniformIndexing <- true
+            descriptorIndexing.shaderSampledImageArrayNonUniformIndexing <- true
             descriptorIndexing.descriptorBindingUniformBufferUpdateAfterBind <- true
             descriptorIndexing.descriptorBindingSampledImageUpdateAfterBind <- true
+            descriptorIndexing.descriptorBindingStorageBufferUpdateAfterBind <- true
             descriptorIndexing.descriptorBindingUpdateUnusedWhilePending <- true
             descriptorIndexing.descriptorBindingPartiallyBound <- true
             descriptorIndexing.runtimeDescriptorArray <- true
@@ -1503,23 +1524,9 @@ module Hl =
         static member waitIdle (vkc : VulkanContext) =
             Vulkan.vkDeviceWaitIdle vkc.Device |> check
 
-        /// Destroy the Vulkan handles.
-        static member cleanup vkc =
-            Swapchain.destroy vkc.Swapchain_ vkc.Device
-            for i in 0 .. dec vkc.ImageAvailableSemaphores_.Length do Vulkan.vkDestroySemaphore (vkc.Device, vkc.ImageAvailableSemaphores_.[i], nullPtr)
-            for i in 0 .. dec vkc.InFlightFences_.Length do Vulkan.vkDestroyFence (vkc.Device, vkc.InFlightFences_.[i], nullPtr)
-            Vulkan.vkDestroyFence (vkc.Device, vkc.TextureFence, nullPtr)
-            Vulkan.vkDestroyFence (vkc.Device, vkc.TransientFence, nullPtr)
-            Vulkan.vkDestroyCommandPool (vkc.Device, vkc.RenderCommandPool_, nullPtr)
-            Vulkan.vkDestroyCommandPool (vkc.Device, vkc.TextureCommandPool_, nullPtr)
-            Vulkan.vkDestroyCommandPool (vkc.Device, vkc.TransientCommandPool, nullPtr)
-            Vma.vmaDestroyAllocator vkc.VmaAllocator
-            Vulkan.vkDestroyDevice (vkc.Device, nullPtr)
-            Vulkan.vkDestroySurfaceKHR (vkc.Instance_, vkc.Surface_, nullPtr)
-            match vkc.DebugMessengerOpt_ with Some debugMessenger -> Vulkan.vkDestroyDebugUtilsMessengerEXT (vkc.Instance_, debugMessenger, nullPtr) | None -> ()
-            Vulkan.vkDestroyInstance (vkc.Instance_, nullPtr)
-
         /// Attempt to create a VulkanContext.
+        /// NOTE: this procedure is intended to be invoked from the main thread to satisfy the requirements of Mac and
+        /// iOS surface creation, and possibly other platforms.
         static member tryCreate window =
 
             // load vulkan; not vulkan function
@@ -1529,7 +1536,7 @@ module Hl =
             let debugInfo = VulkanContext.makeDebugMessengerInfo ()
             
             // create instance
-            let instance = VulkanContext.createVulkanInstance debugInfo window
+            let instance = VulkanContext.createVulkanInstance debugInfo
 
             // load instance commands; not vulkan function
             Vulkan.vkLoadInstanceOnly instance
@@ -1617,3 +1624,20 @@ module Hl =
 
             // failure
             | None -> None
+
+        /// Clean-up a VulkanContext.
+        /// NOTE: intended to be invoked from the main thread.
+        static member cleanup vkc =
+            Swapchain.destroy vkc.Swapchain_ vkc.Device
+            for i in 0 .. dec vkc.ImageAvailableSemaphores_.Length do Vulkan.vkDestroySemaphore (vkc.Device, vkc.ImageAvailableSemaphores_.[i], nullPtr)
+            for i in 0 .. dec vkc.InFlightFences_.Length do Vulkan.vkDestroyFence (vkc.Device, vkc.InFlightFences_.[i], nullPtr)
+            Vulkan.vkDestroyFence (vkc.Device, vkc.TextureFence, nullPtr)
+            Vulkan.vkDestroyFence (vkc.Device, vkc.TransientFence, nullPtr)
+            Vulkan.vkDestroyCommandPool (vkc.Device, vkc.RenderCommandPool_, nullPtr)
+            Vulkan.vkDestroyCommandPool (vkc.Device, vkc.TextureCommandPool_, nullPtr)
+            Vulkan.vkDestroyCommandPool (vkc.Device, vkc.TransientCommandPool, nullPtr)
+            Vma.vmaDestroyAllocator vkc.VmaAllocator
+            Vulkan.vkDestroyDevice (vkc.Device, nullPtr)
+            Vulkan.vkDestroySurfaceKHR (vkc.Instance_, vkc.Surface_, nullPtr)
+            match vkc.DebugMessengerOpt_ with Some debugMessenger -> Vulkan.vkDestroyDebugUtilsMessengerEXT (vkc.Instance_, debugMessenger, nullPtr) | None -> ()
+            Vulkan.vkDestroyInstance (vkc.Instance_, nullPtr)

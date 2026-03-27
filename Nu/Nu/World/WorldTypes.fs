@@ -111,7 +111,7 @@ and [<ReferenceEquality>] Lens<'a, 's when 's :> Simulant> =
     member lens.Set value world =
         match lens.SetOpt with
         | ValueSome setter -> setter value world
-        | ValueNone -> failwith ("Lens for '" + lens.Name + "' is readonly.")
+        | ValueNone -> Log.warnOnce ("Lens for '" + lens.Name + "' is readonly.")
 
     /// Attempt to transform the lensed property's value using the given mapper function that also receives the world
     /// as input.
@@ -178,7 +178,7 @@ and [<ReferenceEquality>] Lens<'a, 's when 's :> Simulant> =
     /// Throws an exception if the lens is readonly.
     static member inline ( %= ) (lens : Lens<_, _>, value) = lens.Map (flip (%) value)
 
-    /// Negates the lensed property's value.
+    /// Does nothing to the lensed property's value (here for symmetry with ~- operator).
     /// Throws an exception if the lens is readonly.
     static member inline ( ~+ ) (lens : Lens<_, _>) = lens.Map (~+)
 
@@ -196,7 +196,7 @@ and [<ReferenceEquality>] Lens<'a, 's when 's :> Simulant> =
 
     /// Set a lensed property's value.
     /// Throws an exception if the lens is readonly.
-    static member inline ( <-- ) (lens : Lens<_, _>, value) = lens.Set value
+    static member inline ( <~ ) (lens : Lens<_, _>, value) = lens.Set value
 
     /// Get a lensed property's value.
     static member inline ( !. ) (lens : Lens<_, _>) = fun world -> lens.Get world
@@ -1029,10 +1029,6 @@ and [<ReferenceEquality; CLIMutable>] GameState =
     static member tryGetProperty (propertyName, gameState, propertyRef : Property outref) =
         Xtension.tryGetProperty (propertyName, gameState.Xtension, &propertyRef)
 
-    /// Get an xtension property and its type information.
-    static member getProperty propertyName gameState =
-        Xtension.getProperty propertyName gameState.Xtension
-
     /// Try to set an xtension property with explicit type information.
     static member trySetProperty propertyName property gameState =
         match Xtension.trySetProperty propertyName property gameState.Xtension with
@@ -1108,10 +1104,6 @@ and [<ReferenceEquality; CLIMutable>] ScreenState =
     static member tryGetProperty (propertyName, screenState, propertyRef : Property outref) =
         Xtension.tryGetProperty (propertyName, screenState.Xtension, &propertyRef)
 
-    /// Get an xtension property and its type information.
-    static member getProperty propertyName screenState =
-        Xtension.getProperty propertyName screenState.Xtension
-
     /// Try to set an xtension property with explicit type information.
     static member trySetProperty propertyName property screenState =
         match Xtension.trySetProperty propertyName property screenState.Xtension with
@@ -1150,6 +1142,9 @@ and [<ReferenceEquality; CLIMutable>] ScreenState =
           Id = id
           Name = name }
 
+    static member internal makeSentinel (world : World) =
+        ScreenState.make GameTime.zero (Some "@Sentinel") world.WorldExtension.LateBindingsInstances.ScreenDispatchers.[nameof ScreenDispatcher]
+
     interface SimulantState with
         member this.GetXtension () = this.Xtension
 
@@ -1173,10 +1168,6 @@ and [<ReferenceEquality; CLIMutable>] GroupState =
     /// Try to get an xtension property and its type information.
     static member tryGetProperty (propertyName, groupState, propertyRef : Property outref) =
         Xtension.tryGetProperty (propertyName, groupState.Xtension, &propertyRef)
-
-    /// Get an xtension property and its type information.
-    static member getProperty propertyName groupState =
-        Xtension.getProperty propertyName groupState.Xtension
 
     /// Try to set an xtension property with explicit type information.
     static member trySetProperty propertyName property groupState =
@@ -1210,6 +1201,9 @@ and [<ReferenceEquality; CLIMutable>] GroupState =
           Order = Core.getTimeStampUnique ()
           Id = id
           Name = name }
+
+    static member internal makeSentinel (world : World) =
+        GroupState.make (Some "@Sentinel") world.WorldExtension.LateBindingsInstances.GroupDispatchers.[nameof GroupDispatcher]
 
     interface SimulantState with
         member this.GetXtension () = this.Xtension
@@ -1320,10 +1314,6 @@ and [<ReferenceEquality; CLIMutable>] EntityState =
     static member tryGetProperty (propertyName, entityState, propertyRef : Property outref) =
         Xtension.tryGetProperty (propertyName, entityState.Xtension, &propertyRef)
 
-    /// Get an xtension property and its type information.
-    static member getProperty propertyName entityState =
-        Xtension.getProperty propertyName entityState.Xtension
-
     /// Try to set an xtension property with explicit type information.
     static member trySetProperty propertyName property (entityState : EntityState) =
         let entityState = if entityState.Xtension.Imperative then entityState else EntityState.copy entityState
@@ -1377,6 +1367,9 @@ and [<ReferenceEquality; CLIMutable>] EntityState =
           Order = Core.getTimeStampUnique ()
           Id = id
           Surnames = surnames }
+
+    static member internal makeSentinel (world : World) =
+        EntityState.make world.Imperative None (Some [|"@Sentinel"|]) None world.WorldExtension.LateBindingsInstances.EntityDispatchers.[nameof EntityDispatcher]
 
     interface SimulantState with
         member this.GetXtension () = this.Xtension
