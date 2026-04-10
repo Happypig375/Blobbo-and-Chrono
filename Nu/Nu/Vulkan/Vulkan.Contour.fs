@@ -29,12 +29,13 @@ module ContourTessellation =
         let pipeline =
             Pipeline.Pipeline.create
                 Constants.Paths.ContourShaderFilePath
+                Constants.Render.ContoursMax
                 [|Pipeline.Transparent|]
                 [|Pipeline.vertex 0 vertexSize VkVertexInputRate.Vertex
                     [|Pipeline.attribute 0 Hl.Single2 0 // Position
                       Pipeline.attribute 1 Hl.Single4 sizeof<Vector2>|]|] // Color
-                [|Pipeline.descriptorSet true [|Pipeline.descriptor 0 Hl.StorageBuffer Hl.VertexStage 1|]|]
-                [|Pipeline.pushConstant 0 sizeof<int> Hl.VertexFragmentStage|]
+                [|Pipeline.descriptorSet Hl.BulkSetIndexed 1 [|Pipeline.descriptor 0 Hl.StorageBuffer Hl.VertexStage 1|]|]
+                [||]
                 [|vkc.SwapFormat|] None vkc
         
         // fin
@@ -54,16 +55,16 @@ module ContourTessellation =
         (modelViewProjectionUniform : Buffer.Buffer, pipeline : Pipeline.Pipeline)
         (vkc : Hl.VulkanContext) =
         
-        // ensure pipeline draw limit is not exceeded
-        if drawIndex < pipeline.DrawLimit then
+        // ensure bulk draw limit is not exceeded
+        if drawIndex < pipeline.BulkDrawLimit then
         
-            // upload data to the relevant buffers. this will create a bigger VkBuffer if necessary
-            Buffer.Buffer.uploadValue drawIndex 0 0 modelViewProjection modelViewProjectionUniform vkc
+            // upload vertex data
             Buffer.Buffer.uploadArray drawIndex 0 0 tessellation.Vertices vertexBuffer vkc
             Buffer.Buffer.uploadArray drawIndex 0 0 tessellation.Indices indexBuffer vkc
             
-            // update descriptors
-            Pipeline.Pipeline.updateBufferDescriptorsStorage 0 0 modelViewProjectionUniform pipeline vkc
+            // bind uniforms
+            Buffer.Buffer.uploadValue drawIndex 0 0 modelViewProjection modelViewProjectionUniform vkc
+            Pipeline.Pipeline.writeDescriptorStorageBuffer 0 0 drawIndex 0 modelViewProjectionUniform.[drawIndex] pipeline vkc
             
             // make viewport and scissor
             let mutable renderArea = VkRect2D (viewport.Inner.Min.X, viewport.Outer.Max.Y - viewport.Inner.Max.Y, uint viewport.Inner.Size.X, uint viewport.Inner.Size.Y)
@@ -114,12 +115,8 @@ module ContourTessellation =
                     Vulkan.vkCmdBindIndexBuffer (cb, indexBuffer.[drawIndex], 0UL, VkIndexType.Uint32)
                     
                     // bind descriptor set
-                    let mutable descriptorSet = pipeline.VkDescriptorSet 0
+                    let mutable descriptorSet = pipeline.VkDescriptorSet 0 drawIndex
                     Vulkan.vkCmdBindDescriptorSets (cb, VkPipelineBindPoint.Graphics, pipeline.PipelineLayout, 0u, 1u, asPointer &descriptorSet, 0u, nullPtr)
-                    
-                    // push draw index
-                    let mutable drawIdx = drawIndex
-                    Vulkan.vkCmdPushConstants (cb, pipeline.PipelineLayout, Hl.VertexFragmentStage.VkShaderStageFlags, 0u, 4u, asVoidPtr &drawIdx)
                     
                     // draw
                     Vulkan.vkCmdDrawIndexed (cb, uint32 tessellation.Indices.Length, 1u, 0u, 0, 0u)
@@ -131,5 +128,5 @@ module ContourTessellation =
                 // abort
                 | None -> Log.warnOnce "Cannot draw because VkPipeline does not exist."
 
-        // draw not possible
-        else Log.warnOnce "Rendering incomplete due to insufficient gpu resources."
+        // bulk draw limit exceeded
+        else Log.warnOnce "Draw operations aborted because bulk draw limit has been reached. Increase relevant bulk draw limit as necessary for current application."

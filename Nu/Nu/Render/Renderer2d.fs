@@ -249,7 +249,8 @@ type [<ReferenceEquality>] VulkanRenderer2d =
                     | (false, _) -> Constants.Render.FontSizeDefault
                 else Constants.Render.FontSizeDefault
             let fontSize = fontSizeDefault * single renderer.Viewport.DisplayScalar
-            let fontOpt = SDL3_ttf.TTF_OpenFont (asset.FilePath, fontSize)
+            let filePathSdl = PathF.GetFullPath asset.FilePath
+            let fontOpt = SDL3_ttf.TTF_OpenFont (filePathSdl, fontSize)
             if fontOpt <> NativePtr.nullPtr
             then Some (FontAsset (fontSizeDefault, fontOpt))
             else Log.info ("Could not load font due to '" + SDL3.SDL_GetError () + "'."); None
@@ -886,6 +887,7 @@ type [<ReferenceEquality>] VulkanRenderer2d =
                                     textSurfaceWidth,
                                     textSurfaceHeight,
                                     textTexture,
+                                    renderer.UnfilteredSampler,
                                     renderer.Viewport,
                                     spriteVertUniform,
                                     spriteFragUniform,
@@ -962,7 +964,7 @@ type [<ReferenceEquality>] VulkanRenderer2d =
         // reload render assets upon request
         // NOTE: DJL: doing this *before* rendering because you can't record commands with a VkPipeline then destroy it before submission.
         if renderer.ReloadAssetsRequested then
-            VulkanRenderer2d.handleReloadShaders renderer
+            VulkanRenderer2d.handleReloadShaders renderer // waits for renders to complete, relevant to all asset reload
             VulkanRenderer2d.handleReloadRenderAssets renderer
             renderer.ReloadAssetsRequested <- false
 
@@ -1018,7 +1020,7 @@ type [<ReferenceEquality>] VulkanRenderer2d =
         let unfilteredSampler = Texture.Sampler.create VkSamplerAddressMode.Repeat VkFilter.Nearest VkFilter.Nearest false vkc
         
         // create text resources
-        let spritePipeline = Sprite.CreateSpritePipeline unfilteredSampler vkc
+        let spritePipeline = Sprite.CreateSpritePipeline vkc
         let textQuad = Sprite.CreateSpriteQuad true vkc
         let textureDisposer = Texture.TextureDisposer.create ()
 

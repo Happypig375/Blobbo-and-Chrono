@@ -37,8 +37,8 @@ module Hl =
     /// TODO: DJL: figure out how to prevent potential outside mutation.
     let mutable internal CurrentFrame = 0
 
-    /// The number of Pipelines that have been created.
-    let mutable internal PipelinesCreated = 0
+    /// The total number of resource descriptors needed.
+    let mutable internal DescriptorsNeeded = 0u
     
     /// The format of an image.
     type ImageFormat =
@@ -120,7 +120,6 @@ module Hl =
     /// An image layout in its access and pipeline stage context.
     type ImageLayout =
         | Undefined
-        | UndefinedHost
         | TransferSrc
         | TransferDst
         | ShaderRead
@@ -132,7 +131,6 @@ module Hl =
         member this.VkImageLayout =
             match this with
             | Undefined -> VkImageLayout.Undefined
-            | UndefinedHost -> VkImageLayout.Undefined
             | TransferSrc -> VkImageLayout.TransferSrcOptimal
             | TransferDst -> VkImageLayout.TransferDstOptimal
             | ShaderRead -> VkImageLayout.ShaderReadOnlyOptimal
@@ -144,7 +142,6 @@ module Hl =
         member this.Access =
             match this with
             | Undefined -> VkAccessFlags.None
-            | UndefinedHost -> VkAccessFlags.None
             | TransferSrc -> VkAccessFlags.TransferRead
             | TransferDst -> VkAccessFlags.TransferWrite
             | ShaderRead -> VkAccessFlags.ShaderRead
@@ -155,8 +152,11 @@ module Hl =
         /// The pipeline stage.
         member this.PipelineStage =
             match this with
+            
+            // NOTE: DJL: for Undefined as image layout transition source, texture upload and mipmap generation previously used VK_PIPELINE_STAGE_HOST_BIT.
+            // I can't remember why but it's not in the tutorial and apparently may lead to failure on Android devices. I suspect it was inherited
+            // from ImGui backend.
             | Undefined -> VkPipelineStageFlags.TopOfPipe
-            | UndefinedHost -> VkPipelineStageFlags.Host
             | TransferSrc -> VkPipelineStageFlags.Transfer
             | TransferDst -> VkPipelineStageFlags.Transfer
             | ShaderRead -> VkPipelineStageFlags.FragmentShader
@@ -248,6 +248,12 @@ module Hl =
             | SampledImage -> VkDescriptorType.SampledImage
             | UniformBuffer -> VkDescriptorType.UniformBuffer
             | StorageBuffer -> VkDescriptorType.StorageBuffer
+    
+    /// Describes whether descriptors are multiplied for bulk use, and how.
+    type BulkDescriptorMode =
+        | BulkNone
+        | BulkDescriptorIndexed
+        | BulkSetIndexed
     
     /// Convert VkExtensionProperties.extensionName to a string.
     /// TODO: see if we can inline functions like these once F# supports C#'s representation of this fixed buffer type.
