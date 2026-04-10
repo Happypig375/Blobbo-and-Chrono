@@ -20,9 +20,6 @@ module [<AutoOpen>] BlobboExtensions =
         member this.GetChargeTarget world : Vector3 option = this.Get (nameof this.ChargeTarget) world
         member this.SetChargeTarget (value : Vector3 option) world = this.Set (nameof this.ChargeTarget) value world
         member this.ChargeTarget = lens (nameof this.ChargeTarget) this this.GetChargeTarget this.SetChargeTarget
-        member this.GetOnGround world : bool = this.Get (nameof this.OnGround) world
-        member this.SetOnGround (value : bool) world = this.Set (nameof this.OnGround) value world
-        member this.OnGround = lens (nameof this.OnGround) this this.GetOnGround this.SetOnGround
         member this.ShootEvent = stoa<Vector3> "Shoot/Event" --> this
         member this.LeapEvent = stoa<Vector3> "Leap/Event" --> this
 
@@ -42,7 +39,6 @@ type BlobboDispatcher () =
          define Entity.Absorption Equilibrium
          define Entity.Movement Still
          define Entity.ChargeTarget None
-         define Entity.OnGround false
          ]
 
     override _.Register (blobbo, world) =
@@ -57,12 +53,6 @@ type BlobboDispatcher () =
             // detect ground for allowing leaping
             let groundDirection = blobbo.GetGravity world |> Gravity.localize (World.getGravity2d world) |> _.Normalized
             let up = -groundDirection
-            blobbo.SetOnGround
-                (event.Data.FluidCollisions
-                |> Seq.exists (fun c ->
-                    let projectionToUp = c.Normal.Dot up
-                    let theta = acos projectionToUp
-                    theta <= Constants.Physics.GroundAngleMax)) world
             Cascade) blobbo.FluidEmitterUpdateEvent blobbo world
 
         // shoot particles when at least 3 are in body
@@ -85,7 +75,7 @@ type BlobboDispatcher () =
 
         // leap when on ground
         World.monitor (fun event world ->
-            if blobbo.GetOnGround world then
+            if World.getFluidEmitterFluidGrounded (blobbo.GetFluidEmitterId world) world then
                 let blobbo : Entity = event.Subscriber
                 let movement = (event.Data - blobbo.GetPosition world : Vector3) * 0.015f
                 World.chooseFluidParticles (fun p ->
@@ -169,5 +159,5 @@ type BlobboDispatcher () =
             let mutable insetClipOpt = ValueNone
             let mutable color = colorOne
             let mutable emission = colorZero
-            World.renderLayeredSpriteFast (transform.Elevation, transform.Horizon, Assets.Gameplay.WaterArrow, &transform, &insetClipOpt, &insetClipOpt, Assets.Gameplay.WaterArrow, &color, Transparent, &emission, FlipNone, world)
+            World.renderLayeredSpriteFast (transform.Elevation, transform.Horizon, Assets.Gameplay.WaterArrow, &transform, &insetClipOpt, &insetClipOpt, Assets.Gameplay.WaterArrow, &color, Transparent, &emission, Unflipped, world)
         | None -> ()

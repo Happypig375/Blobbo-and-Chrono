@@ -83,7 +83,7 @@ type RewindableFacet () =
                 entity.SetXtensionPropertyWithoutEvent (nameof Entity.AwakeTimeStamp) world.UpdateTime world // otherwise it would sleep
                 entity.SetRewindHistoryActiveInternal false world
                 for KeyValue (property, value) in rewindProperties do
-                    let prop = entity.GetProperty property world
+                    let prop = entity.TryGetProperty property world |> Option.get
                     entity.SetProperty property { prop with PropertyValue = System.ComponentModel.TypeDescriptor.GetConverter(prop.PropertyType).ConvertFrom value } world
                 entity.SetRewindHistoryActiveInternal true world
             Cascade) entity.RewindEvent entity (nameof RewindableFacet) world
@@ -125,7 +125,7 @@ type RewindableFacet () =
                                     world
                         | _ ->
                             if not (restoreXtensions.ContainsKey rewindRecord.PropertyName) then
-                                restoreXtensions[rewindRecord.PropertyName] <- entity.GetProperty rewindRecord.PropertyName world
+                                restoreXtensions[rewindRecord.PropertyName] <- entity.TryGetProperty rewindRecord.PropertyName world |> Option.get
                             let prop = restoreXtensions[rewindRecord.PropertyName]
                             World.setEntityXtensionPropertyWithoutEvent rewindRecord.PropertyName
                                 { prop with PropertyValue = System.ComponentModel.TypeDescriptor.GetConverter(prop.PropertyType).ConvertFrom rewindRecord.PreviousValue }
