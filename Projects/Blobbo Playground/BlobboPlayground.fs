@@ -13,6 +13,7 @@ type GameState =
     | Scene01_Playground
     | Scene02_BoxRewind
     | Scene03_MathSimplify
+    | Scene04_SquareRace
 
 // this extends the Game API to expose the above ImSim model as a property.
 [<AutoOpen>]
@@ -47,6 +48,7 @@ type BlobboPlaygroundDispatcher () =
         if World.doButton "Scene01_Playground" [Entity.Text .= "01"] world then game.SetGameState Scene01_Playground world
         if World.doButton "Scene02_BoxRewind" [Entity.Text .= "02"] world then game.SetGameState Scene02_BoxRewind world
         if World.doButton "Scene03_MathSimplify" [Entity.Text .= "03"] world then game.SetGameState Scene03_MathSimplify world
+        if World.doButton "Scene04_SquareRace" [Entity.Text .= "04"] world then game.SetGameState Scene04_SquareRace world
         if World.doButton "Exit" [Entity.Text .= "Exit"] world && world.Unaccompanied then World.exit world
         World.endPanel world
         World.endGroup world
@@ -74,6 +76,14 @@ type BlobboPlaygroundDispatcher () =
         if FQueue.contains Select results then Simulants.Scene03_MathSimplify.SetGameplayState Playing world
         if FQueue.contains Deselecting results then Simulants.Scene03_MathSimplify.SetGameplayState Quit world
         if Simulants.Scene03_MathSimplify.GetSelected world && Simulants.Scene03_MathSimplify.GetGameplayState world = Quit then game.SetGameState Title world
+        World.endScreen world
+
+        // declare scene 04
+        let behavior = Dissolve (Constants.Dissolve.Default, None)
+        let results = World.beginScreen<Scene04_SquareRaceDispatcher> Simulants.Scene04_SquareRace.Name (game.GetGameState world = Scene04_SquareRace) behavior [] world
+        if FQueue.contains Select results then Simulants.Scene04_SquareRace.SetGameplayState Playing world
+        if FQueue.contains Deselecting results then Simulants.Scene04_SquareRace.SetGameplayState Quit world
+        if Simulants.Scene04_SquareRace.GetSelected world && Simulants.Scene04_SquareRace.GetGameplayState world = Quit then game.SetGameState Title world
         World.endScreen world
 
         // handle Alt+F4 when not in editor

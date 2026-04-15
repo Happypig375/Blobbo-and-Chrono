@@ -14,8 +14,6 @@
         <BuildingMacOS Condition="'$(TargetPlatformIdentifier)' == '' And ('$(RuntimeIdentifier)'=='' And $([System.OperatingSystem]::IsMacOS()) Or $(RuntimeIdentifier.StartsWith('osx')))">true</BuildingMacOS>
 		<BlockCompression>BcCompression</BlockCompression>
 		<BlockCompression Condition="
-	        '$(TargetPlatformIdentifier)' == '' And ('$(RuntimeIdentifier)'=='' And $([System.OperatingSystem]::IsMacOS()) Or $(RuntimeIdentifier.StartsWith('osx'))) Or
-			'$(TargetPlatformIdentifier)'=='ios' Or '$(TargetPlatformIdentifier)'=='android'">AstcCompression</BlockCompression>
 
         <!-- F# compiler settings -->
         <WarnOn>FS1182</WarnOn>
@@ -66,6 +64,7 @@
 		<Compile Include="Scene01_Playground.fs" />
 		<Compile Include="Scene02_BoxRewind.fs" />
 		<Compile Include="Scene03_MathSimplify.fs" />
+		<Compile Include="Scene04_SquareRace.fs" />
 		<Compile Include="BlobboPlayground.fs" />
 		<Compile Include="BlobboPlaygroundPlugin.fs" />
 		<Compile Include="Program.fs" />
@@ -103,13 +102,6 @@
     </PropertyGroup>
     <Target Name="CopyMacOSVulkanSdk" BeforeTargets="AssignTargetPaths" Condition="$(BuildingMacOS) Or '$(TargetPlatformIdentifier)'=='ios'">
         <Exec Condition="'$(MacOSVulkanSdk)' == '' And $([System.OperatingSystem]::IsMacOS())" Command="
-            if [ -x ~/.bash_profile ]
-            then source ~/.bash_profile
-            fi
-            if [ &quot;$VULKAN_SDK&quot; == &quot;&quot; ] # Try to read VULKAN_SDK from bash_profile first
-            then VULKAN_SDK=`ls -d ~/VulkanSDK/* | grep -E &quot;[^/]+/[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$&quot; | sort -V -r | head -n 1` # By default, the Vulkan SDK for macOS is installed in ~/VulkanSDK with versioned subdirectories
-            fi
-            echo &quot;$VULKAN_SDK&quot;" ConsoleToMsBuild="true">
             <Output TaskParameter="ConsoleOutput" PropertyName="MacOSVulkanSdk" />
         </Exec>
         <Error Text="Please install the macOS Vulkan SDK. If installed to a non-default location, override the MacOSVulkanSdk property in this file." Condition="!$([System.IO.Directory]::Exists($(MacOSVulkanSdk)))" />
@@ -124,8 +116,7 @@
         </ItemGroup>
         <Error Condition="'$(TargetPlatformIdentifier)'!='ios' And '@(MacOSVulkanSdkDylib)'==''" Text="No macOS Vulkan SDK dylibs were found at '$(MacOSVulkanSdk)/macOS/lib/*.dylib'. Ensure MacOSVulkanSdk points to a valid Vulkan SDK installation." />
         <!-- Create symbolic links for macOS Vulkan SDK dylibs -->
-        <Exec Condition="'$(TargetPlatformIdentifier)'!='ios'"
-              Command="mkdir -p &quot;$(OutDir)%(MacOSVulkanSdkDylib.RecursiveDir)&quot; &amp;&amp; ln -sfn &quot;%(MacOSVulkanSdkDylib.Identity)&quot; &quot;$(OutDir)%(MacOSVulkanSdkDylib.RecursiveDir)%(MacOSVulkanSdkDylib.Filename)%(MacOSVulkanSdkDylib.Extension)&quot;" />
+        <Exec Condition="'$(TargetPlatformIdentifier)'!='ios'" Command="mkdir -p &quot;$(OutDir)%(MacOSVulkanSdkDylib.RecursiveDir)&quot; &amp;&amp; ln -sfn &quot;%(MacOSVulkanSdkDylib.Identity)&quot; &quot;$(OutDir)%(MacOSVulkanSdkDylib.RecursiveDir)%(MacOSVulkanSdkDylib.Filename)%(MacOSVulkanSdkDylib.Extension)&quot;" />
         <Copy Condition="'$(TargetPlatformIdentifier)'!='ios'" SourceFiles="@(MacOSVulkanSdkIcdJson)" DestinationFiles="@(MacOSVulkanSdkIcdJson->'$(OutDir)%(RecursiveDir)%(Filename)%(Extension)')" SkipUnchangedFiles="true" />
         <ItemGroup>
             <OutIcdJsonFile Include="$(OutDir)/vulkan/icd.d/*_icd.json" />
