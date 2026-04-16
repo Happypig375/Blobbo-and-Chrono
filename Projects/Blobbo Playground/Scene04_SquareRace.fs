@@ -14,19 +14,26 @@ module SquareExtensions =
 
 type SquareDispatcher () =
     inherit Entity2dDispatcher (true, false, false)
+
+    static let eyeSocketLeftX = 0.05f
+    static let eyeSocketRightX = 0.45f
+    static let eyeSocketTopY = 0.25f
+    static let eyeSocketBottomY = -0.25f
+    static let eyeSocketCenterX = (eyeSocketLeftX + eyeSocketRightX) * 0.5f
+    static let eyeDirections = [-1; 1]
     
-    static let updateTessellation (entity : Entity) world =
+    static let updateEyeSocketTessellation (entity : Entity) world =
         let eyeSocketTessellation =
             ContourTessellation.make
                 (seq {
-                  for direction in -1 .. 2 .. 1 do
-                      MoveTo (v2 (single direction * 0.1f) 0.4f)
-                      LineTo (v2 (single direction * 0.4f) 0.4f)
-                      LineTo (v2 (single direction * 0.4f) -0.4f)
-                      LineTo (v2 (single direction * 0.1f) -0.4f)
-                      CloseContour })
+                    for direction in eyeDirections do
+                        MoveTo (v2 (single direction * eyeSocketLeftX) eyeSocketTopY)
+                        LineTo (v2 (single direction * eyeSocketRightX) eyeSocketTopY)
+                        LineTo (v2 (single direction * eyeSocketRightX) eyeSocketBottomY)
+                        LineTo (v2 (single direction * eyeSocketLeftX) eyeSocketBottomY)
+                        CloseContour })
                 (ContourFill.ofColor Color.White)
-                (ContourStroke.none)
+                (ContourStroke.antiAliased Color.Black 1f)
                 (entity.GetSize world * entity.GetScale world).V2
         entity.SetEyeSocketTessellation eyeSocketTessellation world
         Cascade
@@ -37,12 +44,24 @@ type SquareDispatcher () =
             if linearVelocity.LengthSquared () > 0.0001f
             then Vector2.Normalize linearVelocity
             else v2Zero
-        let eyeOffset = v2 (eyeDirection.X * 0.09f) (eyeDirection.Y * 0.29f)
+        let clamp value minValue maxValue = value |> max minValue |> min maxValue
+        let eyeOffset = v2 (eyeDirection.X * 0.12f) (eyeDirection.Y * 0.18f)
         ContourTessellation.make
             (seq {
-              for direction in -1 .. 2 .. 1 do
-                  let center = v2 (single direction * 0.25f + eyeOffset.X) eyeOffset.Y
-                  let halfExtent = 0.06f
+              for direction in eyeDirections do
+                  let socketX1 = single direction * eyeSocketLeftX
+                  let socketX2 = single direction * eyeSocketRightX
+                  let socketMinX = min socketX1 socketX2
+                  let socketMaxX = max socketX1 socketX2
+                  let socketMinY = eyeSocketBottomY
+                  let socketMaxY = eyeSocketTopY
+                  let margin = 0.00f
+                  let halfExtent = 0.15f
+                  let unclampedCenter = v2 (single direction * eyeSocketCenterX + eyeOffset.X) eyeOffset.Y
+                  let center =
+                      v2
+                          (clamp unclampedCenter.X (socketMinX + halfExtent + margin) (socketMaxX - halfExtent - margin))
+                          (clamp unclampedCenter.Y (socketMinY + halfExtent + margin) (socketMaxY - halfExtent - margin))
                   MoveTo (v2 (center.X - halfExtent) (center.Y - halfExtent))
                   LineTo (v2 (center.X + halfExtent) (center.Y - halfExtent))
                   LineTo (v2 (center.X + halfExtent) (center.Y + halfExtent))
@@ -51,6 +70,17 @@ type SquareDispatcher () =
             (ContourFill.ofColor Color.Black)
             (ContourStroke.none)
             (entity.GetSize world * entity.GetScale world).V2
+
+    static let trailEffect color =
+        { Effects.EffectName = "Trail"
+          Effects.LifeTimeOpt = Some (GameTime.ofSeconds 1.0)
+          Effects.Definitions = Map.empty
+          Effects.Content =
+            Effects.StaticSprite (Effects.Resource (AssetTag.toPair Assets.Default.White),
+                [|Effects.Sizes (Effects.Scalar, Effects.Linear, Once,
+                    [|{ TweenValue = v3One; TweenLength = GameTime.ofSeconds 1.0 }
+                      { TweenValue = v3Zero; TweenLength = GameTime.zero }|])
+                  Effects.Color color|], Effects.Nil) }
 
     static member Facets =
         [typeof<RigidBodyFacet>
@@ -65,21 +95,32 @@ type SquareDispatcher () =
          define Entity.StrokeThickness 2.0f
          define Entity.Gravity GravityIgnore
          define Entity.AngularFactor v3Zero // No rotation
+         define Entity.Friction 0f
+         define Entity.Restitution 1f // Perfectly elastic collisions
          nonPersistent Entity.EyeSocketTessellation ContourTessellation.empty]
 
     override this.Register (entity, world) =
         for propertyName in
             [nameof Entity.Size; nameof Entity.Scale] do
-            World.sense (constant $ updateTessellation entity) (entity.ChangeEvent propertyName) entity (nameof RectangleContour2dFacet) world
-        updateTessellation entity world |> ignore<Handling>
+            World.sense (constant $ updateEyeSocketTessellation entity) (entity.ChangeEvent propertyName) entity (nameof RectangleContour2dFacet) world
+        updateEyeSocketTessellation entity world |> ignore<Handling>
+
+    override this.Update (entity, world) =
+        let effect = World.createEntity<Effect2dDispatcher> (Some Address.parent) DefaultOverlay None entity.Group world
+        effect.SetTransform (entity.GetTransform world) world
+        effect.SetElevation (entity.GetElevation world - 0.01f) world
+        effect.SetSelfDestruct true world
+        effect.SetEffectDescriptor (trailEffect (entity.GetFillColor world)) world
 
     override this.Render (_, entity, world) = 
-        let transform = entity.GetTransform world
+        let mutable transform = entity.GetTransform world
         let clipOpt = entity.GetClipOpt world |> Option.toValueOption
+        transform.Elevation <- Single.BitIncrement transform.Elevation
         World.renderContour
             { Transform = transform
               ClipOpt = clipOpt
               Tessellation = entity.GetEyeSocketTessellation world } world
+        transform.Elevation <- Single.BitIncrement transform.Elevation
         World.renderContour
             { Transform = transform
               ClipOpt = clipOpt
@@ -112,10 +153,21 @@ type Scene04_SquareRaceDispatcher () =
              Entity.Elevation .= -1f
              Entity.StaticImage .= Assets.Gameplay.Background] world |> ignore
 
-        World.doEntity<SquareDispatcher> "Square1"
+        World.doEntity<SquareDispatcher> "Green"
             [Entity.Position |= v3 -100f 0f 0f
-             Entity.Size .= v3Dup 64f
-             Entity.LinearVelocity |= v3 5f 5f 0f] world |> ignore
+             Entity.LinearVelocity |= v3 32f 32f 0f] world |> ignore
+        World.doEntity<SquareDispatcher> "Red"
+            [Entity.Position |= v3 -132f 0f 0f
+             Entity.LinearVelocity |= v3 -32f 32f 0f
+             Entity.FillColor .= Color.Red] world |> ignore
+        World.doEntity<SquareDispatcher> "Yellow"
+            [Entity.Position |= v3 -100f -32f 0f
+             Entity.LinearVelocity |= v3 32f -32f 0f
+             Entity.FillColor .= Color.Yellow] world |> ignore
+        World.doEntity<SquareDispatcher> "Blue"
+            [Entity.Position |= v3 -132f -32f 0f
+             Entity.LinearVelocity |= v3 -32f -32f 0f
+             Entity.FillColor .= Color.Blue] world |> ignore
 
         // declare quit button
         if World.doButton "Quit" [Entity.Position .= v3 232.0f -144.0f 0.0f; Entity.Text .= "Quit"] world then
