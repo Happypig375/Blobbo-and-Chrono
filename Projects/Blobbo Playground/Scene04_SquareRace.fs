@@ -81,17 +81,18 @@ type SquareDispatcher () =
         let angles = entity.GetAngles world
         let elevation = entity.GetElevation world |> Single.BitDecrement
         let particleSystem = entity.GetParticleSystem world
-        let particleSystem =
-            match Map.tryFind typeof<Particles.BasicStaticSpriteEmitter>.Name particleSystem.Emitters with
-            | Some (:? Particles.BasicStaticSpriteEmitter as emitter) ->
-                let body = emitter.Body
-                let emitter =
-                    if body.Position <> position || body.Angles <> angles || emitter.Elevation <> elevation
-                    then { emitter with Body = { body with Position = position; Angles = angles }; Elevation = elevation }
-                    else emitter
-                { particleSystem with Emitters = Map.add typeof<Particles.BasicStaticSpriteEmitter>.Name (emitter :> Particles.Emitter) particleSystem.Emitters }
-            | _ -> particleSystem
-        entity.SetParticleSystem particleSystem world
+        match Map.tryFind typeof<Particles.BasicStaticSpriteEmitter>.Name particleSystem.Emitters with
+        | Some (:? Particles.BasicStaticSpriteEmitter as emitter) ->
+            let body = emitter.Body
+            if body.Position <> position || body.Angles <> angles || emitter.Elevation <> elevation then
+                entity.SetParticleSystem
+                    { particleSystem with
+                        Emitters =
+                            Map.add typeof<Particles.BasicStaticSpriteEmitter>.Name
+                                ({ emitter with
+                                    Body = { body with Position = position; Angles = angles }
+                                    Elevation = elevation } :> Particles.Emitter) particleSystem.Emitters } world
+        | _ -> ()
 
     static member Facets =
         [typeof<RigidBodyFacet>
@@ -120,11 +121,11 @@ type SquareDispatcher () =
     override this.Register (entity, world) =
         for propertyName in
             [nameof Entity.Size; nameof Entity.Scale] do
-            World.sense (constant $ updateEyeSocketTessellation entity) (entity.ChangeEvent propertyName) entity (nameof RectangleContour2dFacet) world
+            World.monitor (constant $ updateEyeSocketTessellation entity) (entity.ChangeEvent propertyName) entity world
         updateEyeSocketTessellation entity world |> ignore<Handling>
         for propertyName in
             [nameof Entity.FillColor; nameof Entity.Size; nameof Entity.Scale] do
-            World.sense (fun _ world -> updateBasicParticleSeed entity world; Cascade) (entity.ChangeEvent propertyName) entity (nameof SquareDispatcher) world
+            World.monitor (fun _ world -> updateBasicParticleSeed entity world; Cascade) (entity.ChangeEvent propertyName) entity world
         World.monitor (fun evt world -> updateTrailEmitterTransform evt.Subscriber world; Cascade) entity.BodyTransformEvent entity world
         updateBasicParticleSeed entity world
         updateTrailEmitterTransform entity world
