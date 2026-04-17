@@ -14,7 +14,6 @@ module SquareExtensions =
 
 type SquareDispatcher () =
     inherit Entity2dDispatcher (true, false, false)
-
     static let eyeSocketLeftX = 0.05f
     static let eyeSocketRightX = 0.45f
     static let eyeSocketTopY = 0.25f
@@ -71,20 +70,33 @@ type SquareDispatcher () =
             (ContourStroke.none)
             (entity.GetSize world * entity.GetScale world).V2
 
-    static let trailEffect color =
-        { Effects.EffectName = "Trail"
-          Effects.LifeTimeOpt = Some (GameTime.ofSeconds 1.0)
-          Effects.Definitions = Map.empty
-          Effects.Content =
-            Effects.StaticSprite (Effects.Resource (AssetTag.toPair Assets.Default.White),
-                [|Effects.Sizes (Effects.Scalar, Effects.Linear, Once,
-                    [|{ TweenValue = v3One; TweenLength = GameTime.ofSeconds 1.0 }
-                      { TweenValue = v3Zero; TweenLength = GameTime.zero }|])
-                  Effects.Color color|], Effects.Nil) }
+    static let updateBasicParticleSeed (entity : Entity) world =
+        let fillColor = entity.GetFillColor world
+        let size = entity.GetSize world * entity.GetScale world
+        let seed = entity.GetBasicParticleSeed world
+        entity.SetBasicParticleSeed { seed with Color = fillColor; Size = size } world
+
+    static let updateTrailEmitterTransform (entity : Entity) world =
+        let position = entity.GetPosition world
+        let angles = entity.GetAngles world
+        let elevation = entity.GetElevation world |> Single.BitDecrement
+        let particleSystem = entity.GetParticleSystem world
+        let particleSystem =
+            match Map.tryFind typeof<Particles.BasicStaticSpriteEmitter>.Name particleSystem.Emitters with
+            | Some (:? Particles.BasicStaticSpriteEmitter as emitter) ->
+                let body = emitter.Body
+                let emitter =
+                    if body.Position <> position || body.Angles <> angles || emitter.Elevation <> elevation
+                    then { emitter with Body = { body with Position = position; Angles = angles }; Elevation = elevation }
+                    else emitter
+                { particleSystem with Emitters = Map.add typeof<Particles.BasicStaticSpriteEmitter>.Name (emitter :> Particles.Emitter) particleSystem.Emitters }
+            | _ -> particleSystem
+        entity.SetParticleSystem particleSystem world
 
     static member Facets =
         [typeof<RigidBodyFacet>
-         typeof<RectangleContour2dFacet>]
+         typeof<RectangleContour2dFacet>
+         typeof<BasicStaticSpriteEmitterFacet>]
 
     static member Properties =
         [define Entity.MountOpt None
@@ -97,6 +109,12 @@ type SquareDispatcher () =
          define Entity.AngularFactor v3Zero // No rotation
          define Entity.Friction 0f
          define Entity.Restitution 1f // Perfectly elastic collisions
+         define Entity.EmitterImage Assets.Default.White
+         define Entity.EmitterStyle "SquareTrail"
+         define Entity.EmitterLifeTimeOpt GameTime.zero
+         define Entity.ParticleLifeTimeMaxOpt (GameTime.ofSeconds 1.0)
+         define Entity.ParticleRate (match Constants.GameTime.DesiredFrameRate with StaticFrameRate _ -> 1.0f | DynamicFrameRate _ -> 60.0f)
+         define Entity.ParticleMax 60
          nonPersistent Entity.EyeSocketTessellation ContourTessellation.empty]
 
     override this.Register (entity, world) =
@@ -104,13 +122,15 @@ type SquareDispatcher () =
             [nameof Entity.Size; nameof Entity.Scale] do
             World.sense (constant $ updateEyeSocketTessellation entity) (entity.ChangeEvent propertyName) entity (nameof RectangleContour2dFacet) world
         updateEyeSocketTessellation entity world |> ignore<Handling>
+        for propertyName in
+            [nameof Entity.FillColor; nameof Entity.Size; nameof Entity.Scale] do
+            World.sense (fun _ world -> updateBasicParticleSeed entity world; Cascade) (entity.ChangeEvent propertyName) entity (nameof SquareDispatcher) world
+        World.monitor (fun evt world -> updateTrailEmitterTransform evt.Subscriber world; Cascade) entity.BodyTransformEvent entity world
+        updateBasicParticleSeed entity world
+        updateTrailEmitterTransform entity world
 
-    override this.Update (entity, world) =
-        let effect = World.createEntity<Effect2dDispatcher> (Some Address.parent) DefaultOverlay None entity.Group world
-        effect.SetTransform (entity.GetTransform world) world
-        effect.SetElevation (entity.GetElevation world - 0.01f) world
-        effect.SetSelfDestruct true world
-        effect.SetEffectDescriptor (trailEffect (entity.GetFillColor world)) world
+    override this.Physics (_, _, _, _, entity, world) =
+        updateTrailEmitterTransform entity world
 
     override this.Render (_, entity, world) = 
         let mutable transform = entity.GetTransform world
