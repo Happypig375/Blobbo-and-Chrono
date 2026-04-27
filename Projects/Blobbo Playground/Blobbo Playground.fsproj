@@ -13,9 +13,7 @@
         <BuildingMacOS>false</BuildingMacOS>
         <BuildingMacOS Condition="'$(TargetPlatformIdentifier)' == '' And ('$(RuntimeIdentifier)'=='' And $([System.OperatingSystem]::IsMacOS()) Or $(RuntimeIdentifier.StartsWith('osx')))">true</BuildingMacOS>
 		<BlockCompression>BcCompression</BlockCompression>
-		<BlockCompression Condition="
-	        '$(TargetPlatformIdentifier)' == '' And ('$(RuntimeIdentifier)'=='' And $([System.OperatingSystem]::IsMacOS()) Or $(RuntimeIdentifier.StartsWith('osx'))) Or
-			'$(TargetPlatformIdentifier)'=='ios' Or '$(TargetPlatformIdentifier)'=='android'">AstcCompression</BlockCompression>
+		<BlockCompression Condition="&#xD;&#xA;	        '$(TargetPlatformIdentifier)' == '' And ('$(RuntimeIdentifier)'=='' And $([System.OperatingSystem]::IsMacOS()) Or $(RuntimeIdentifier.StartsWith('osx'))) Or&#xD;&#xA;			'$(TargetPlatformIdentifier)'=='ios' Or '$(TargetPlatformIdentifier)'=='android'">AstcCompression</BlockCompression>
 
         <!-- F# compiler settings -->
         <WarnOn>FS1182</WarnOn>
@@ -63,7 +61,7 @@
 		<Compile Include="Experiments\BlobboDoubleSize.fs" />
 		<Compile Include="Blobbo.fs" />
 		<Compile Include="Chrono.fs" />
-		<Compile Include="Scene01_Playground.fs" />
+		<Compile Include="Scene01_PauseAndPlan.fs" />
 		<Compile Include="Scene02_BoxRewind.fs" />
 		<Compile Include="Scene03_MathSimplify.fs" />
 		<Compile Include="Scene04_SquareRace.fs" />
@@ -103,14 +101,7 @@
         <MacOSVulkanSdk></MacOSVulkanSdk>
     </PropertyGroup>
     <Target Name="CopyMacOSVulkanSdk" BeforeTargets="AssignTargetPaths" Condition="$(BuildingMacOS) Or '$(TargetPlatformIdentifier)'=='ios'">
-        <Exec Condition="'$(MacOSVulkanSdk)' == '' And $([System.OperatingSystem]::IsMacOS())" Command="
-            if [ -x ~/.bash_profile ]
-            then source ~/.bash_profile
-            fi
-            if [ &quot;$VULKAN_SDK&quot; == &quot;&quot; ] # Try to read VULKAN_SDK from bash_profile first
-            then VULKAN_SDK=`ls -d ~/VulkanSDK/* | grep -E &quot;[^/]+/[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$&quot; | sort -V -r | head -n 1` # By default, the Vulkan SDK for macOS is installed in ~/VulkanSDK with versioned subdirectories
-            fi
-            echo &quot;$VULKAN_SDK&quot;" ConsoleToMsBuild="true">
+        <Exec Condition="'$(MacOSVulkanSdk)' == '' And $([System.OperatingSystem]::IsMacOS())" Command="&#xD;&#xA;            if [ -x ~/.bash_profile ]&#xD;&#xA;            then source ~/.bash_profile&#xD;&#xA;            fi&#xD;&#xA;            if [ &quot;$VULKAN_SDK&quot; == &quot;&quot; ] # Try to read VULKAN_SDK from bash_profile first&#xD;&#xA;            then VULKAN_SDK=`ls -d ~/VulkanSDK/* | grep -E &quot;[^/]+/[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$&quot; | sort -V -r | head -n 1` # By default, the Vulkan SDK for macOS is installed in ~/VulkanSDK with versioned subdirectories&#xD;&#xA;            fi&#xD;&#xA;            echo &quot;$VULKAN_SDK&quot;" ConsoleToMsBuild="true">
             <Output TaskParameter="ConsoleOutput" PropertyName="MacOSVulkanSdk" />
         </Exec>
         <Error Text="Please install the macOS Vulkan SDK. If installed to a non-default location, override the MacOSVulkanSdk property in this file." Condition="!$([System.IO.Directory]::Exists($(MacOSVulkanSdk)))" />

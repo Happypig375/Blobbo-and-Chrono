@@ -49,10 +49,6 @@ type BlobboDispatcher () =
             let blobbo : Entity = event.Subscriber
             let emitter = tryResolve (blobbo.GetWorldFluidEmitter world) blobbo |> Option.get
             World.emitFluidParticles (event.Data.OutOfBoundsParticles |> SArray.map (fun p -> { p with FluidParticleConfig = "Water" })) (emitter.GetFluidEmitterId world) world
-            
-            // detect ground for allowing leaping
-            let groundDirection = blobbo.GetGravity world |> Gravity.localize (World.getGravity2d world) |> _.Normalized
-            let up = -groundDirection
             Cascade) blobbo.FluidEmitterUpdateEvent blobbo world
 
         // shoot particles when at least 3 are in body
@@ -98,6 +94,8 @@ type BlobboDispatcher () =
         let mutable particleCount = 0
 
         // gravitate particles towards center for blob shape
+        let center = blobbo.GetPosition world
+        let cohesionStrength = 0.1f
         let movement =
             match blobbo.GetMovement world with
             | Left -> v3 -1f 0f 0f
@@ -106,7 +104,8 @@ type BlobboDispatcher () =
         World.chooseFluidParticles (fun p ->
             newPosition <- newPosition + p.FluidParticlePosition
             particleCount <- inc particleCount
-            ValueSome { p with FluidParticleVelocity = p.FluidParticleVelocity + movement })
+            let toCenter = (center - p.FluidParticlePosition) * cohesionStrength
+            ValueSome { p with FluidParticleVelocity = p.FluidParticleVelocity + movement + toCenter })
             (blobbo.GetFluidEmitterId world) world
 
         // update center to be average of particle positions

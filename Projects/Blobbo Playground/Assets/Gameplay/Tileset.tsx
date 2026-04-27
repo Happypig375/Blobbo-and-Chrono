@@ -1,14 +1,14 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <tileset version="1.10" tiledversion="1.11.2" name="Tileset" tilewidth="32" tileheight="32" tilecount="1036" columns="37">
- <image source="Tileset.png" width="1200" height="900"/>
+ <image source="Tileset.png" width="1184" height="896"/>
  <tile id="0">
   <properties>
-   <property name="C" value=""/>
+   <property name="C" value="[ContourShape [[[1 0.5 0] [0.5 0.5 0] [-0.5 0.5 0] [-1 0.5 0]] false None None]]"/>
   </properties>
  </tile>
  <tile id="1">
   <properties>
-   <property name="C" value="[PointsShape [[[-0.5 -0.5 0] [0.5 -0.5 0] [-0.5 0.5 0]] Convex None None]]"/>
+   <property name="C" value=""/>
   </properties>
  </tile>
  <tile id="2">
