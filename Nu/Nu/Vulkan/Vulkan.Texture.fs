@@ -571,6 +571,8 @@ module Texture =
                 else Array2D.zeroCreate<VkImageView> 0 0
 
             // transition layout as appropriate
+            // NOTE: DJL: we use render thread here as attachments are not intended for lazy loading.
+            // TODO: DJL: we should write a proper api for layout transitions at the attachment level and do initial transition separately from creation.
             match attachmentMode with
             | AttachmentColor _
             | AttachmentDepth _ ->
@@ -698,7 +700,7 @@ module Texture =
                         
                         // calculate mip levels
                         if mipGenSupport then max metadata.TextureWidth metadata.TextureHeight |> Math.Log2 |> floor |> inc |> int
-                        else Log.infoOnce "Graphics device does not support mipmap generation for some used image format(s)."; 1
+                        else Log.errorOnce "Graphics device does not support mipmap generation for some used image format(s)."; 1
                     
                     | _ -> Log.infoOnce "Automatic mipmap generation not supported for attachment texture."; 1
             
@@ -1109,6 +1111,18 @@ module Texture =
             | EmptyTexture -> TextureInternal.empty.VkFormat
             | EagerTexture eagerTexture -> eagerTexture.TextureInternal.VkFormat
             | LazyTexture lazyTexture -> lazyTexture.TextureInternal.VkFormat
+        
+        member this.MipLevels =
+            match this with
+            | EmptyTexture -> TextureInternal.empty.MipLevels_
+            | EagerTexture eagerTexture -> eagerTexture.TextureInternal.MipLevels_
+            | LazyTexture lazyTexture -> lazyTexture.TextureInternal.MipLevels_
+        
+        member this.Layers =
+            match this with
+            | EmptyTexture -> TextureInternal.empty.TextureType_.Layers
+            | EagerTexture eagerTexture -> eagerTexture.TextureInternal.TextureType_.Layers
+            | LazyTexture lazyTexture -> lazyTexture.TextureInternal.TextureType_.Layers
         
         member this.Destroy vkc =
             match this with
