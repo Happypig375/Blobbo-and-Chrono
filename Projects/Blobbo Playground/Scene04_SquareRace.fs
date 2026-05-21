@@ -160,7 +160,7 @@ type Scene04_SquareRaceDispatcher () =
 
         World.beginGroup "Group" [] world
         // declare border
-        World.doBlock2d "Border"
+        World.doBlockBody2d "Border"
             [Entity.Size .= Constants.Render.DisplayVirtualResolution.V3
              Entity.BodyShape .= ContourShape
                  { Links =

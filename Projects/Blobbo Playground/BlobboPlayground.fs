@@ -10,7 +10,7 @@ open BlobboPlayground
 type GameState =
     | Splash
     | Title
-    | Scene01_PauseAndPlan
+    | Scene01_BlobboThrow
     | Scene02_BoxRewind
     | Scene03_MathSimplify
     | Scene04_SquareRace
@@ -45,7 +45,7 @@ type BlobboPlaygroundDispatcher () =
         World.beginScreen Simulants.Title.Name (game.GetGameState world = Title) behavior [] world |> ignore
         World.beginGroup "Gui" [] world
         World.beginPanel "Panel" [Entity.Size .= Constants.Render.DisplayVirtualResolution.V3; Entity.Layout .= Grid (v2i 8 8, Some FlowRightward, true)] world
-        if World.doButton "Scene01_PauseAndPlan" [Entity.Text .= "01"] world then game.SetGameState Scene01_PauseAndPlan world
+        if World.doButton "Scene01_BlobboThrow" [Entity.Text .= "01"] world then game.SetGameState Scene01_BlobboThrow world
         if World.doButton "Scene02_BoxRewind" [Entity.Text .= "02"] world then game.SetGameState Scene02_BoxRewind world
         if World.doButton "Scene03_MathSimplify" [Entity.Text .= "03"] world then game.SetGameState Scene03_MathSimplify world
         if World.doButton "Scene04_SquareRace" [Entity.Text .= "04"] world then game.SetGameState Scene04_SquareRace world
@@ -56,10 +56,10 @@ type BlobboPlaygroundDispatcher () =
 
         // declare scene 01
         let behavior = Dissolve (Constants.Dissolve.Default, None)
-        let results = World.beginScreen<Scene01_PauseAndPlanDispatcher> Simulants.Scene01_PauseAndPlan.Name (game.GetGameState world = Scene01_PauseAndPlan) behavior [] world
-        if FQueue.contains Select results then Simulants.Scene01_PauseAndPlan.SetGameplayState Playing world
-        if FQueue.contains Deselecting results then Simulants.Scene01_PauseAndPlan.SetGameplayState Quit world
-        if Simulants.Scene01_PauseAndPlan.GetSelected world && Simulants.Scene01_PauseAndPlan.GetGameplayState world = Quit then game.SetGameState Title world
+        let results = World.beginScreen<Scene01_BlobboThrowDispatcher> Simulants.Scene01_BlobboThrow.Name (game.GetGameState world = Scene01_BlobboThrow) behavior [] world
+        if FQueue.contains Select results then Simulants.Scene01_BlobboThrow.SetGameplayState Playing world
+        if FQueue.contains Deselecting results then Simulants.Scene01_BlobboThrow.SetGameplayState Quit world
+        if Simulants.Scene01_BlobboThrow.GetSelected world && Simulants.Scene01_BlobboThrow.GetGameplayState world = Quit then game.SetGameState Title world
         World.endScreen world
 
         // declare scene 02

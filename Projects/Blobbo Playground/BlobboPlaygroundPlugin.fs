@@ -50,9 +50,9 @@ type BlobboPlaygroundPlugin () =
         Map.ofList
             [("Splash", fun world -> Game.SetGameState Splash world)
              ("Title", fun world -> Game.SetGameState Title world)
-             ("Scene01_PauseAndPlan", fun world ->
-                Simulants.Scene01_PauseAndPlan.SetGameplayState Playing world
-                Game.SetGameState Scene01_PauseAndPlan world)
+             ("Scene01_BlobboThrow", fun world ->
+                Simulants.Scene01_BlobboThrow.SetGameplayState Playing world
+                Game.SetGameState Scene01_BlobboThrow world)
              ("Scene02_BoxRewind", fun world ->
                 Simulants.Scene02_BoxRewind.SetGameplayState Playing world
                 Game.SetGameState Scene02_BoxRewind world)]

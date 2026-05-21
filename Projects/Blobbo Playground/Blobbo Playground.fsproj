@@ -58,10 +58,8 @@
 		<Compile Include="Simulants.fs" />
 		<Compile Include="Rewindable.fs" />
 		<Compile Include="MathObject.fs" />
-		<Compile Include="Experiments\BlobboDoubleSize.fs" />
 		<Compile Include="Blobbo.fs" />
-		<Compile Include="Chrono.fs" />
-		<Compile Include="Scene01_PauseAndPlan.fs" />
+		<Compile Include="Scene01_BlobboThrow.fs" />
 		<Compile Include="Scene02_BoxRewind.fs" />
 		<Compile Include="Scene03_MathSimplify.fs" />
 		<Compile Include="Scene04_SquareRace.fs" />

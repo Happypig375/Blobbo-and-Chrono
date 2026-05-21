@@ -18,7 +18,7 @@ type Scene03_MathSimplifyDispatcher () =
 
         World.beginGroup "Group" [] world
         // declare border
-        World.doBlock2d "Border"
+        World.doBlockBody2d "Border"
             [Entity.Size .= Constants.Render.DisplayVirtualResolution.V3
              Entity.BodyShape .= ContourShape
                  { Links =
@@ -36,7 +36,7 @@ type Scene03_MathSimplifyDispatcher () =
             [Entity.Position |= v3 -100f 0f 0f
              Entity.MathFontSize .= 24f
              Entity.LaTeX .= @"\square + \square"] world |> ignore
-        World.doBall2d "Ball1"
+        World.doBallBody2d "Ball1"
             [Entity.Position |= v3 -80f 0f 0f
              Entity.Size .= v3Dup 16f] world |> ignore
 
@@ -44,7 +44,7 @@ type Scene03_MathSimplifyDispatcher () =
             [Entity.Position |= v3 0f 0f 0f
              Entity.MathFontSize .= 24f
              Entity.LaTeX .= @"3x"] world |> ignore
-        World.doBall2d "Ball2"
+        World.doBallBody2d "Ball2"
             [Entity.Position |= v3 30f 0f 0f
              Entity.Size .= v3Dup 16f] world |> ignore
         World.doEntity<MathObjectDispatcher> "Math3"
@@ -52,7 +52,7 @@ type Scene03_MathSimplifyDispatcher () =
              Entity.MathFontSize .= 24f
              Entity.LaTeX .= @"4x+6"] world |> ignore
              
-        World.doBlock2d "Block"
+        World.doBlockBody2d "Block"
             [Entity.BodyType .= Kinematic
              Entity.Position .= v3 -224f -136f 0f
              Entity.Size .= v3 10f 100f 0f

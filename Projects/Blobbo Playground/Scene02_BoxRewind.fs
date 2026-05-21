@@ -18,7 +18,7 @@ type Scene02_BoxRewindDispatcher () =
 
         World.beginGroup "Group" [] world
         // declare border
-        World.doBlock2d "Border"
+        World.doBlockBody2d "Border"
             [Entity.Size .= Constants.Render.DisplayVirtualResolution.V3
              Entity.BodyShape .= ContourShape
                  { Links =
@@ -33,7 +33,7 @@ type Scene02_BoxRewindDispatcher () =
              Entity.StaticImage .= Assets.Gameplay.Background] world |> ignore
 
         let (box, _) =
-            World.doBox2d "Box"
+            World.doBoxBody2d "Box"
                 [Entity.Position |= v3 -90f 0f 0f
                  Entity.Size .= v3Dup 16f
                  Entity.LinearVelocity |= v3 100f 0f 0f
@@ -67,7 +67,7 @@ type Scene02_BoxRewindDispatcher () =
                      Entity.StaticImage .= Assets.Default.White
                      Entity.Color .= color 0.5f 0.5f 0.5f 0.5f] world |> ignore
         let (box2, _) =
-            World.doBox2d "Box2"
+            World.doBoxBody2d "Box2"
                 [Entity.Position |= v3 90f 0f 0f
                  Entity.Size .= v3Dup 16f
                  Entity.Friction .= 0f
