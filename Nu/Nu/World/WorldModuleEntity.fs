@@ -2131,9 +2131,9 @@ module WorldModuleEntity =
                 facet.Register (entity, world)
                 if WorldModuleInternal.getSelected entity world then facet.RegisterPhysics (entity, world)
             let dispatcher = World.getEntityDispatcher entity world : EntityDispatcher
-            dispatcher.RegisterPhysics (entity, world)
             World.registerEntityIndex (getType dispatcher) entity world
             dispatcher.Register (entity, world)
+            if WorldModuleInternal.getSelected entity world then dispatcher.RegisterPhysics (entity, world)
             World.updateEntityPublishUpdateFlag entity world |> ignore<bool>
             let eventTrace = EventTrace.debug "World" "registerEntity" "Register" EventTrace.empty
             let eventAddresses = EventGraph.getEventAddresses1 (Events.RegisterEvent --> entity)
@@ -2156,8 +2156,9 @@ module WorldModuleEntity =
                     facet.UnregisterPhysics (entity, world)
                 World.unregisterEntityIndex (getType facet) entity world
             let dispatcher = World.getEntityDispatcher entity world : EntityDispatcher
+            if WorldModuleInternal.getSelected entity world then
+                dispatcher.UnregisterPhysics (entity, world)
             dispatcher.Unregister (entity, world)
-            dispatcher.UnregisterPhysics (entity, world)
             World.unregisterEntityIndex (getType dispatcher) entity world
 
         static member internal registerEntityPhysics entity world =
