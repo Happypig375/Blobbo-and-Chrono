@@ -27,6 +27,7 @@ module [<AutoOpen>] BlobboExtensions =
         member this.SetBlobboContour (value : PhysicsBodyTransform array) world = this.Set (nameof this.BlobboContour) value world
         member this.BlobboContour = lens (nameof this.BlobboContour) this this.GetBlobboContour this.SetBlobboContour
         member this.ShootEvent = stoa<Vector3> "Shoot/Event" --> this
+        member this.ReviveEvent = stoa<unit> "Revive/Event" --> this
 
 // A blobbo is a soft-body made of a Dynamic center body (this entity, via RigidBodyFacet) surrounded by
 // a ring of 32 contour boxes linked with revolute joints (perimeter chain) and distance joints back to
@@ -38,11 +39,10 @@ type BlobboDispatcher () =
     static let internalIndex = -1
     static let contourCount = 32
     static let contourSize = 8f
+    static let centerRadius = 8f
     static let spawnScale = contourSize * single contourCount / 8f
     static let contourRadius = MathF.PI * spawnScale / single contourCount // half arc-spacing so bodies just touch
     static let minBlobboSize = 3
-    static let contourStrokeColor = Color.Cyan
-    static let contourStrokeThickness = 2.0f
 
     // BodyIndex layout:
     //   Constants.Physics.InternalIndex (-1) = center body (owned directly by this dispatcher)
@@ -53,9 +53,53 @@ type BlobboDispatcher () =
 
     let computeBoundingBox (blobbo : Entity) world =
         blobbo.GetBlobboContour world
-        |> Array.map (fun t -> Box2 (t.BodyCenter.V2 - v2Dup contourSize, v2Dup contourSize * 2f))
+        |> Array.map (fun t -> Box2 (t.BodyCenter.V2 - v2Dup contourSize / 2f, v2Dup contourSize))
         |> Array.reduce _.Combine
         |> fun bounds -> bounds.Box3
+
+    // Even-odd point-in-polygon test on the contour loop in world space.
+    let isPointInsideContour (point : Vector2) (contour : PhysicsBodyTransform array) =
+        if contour.Length < 3 then false
+        else
+            let mutable inside = false
+            let mutable j = contour.Length - 1
+            for i in 0 .. contour.Length - 1 do
+                let pi = contour[i].BodyCenter.V2
+                let pj = contour[j].BodyCenter.V2
+                let intersects =
+                    ((pi.Y > point.Y) <> (pj.Y > point.Y)) &&
+                    (point.X < (pj.X - pi.X) * (point.Y - pi.Y) / (pj.Y - pi.Y + 0.000001f) + pi.X)
+                if intersects then inside <- not inside
+                j <- i
+            inside
+
+    let resetContourAroundCenter (center : Vector3) (contour : PhysicsBodyTransform array) (blobbo : Entity) world =
+        // Rebuild as a tight ring near the center to avoid large teleports that can sink into terrain.
+        let minReviveScale = centerRadius + contourRadius + 1.0f
+        let maxReviveScale = spawnScale
+        let reviveScale =
+            if contour.Length = contourCount then
+                let mutable sum = 0.0f
+                for t in contour do
+                    sum <- sum + Vector3.Distance (t.BodyCenter, center)
+                let average = sum / single contourCount
+                Math.Clamp (average, minReviveScale, maxReviveScale)
+            else minReviveScale
+        let boxCount = single contourCount
+        let revivedContour =
+            Array.init contourCount (fun i ->
+                let boxAngle = MathF.Tau * single i / boxCount
+                let targetCenter = center + v3 (cos boxAngle * reviveScale) (sin boxAngle * reviveScale) 0f
+                let bodyId = { BodySource = blobbo; BodyIndex = i }
+                World.setBodyCenter targetCenter bodyId world
+                World.setBodyRotation Quaternion.Identity bodyId world
+                World.setBodyLinearVelocity v3Zero bodyId world
+                World.setBodyAngularVelocity v3Zero bodyId world
+                { BodyCenter = targetCenter
+                  BodyRotation = Quaternion.Identity
+                  BodyLinearVelocity = v3Zero
+                  BodyAngularVelocity = v3Zero })
+        blobbo.SetBlobboContour revivedContour world
 
     static member Facets =
         []
@@ -65,7 +109,10 @@ type BlobboDispatcher () =
          define Entity.WorldFluidEmitter Address.empty
          define Entity.AbsorbingWater false
          define Entity.BlobboCenter v3Zero
-         define Entity.BlobboContour Array.empty]
+         define Entity.BlobboContour Array.empty
+         nonPersistent Entity.PhysicsMotion ManualMotion // disable automatic Position/Rotation/LinearVelocity/AngularVelocity updates for internalIndex.
+         computed Entity.BodyId (fun blobbo _-> { BodySource = blobbo; BodyIndex = internalIndex }) None // points to BlobboCenter
+         ]
          
     override _.Register (blobbo, world) =
 
@@ -123,38 +170,39 @@ type BlobboDispatcher () =
                 blobbo.SetBlobboCenter center world
                 blobbo.SetBlobboContour contour world
 
-                // create the actual physics body for the blobbo center
-                let centerBodyId = { BodySource = blobbo; BodyIndex = internalIndex }
-                let centerBodyProperties =
-                        { Enabled = true
-                          Center = center
-                          Rotation = Quaternion.Identity
-                          Scale = v3One
-                          BodyShape = SphereShape { Radius = 8f; TransformOpt = None; PropertiesOpt = None }
-                          BodyType = Dynamic
-                          SleepingAllowed = true
-                          Friction = Constants.Physics.FrictionDefault
-                          Restitution = 0.333f
-                          LinearVelocity = v3Zero
-                          LinearDamping = 0f
-                          AngularVelocity = v3Zero
-                          AngularDamping = Constants.Physics.AngularDampingDefault
-                          AngularFactor = v3One
-                          KinematicPushLimitOpt = None
-                          Substance = Mass 1f
-                          Gravity = GravityWorld
-                          CharacterProperties = (PogoSpringCharacterProperties PogoSpringCharacterProperties.defaultProperties)
-                          VehicleProperties = VehiclePropertiesAbsent
-                          CollisionDetection = Continuous
-                          CollisionGroup = 0
-                          CollisionCategories = Physics.categorizeCollisionMask "1"
-                          CollisionMask = Physics.categorizeCollisionMask Constants.Physics.CollisionWildcard
-                          Sensor = false
-                          BodyIndex = internalIndex }
-                World.createBody2d centerBodyId centerBodyProperties world
-                blobbo.SetPerimeter (computeBoundingBox blobbo world) world
                 (center, contour)
 
+        // create the actual physics body for the blobbo center
+        let centerBodyId = { BodySource = blobbo; BodyIndex = internalIndex }
+        let centerBodyProperties =
+            { Enabled = true
+              Center = center
+              Rotation = Quaternion.Identity
+              Scale = v3One
+              BodyShape = SphereShape { Radius = centerRadius; TransformOpt = None; PropertiesOpt = None }
+              BodyType = Dynamic
+              SleepingAllowed = true
+              Friction = Constants.Physics.FrictionDefault
+              Restitution = 0.333f
+              LinearVelocity = v3Zero
+              LinearDamping = 0f
+              AngularVelocity = v3Zero
+              AngularDamping = Constants.Physics.AngularDampingDefault
+              AngularFactor = v3One
+              KinematicPushLimitOpt = None
+              Substance = Mass 1f
+              Gravity = GravityWorld
+              CharacterProperties = (PogoSpringCharacterProperties PogoSpringCharacterProperties.defaultProperties)
+              VehicleProperties = VehiclePropertiesAbsent
+              CollisionDetection = Continuous
+              CollisionGroup = 0
+              CollisionCategories = Physics.categorizeCollisionMask "1"
+              CollisionMask = Physics.categorizeCollisionMask Constants.Physics.CollisionWildcard
+              Sensor = false
+              BodyIndex = internalIndex }
+        World.createBody2d centerBodyId centerBodyProperties world
+        blobbo.SetPerimeter (computeBoundingBox blobbo world) world
+        
         // create contour box bodies using the serialized contour transforms
         let boxCount = single contourCount
         for i in 0 .. contourCount - 1 do
@@ -282,6 +330,22 @@ type BlobboDispatcher () =
         blobbo.SetBlobboContour contour world
 
         blobbo.SetPerimeter (computeBoundingBox blobbo world) world
+
+        if World.doSubscriptionAny "BlobboRevive" blobbo.ReviveEvent world then
+            // revive: when center exits the current contour polygon, snap it back to the ring centroid
+            // so the soft-body can recover before the contour collapses / flattens.
+            let contourAfter = blobbo.GetBlobboContour world
+            if contourAfter.Length = contourCount then
+                let centerPos = blobbo.GetBlobboCenter world
+                let centerInside = isPointInsideContour centerPos.V2 contourAfter
+                if not centerInside then
+                    let centerBodyId = { BodySource = blobbo; BodyIndex = internalIndex }
+                    World.setBodyCenter centerPos centerBodyId world
+                    World.setBodyLinearVelocity v3Zero centerBodyId world
+                    World.setBodyAngularVelocity v3Zero centerBodyId world
+                    resetContourAroundCenter centerPos contourAfter blobbo world
+                    blobbo.SetBlobboCenter centerPos world
+                    blobbo.SetPerimeter (computeBoundingBox blobbo world) world
 
         if false then
             // update center to average of particle positions

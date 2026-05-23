@@ -17,6 +17,9 @@ module GameplayExtensions =
         member this.GetGameplayState world : GameplayState = this.Get (nameof Screen.GameplayState) world
         member this.SetGameplayState (value : GameplayState) world = this.Set (nameof Screen.GameplayState) value world
         member this.GameplayState = lens (nameof Screen.GameplayState) this this.GetGameplayState this.SetGameplayState
+        member this.GetBlobboHeld world : bool = this.Get (nameof Screen.BlobboHeld) world
+        member this.SetBlobboHeld (value : bool) world = this.Set (nameof Screen.BlobboHeld) value world
+        member this.BlobboHeld = lens (nameof Screen.BlobboHeld) this this.GetBlobboHeld this.SetBlobboHeld
 
 // this is the dispatcher that defines the behavior of the screen where gameplay takes place.
 type Scene01_BlobboThrowDispatcher () =
@@ -24,7 +27,8 @@ type Scene01_BlobboThrowDispatcher () =
 
     // here we define default property values
     static member Properties =
-        [define Screen.GameplayState Quit]
+        [define Screen.GameplayState Quit
+         define Screen.BlobboHeld false]
 
     // here we define the behavior of our gameplay
     override this.Process (_, screen, world) =
@@ -47,8 +51,7 @@ type Scene01_BlobboThrowDispatcher () =
             
         World.doEntity<FluidEmitter2dDispatcher> "World fluid"
             [Entity.Position |= v3 -60f 0f 0f
-             Entity.Size .= v3 640f 400f 0f
-             Entity.Elevation .= -2f] world
+             Entity.Size .= v3 640f 400f 0f] world
         if screen.GetSelected world then
             if World.isKeyboardKeyDown KeyboardKey.Grave world then
                 let spawn = v2 0f 0f
@@ -59,10 +62,40 @@ type Scene01_BlobboThrowDispatcher () =
                     world
         World.doEntity<BlobboDispatcher> "Blobbo"
             [Entity.Position |= v3 0f 0f 0f
-             Entity.WorldFluidEmitter .= world.DeclaredEntity.EntityAddress
-             Entity.Elevation .= -1f] world
+             Entity.WorldFluidEmitter .= world.DeclaredEntity.EntityAddress] world
         let blobbo = world.DeclaredEntity
-        let instructedPath = world.DeclaredEntity
+             
+        let mousePosition = (World.getMousePosition2dWorld false world).V3
+        let (isDown, justDown) =
+            World.doFeeler "Mouse"
+                [Entity.Position @= mousePosition
+                 Entity.Elevation .= 1f
+                 Entity.FacetNames .= set [nameof RigidBodyFacet]
+                 Entity.Sensor .= true
+                ] world
+        if justDown && (blobbo.GetPerimeter world).Contains mousePosition = ContainmentType.Contains then
+            screen.SetBlobboHeld true world
+        elif not isDown then
+            screen.SetBlobboHeld false world
+        if screen.GetBlobboHeld world then
+            World.doBodyJoint2d "Mouse joint"
+                [Entity.BodyJointTarget .= stoa "^/Mouse"
+                 Entity.BodyJointTarget2 .= stoa "^/Blobbo"
+                 Entity.BodyJoint |= Box2dNetBodyJoint { CreateBodyJoint = fun _ toPhysicsV2 a b world ->
+                    let mousePosition = toPhysicsV2 mousePosition
+                    let mutable jointDef = Box2D.NET.B2Joints.b2DefaultDistanceJointDef ()
+                    jointDef.``base``.bodyIdA <- a
+                    jointDef.``base``.bodyIdB <- b
+                    jointDef.``base``.localFrameA.p <- Box2D.NET.B2Bodies.b2Body_GetLocalPoint (a, mousePosition)
+                    jointDef.``base``.localFrameB.p <- Box2D.NET.B2Bodies.b2Body_GetLocalPoint (b, mousePosition)
+                    jointDef.length <- 0f
+                    jointDef.enableSpring <- true
+                    jointDef.hertz <- 5f
+                    jointDef.dampingRatio <- 1f
+                    Box2D.NET.B2Joints.b2CreateDistanceJoint (world, &jointDef)
+                    }] world |> ignore
+                    
+
         if screen.GetSelected world then
             
             if World.isKeyboardKeyPressed KeyboardKey.Space world then
@@ -75,9 +108,12 @@ type Scene01_BlobboThrowDispatcher () =
                      Entity.Absolute .= true
                      Entity.StaticImage .= Assets.Default.White
                      Entity.Color .= color 0.5f 0.5f 0.5f 0.5f] world |> ignore
+
+            if World.isKeyboardKeyPressed KeyboardKey.Enter world then
+                World.publish () blobbo.ReviveEvent blobbo world
             
         // declare quit button
-        if World.doButton "Quit" [Entity.Position .= v3 232.0f -144.0f 0.0f; Entity.Text .= "Quit"] world then
+        if World.doButton "Quit" [Entity.Position .= v3 232.0f -144.0f 0.0f; Entity.Text .= "Quit"; Entity.Elevation .= 10f] world then
             screen.SetGameplayState Quit world
 
         World.endGroup world
