@@ -73,11 +73,18 @@ type Scene01_BlobboThrowDispatcher () =
                  Entity.FacetNames .= set [nameof RigidBodyFacet]
                  Entity.Sensor .= true
                 ] world
-        if justDown && (blobbo.GetPerimeter world).Contains mousePosition = ContainmentType.Contains then
+        let pickupPerimeter =
+            let perimeter = blobbo.GetPerimeter world
+            if blobbo.GetBlobboForm world = Flattened
+            then box3 (perimeter.Min - v3Dup 24f) (perimeter.Size + v3Dup 48f)
+            else perimeter
+        if justDown && pickupPerimeter.Contains mousePosition = ContainmentType.Contains then
+            if blobbo.GetBlobboForm world = Flattened then
+                World.publish () blobbo.ReviveEvent blobbo world
             screen.SetBlobboHeld true world
         elif not isDown then
             screen.SetBlobboHeld false world
-        if screen.GetBlobboHeld world then
+        if screen.GetBlobboHeld world && blobbo.GetBlobboForm world = Upright then
             World.doBodyJoint2d "Mouse joint"
                 [Entity.BodyJointTarget .= stoa "^/Mouse"
                  Entity.BodyJointTarget2 .= stoa "^/Blobbo"

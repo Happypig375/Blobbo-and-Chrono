@@ -11,6 +11,10 @@ type PhysicsBodyTransform =
       BodyLinearVelocity : Vector3
       BodyAngularVelocity : Vector3 }
 
+type BlobboForm =
+    | Upright
+    | Flattened
+
 module [<AutoOpen>] BlobboExtensions =
     type Entity with
         member this.GetWorldFluidEmitter world : Entity Address = this.Get (nameof this.WorldFluidEmitter) world
@@ -26,6 +30,9 @@ module [<AutoOpen>] BlobboExtensions =
         member this.GetBlobboContour world : PhysicsBodyTransform array = this.Get (nameof this.BlobboContour) world
         member this.SetBlobboContour (value : PhysicsBodyTransform array) world = this.Set (nameof this.BlobboContour) value world
         member this.BlobboContour = lens (nameof this.BlobboContour) this this.GetBlobboContour this.SetBlobboContour
+        member this.GetBlobboForm world : BlobboForm = this.Get (nameof this.BlobboForm) world
+        member this.SetBlobboForm (value : BlobboForm) world = this.Set (nameof this.BlobboForm) value world
+        member this.BlobboForm = lens (nameof this.BlobboForm) this this.GetBlobboForm this.SetBlobboForm
         member this.ShootEvent = stoa<Vector3> "Shoot/Event" --> this
         member this.ReviveEvent = stoa<unit> "Revive/Event" --> this
 
@@ -110,6 +117,7 @@ type BlobboDispatcher () =
          define Entity.AbsorbingWater false
          define Entity.BlobboCenter v3Zero
          define Entity.BlobboContour Array.empty
+         define Entity.BlobboForm Upright
          nonPersistent Entity.PhysicsMotion ManualMotion // disable automatic Position/Rotation/LinearVelocity/AngularVelocity updates for internalIndex.
          computed Entity.BodyId (fun blobbo _-> { BodySource = blobbo; BodyIndex = internalIndex }) None // points to BlobboCenter
          ]
@@ -331,21 +339,35 @@ type BlobboDispatcher () =
 
         blobbo.SetPerimeter (computeBoundingBox blobbo world) world
 
+        let centerBodyId = { BodySource = blobbo; BodyIndex = internalIndex }
+        let contourAfter = blobbo.GetBlobboContour world
+        if contourAfter.Length = contourCount then
+            let centerPos = blobbo.GetBlobboCenter world
+            let centerInside = isPointInsideContour centerPos.V2 contourAfter
+            let blobboForm = blobbo.GetBlobboForm world
+
+            if not centerInside && blobboForm = Upright then
+                blobbo.SetBlobboForm Flattened world
+                // Disable center collisions while flattened so the escaped center is not an invisible blocker.
+                World.setBodyEnabled false centerBodyId world
+
+            elif centerInside && blobboForm = Flattened then
+                // Keep center body disabled until an explicit revive action is requested.
+                ()
+
         if World.doSubscriptionAny "BlobboRevive" blobbo.ReviveEvent world then
-            // revive: when center exits the current contour polygon, snap it back to the ring centroid
-            // so the soft-body can recover before the contour collapses / flattens.
+            // Explicit revive action: re-enable center body and re-wrap contour around it.
             let contourAfter = blobbo.GetBlobboContour world
-            if contourAfter.Length = contourCount then
+            if contourAfter.Length = contourCount && blobbo.GetBlobboForm world = Flattened then
                 let centerPos = blobbo.GetBlobboCenter world
-                let centerInside = isPointInsideContour centerPos.V2 contourAfter
-                if not centerInside then
-                    let centerBodyId = { BodySource = blobbo; BodyIndex = internalIndex }
-                    World.setBodyCenter centerPos centerBodyId world
-                    World.setBodyLinearVelocity v3Zero centerBodyId world
-                    World.setBodyAngularVelocity v3Zero centerBodyId world
-                    resetContourAroundCenter centerPos contourAfter blobbo world
-                    blobbo.SetBlobboCenter centerPos world
-                    blobbo.SetPerimeter (computeBoundingBox blobbo world) world
+                World.setBodyEnabled true centerBodyId world
+                World.setBodyCenter centerPos centerBodyId world
+                World.setBodyLinearVelocity v3Zero centerBodyId world
+                World.setBodyAngularVelocity v3Zero centerBodyId world
+                resetContourAroundCenter centerPos contourAfter blobbo world
+                blobbo.SetBlobboCenter centerPos world
+                blobbo.SetPerimeter (computeBoundingBox blobbo world) world
+                blobbo.SetBlobboForm Upright world
 
         if false then
             // update center to average of particle positions
