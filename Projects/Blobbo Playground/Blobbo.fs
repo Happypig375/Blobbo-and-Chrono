@@ -80,18 +80,15 @@ type BlobboDispatcher () =
                 j <- i
             inside
 
-    let resetContourAroundCenter (center : Vector3) (contour : PhysicsBodyTransform array) (blobbo : Entity) world =
-        // Rebuild as a tight ring near the center to avoid large teleports that can sink into terrain.
-        let minReviveScale = centerRadius + contourRadius + 1.0f
-        let maxReviveScale = spawnScale
-        let reviveScale =
-            if contour.Length = contourCount then
-                let mutable sum = 0.0f
-                for t in contour do
-                    sum <- sum + Vector3.Distance (t.BodyCenter, center)
-                let average = sum / single contourCount
-                Math.Clamp (average, minReviveScale, maxReviveScale)
-            else minReviveScale
+    let contourCentroid (contour : PhysicsBodyTransform array) =
+        let mutable sum = v3Zero
+        for t in contour do
+            sum <- sum + t.BodyCenter
+        sum / single contour.Length
+
+    let resetContourAroundCenter (center : Vector3) (blobbo : Entity) world =
+        // Rebuild to canonical upright form after flattening.
+        let reviveScale = spawnScale
         let boxCount = single contourCount
         let revivedContour =
             Array.init contourCount (fun i ->
@@ -359,12 +356,12 @@ type BlobboDispatcher () =
             // Explicit revive action: re-enable center body and re-wrap contour around it.
             let contourAfter = blobbo.GetBlobboContour world
             if contourAfter.Length = contourCount && blobbo.GetBlobboForm world = Flattened then
-                let centerPos = blobbo.GetBlobboCenter world
+                let centerPos = contourCentroid contourAfter
                 World.setBodyEnabled true centerBodyId world
                 World.setBodyCenter centerPos centerBodyId world
                 World.setBodyLinearVelocity v3Zero centerBodyId world
                 World.setBodyAngularVelocity v3Zero centerBodyId world
-                resetContourAroundCenter centerPos contourAfter blobbo world
+                resetContourAroundCenter centerPos blobbo world
                 blobbo.SetBlobboCenter centerPos world
                 blobbo.SetPerimeter (computeBoundingBox blobbo world) world
                 blobbo.SetBlobboForm Upright world
