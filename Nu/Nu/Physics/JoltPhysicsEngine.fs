@@ -1089,7 +1089,10 @@ and [<ReferenceEquality>] JoltPhysicsEngine =
         | SetBodyCenterMessage setBodyCenterMessage -> JoltPhysicsEngine.setBodyCenter setBodyCenterMessage physicsEngine
         | SetBodyRotationMessage setBodyRotationMessage -> JoltPhysicsEngine.setBodyRotation setBodyRotationMessage physicsEngine
         | SetBodyLinearVelocityMessage setBodyLinearVelocityMessage -> JoltPhysicsEngine.setBodyLinearVelocity setBodyLinearVelocityMessage physicsEngine
+        | SetBodyLinearDampingMessage _ -> () // no runtime linear damping support
         | SetBodyAngularVelocityMessage setBodyAngularVelocityMessage -> JoltPhysicsEngine.setBodyAngularVelocity setBodyAngularVelocityMessage physicsEngine
+        | SetBodyAngularDampingMessage _ -> () // no runtime angular damping support
+        | SetBodyShapeMessage _ -> () // no runtime body shape support
         | SetBodyVehicleForwardInputMessage setBodyVehicleForwardInputMessage -> JoltPhysicsEngine.setBodyVehicleForwardInput setBodyVehicleForwardInputMessage physicsEngine
         | SetBodyVehicleRightInputMessage setBodyVehicleRightInputMessage -> JoltPhysicsEngine.setBodyVehicleRightInput setBodyVehicleRightInputMessage physicsEngine
         | SetBodyVehicleBrakeInputMessage setBodyVehicleBrakeInputMessage -> JoltPhysicsEngine.setBodyVehicleBrakeInput setBodyVehicleBrakeInputMessage physicsEngine
@@ -1097,6 +1100,7 @@ and [<ReferenceEquality>] JoltPhysicsEngine =
         | SetBodyJointMotorEnabledMessage _ -> () // no body joint motor enabled support
         | SetBodyJointMotorSpeedMessage _ -> () // no body joint motor speed support
         | SetBodyJointTargetAngleMessage _ -> () // no body joint target angle support
+        | SetBodyJointDistanceMessage _ -> () // no body joint distance support
         | ApplyBodyLinearImpulseMessage applyBodyLinearImpulseMessage -> JoltPhysicsEngine.applyBodyLinearImpulse applyBodyLinearImpulseMessage physicsEngine
         | ApplyBodyAngularImpulseMessage applyBodyAngularImpulseMessage -> JoltPhysicsEngine.applyBodyAngularImpulse applyBodyAngularImpulseMessage physicsEngine
         | ApplyBodyForceMessage applyBodyForceMessage -> JoltPhysicsEngine.applyBodyForce applyBodyForceMessage physicsEngine

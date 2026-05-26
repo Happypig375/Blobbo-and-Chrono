@@ -50,8 +50,7 @@ type Scene01_BlobboThrowDispatcher () =
              Entity.StaticImage .= Assets.Gameplay.Background] world |> ignore
             
         World.doEntity<FluidEmitter2dDispatcher> "World fluid"
-            [Entity.Position |= v3 -60f 0f 0f
-             Entity.Size .= v3 640f 400f 0f] world
+            [Entity.Size .= v3 640f 400f 0f] world
         if screen.GetSelected world then
             if World.isKeyboardKeyDown KeyboardKey.Grave world then
                 let spawn = v2 0f 0f
@@ -73,18 +72,19 @@ type Scene01_BlobboThrowDispatcher () =
                  Entity.FacetNames .= set [nameof RigidBodyFacet]
                  Entity.Sensor .= true
                 ] world
+        let centerEnabled = blobbo.GetBlobboFullness world > 0.0f
         let pickupPerimeter =
             let perimeter = blobbo.GetPerimeter world
-            if blobbo.GetBlobboForm world = Flattened
+            if not centerEnabled
             then box3 (perimeter.Min - v3Dup 24f) (perimeter.Size + v3Dup 48f)
             else perimeter
         if justDown && pickupPerimeter.Contains mousePosition = ContainmentType.Contains then
-            if blobbo.GetBlobboForm world = Flattened then
+            if not centerEnabled then
                 World.publish () blobbo.ReviveEvent blobbo world
             screen.SetBlobboHeld true world
         elif not isDown then
             screen.SetBlobboHeld false world
-        if screen.GetBlobboHeld world && blobbo.GetBlobboForm world = Upright then
+        if screen.GetBlobboHeld world && centerEnabled then
             World.doBodyJoint2d "Mouse joint"
                 [Entity.BodyJointTarget .= stoa "^/Mouse"
                  Entity.BodyJointTarget2 .= stoa "^/Blobbo"

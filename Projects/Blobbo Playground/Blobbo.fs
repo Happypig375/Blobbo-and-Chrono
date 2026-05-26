@@ -11,18 +11,11 @@ type PhysicsBodyTransform =
       BodyLinearVelocity : Vector3
       BodyAngularVelocity : Vector3 }
 
-type BlobboForm =
-    | Upright
-    | Flattened
-
 module [<AutoOpen>] BlobboExtensions =
     type Entity with
         member this.GetWorldFluidEmitter world : Entity Address = this.Get (nameof this.WorldFluidEmitter) world
         member this.SetWorldFluidEmitter (value : Entity Address) world = this.Set (nameof this.WorldFluidEmitter) value world
         member this.WorldFluidEmitter = lens (nameof this.WorldFluidEmitter) this this.GetWorldFluidEmitter this.SetWorldFluidEmitter
-        member this.GetAbsorbingWater world : bool = this.Get (nameof this.AbsorbingWater) world
-        member this.SetAbsorbingWater (value : bool) world = this.Set (nameof this.AbsorbingWater) value world
-        member this.AbsorbingWater = lens (nameof this.AbsorbingWater) this this.GetAbsorbingWater this.SetAbsorbingWater
         member this.GetBlobboCenter world : Vector3 = this.Get (nameof this.BlobboCenter) world
         member this.SetBlobboCenter (value : Vector3) world = this.Set (nameof this.BlobboCenter) value world
         member this.BlobboCenter = lens (nameof this.BlobboCenter) this this.GetBlobboCenter this.SetBlobboCenter
@@ -30,9 +23,15 @@ module [<AutoOpen>] BlobboExtensions =
         member this.GetBlobboContour world : PhysicsBodyTransform array = this.Get (nameof this.BlobboContour) world
         member this.SetBlobboContour (value : PhysicsBodyTransform array) world = this.Set (nameof this.BlobboContour) value world
         member this.BlobboContour = lens (nameof this.BlobboContour) this this.GetBlobboContour this.SetBlobboContour
-        member this.GetBlobboForm world : BlobboForm = this.Get (nameof this.BlobboForm) world
-        member this.SetBlobboForm (value : BlobboForm) world = this.Set (nameof this.BlobboForm) value world
-        member this.BlobboForm = lens (nameof this.BlobboForm) this this.GetBlobboForm this.SetBlobboForm
+        member this.GetBlobboFullness world : single = this.Get (nameof this.BlobboFullness) world
+        member this.SetBlobboFullness (value : single) world = this.Set (nameof this.BlobboFullness) value world
+        member this.BlobboFullness = lens (nameof this.BlobboFullness) this this.GetBlobboFullness this.SetBlobboFullness
+        member this.GetBlobboDistanceJointLength world : single = this.Get (nameof this.BlobboDistanceJointLength) world
+        member this.SetBlobboDistanceJointLength (value : single) world = this.Set (nameof this.BlobboDistanceJointLength) value world
+        member this.BlobboDistanceJointLength = lens (nameof this.BlobboDistanceJointLength) this this.GetBlobboDistanceJointLength this.SetBlobboDistanceJointLength
+        member this.GetLastExplosionTime world : int64 = this.Get (nameof this.LastExplosionTime) world
+        member this.SetLastExplosionTime (value : int64) world = this.Set (nameof this.LastExplosionTime) value world
+        member this.LastExplosionTime = lens (nameof this.LastExplosionTime) this this.GetLastExplosionTime this.SetLastExplosionTime
         member this.ShootEvent = stoa<Vector3> "Shoot/Event" --> this
         member this.ReviveEvent = stoa<unit> "Revive/Event" --> this
 
@@ -49,7 +48,15 @@ type BlobboDispatcher () =
     static let centerRadius = 8f
     static let spawnScale = contourSize * single contourCount / 8f
     static let contourRadius = MathF.PI * spawnScale / single contourCount // half arc-spacing so bodies just touch
-    static let minBlobboSize = 3
+    static let fullnessCapacity = 64.0f // logical water units represented by fullness = 1.0
+    static let maxAbsorbPerUpdate = 4
+    static let absorbCooldownUpdates = 20L
+    static let minRadiusScale = 0.35f
+    static let minCenterRadius = 2.0f
+    static let baseLinearDamping = 0.2f
+    static let baseAngularDamping = Constants.Physics.AngularDampingDefault
+    static let resizeLinearDamping = 1.5f
+    static let resizeAngularDamping = 1.5f
 
     // BodyIndex layout:
     //   Constants.Physics.InternalIndex (-1) = center body (owned directly by this dispatcher)
@@ -86,9 +93,53 @@ type BlobboDispatcher () =
             sum <- sum + t.BodyCenter
         sum / single contour.Length
 
-    let resetContourAroundCenter (center : Vector3) (blobbo : Entity) world =
-        // Rebuild to canonical upright form after flattening.
-        let reviveScale = spawnScale
+    // Fullness maps to area; therefore radius scales by sqrt(fullness).
+    // To preserve solver stability, map to a nonzero radius range [minRadiusScale, 1].
+    let getRadiusScale fullness =
+        let fullness = Math.Clamp (fullness, 0.0f, 1.0f)
+        minRadiusScale + (1.0f - minRadiusScale) * MathF.Sqrt fullness
+
+    let getCenterRadius distanceLength =
+        max minCenterRadius (centerRadius * distanceLength / spawnScale)
+
+    let getDistanceLength fullness =
+        spawnScale * getRadiusScale fullness
+
+    let createCenterBody (center : Vector3) (radius : single) (blobbo : Entity) world =
+        let centerBodyId = { BodySource = blobbo; BodyIndex = internalIndex }
+        let centerBodyProperties =
+            { Enabled = true
+              Center = center
+              Rotation = Quaternion.Identity
+              Scale = v3One
+              BodyShape = SphereShape { Radius = radius; TransformOpt = None; PropertiesOpt = None }
+              BodyType = Dynamic
+              SleepingAllowed = true
+              Friction = Constants.Physics.FrictionDefault
+              Restitution = 0.333f
+              LinearVelocity = v3Zero
+              LinearDamping = baseLinearDamping
+              AngularVelocity = v3Zero
+              AngularDamping = baseAngularDamping
+              AngularFactor = v3One
+              KinematicPushLimitOpt = None
+              Substance = Mass 1f
+              Gravity = GravityWorld
+              CharacterProperties = (PogoSpringCharacterProperties PogoSpringCharacterProperties.defaultProperties)
+              VehicleProperties = VehiclePropertiesAbsent
+              CollisionDetection = Continuous
+              CollisionGroup = -B2Constants.B2_SECRET_COOKIE
+              CollisionCategories = Physics.categorizeCollisionMask "1"
+              CollisionMask = Physics.categorizeCollisionMask Constants.Physics.CollisionWildcard
+              Sensor = false
+              BodyIndex = internalIndex }
+        World.createBody2d centerBodyId centerBodyProperties world
+
+    let setCenterBodyRadius (radius : single) (blobbo : Entity) world =
+        let centerBodyId = { BodySource = blobbo; BodyIndex = internalIndex }
+        World.setBodyShape (SphereShape { Radius = radius; TransformOpt = None; PropertiesOpt = None }) centerBodyId world
+
+    let resetContourAroundCenter (center : Vector3) (reviveScale : single) (blobbo : Entity) world =
         let boxCount = single contourCount
         let revivedContour =
             Array.init contourCount (fun i ->
@@ -105,55 +156,59 @@ type BlobboDispatcher () =
                   BodyAngularVelocity = v3Zero })
         blobbo.SetBlobboContour revivedContour world
 
+    let setDistanceJointsLength (length : single) (blobbo : Entity) world =
+        for i in 0 .. contourCount - 1 do
+            let bodyJointId = { BodyJointSource = blobbo; BodyJointIndex = contourCount + i }
+            World.setBodyJointDistance length bodyJointId world
+
+    let setBlobboDamping linearDamping angularDamping (blobbo : Entity) world =
+        let centerBodyId = { BodySource = blobbo; BodyIndex = internalIndex }
+        World.setBodyLinearDamping linearDamping centerBodyId world
+        World.setBodyAngularDamping angularDamping centerBodyId world
+        for i in 0 .. contourCount - 1 do
+            let contourBodyId = { BodySource = blobbo; BodyIndex = i }
+            World.setBodyLinearDamping linearDamping contourBodyId world
+            World.setBodyAngularDamping angularDamping contourBodyId world
+
     static member Facets =
         []
 
     static member Properties =
         [define Entity.Visible true
          define Entity.WorldFluidEmitter Address.empty
-         define Entity.AbsorbingWater false
          define Entity.BlobboCenter v3Zero
          define Entity.BlobboContour Array.empty
-         define Entity.BlobboForm Upright
+         define Entity.BlobboFullness 1.0f
+         nonPersistent Entity.BlobboDistanceJointLength spawnScale
+         nonPersistent Entity.LastExplosionTime Int64.MinValue
          nonPersistent Entity.PhysicsMotion ManualMotion // disable automatic Position/Rotation/LinearVelocity/AngularVelocity updates for internalIndex.
          computed Entity.BodyId (fun blobbo _-> { BodySource = blobbo; BodyIndex = internalIndex }) None // points to BlobboCenter
          ]
          
     override _.Register (blobbo, world) =
 
-        // eject out-of-bounds particles back to the world emitter
+        // shoot emits logical water back into the world
         World.monitor (fun event world ->
             let blobbo : Entity = event.Subscriber
-            match tryResolve (blobbo.GetWorldFluidEmitter world) blobbo with
-            | Some emitter ->
-                World.emitFluidParticles
-                    (event.Data.OutOfBoundsParticles |> SArray.map (fun p -> { p with FluidParticleConfig = "Water" }))
-                    (emitter.GetFluidEmitterId world) world
-            | None -> ()
-            Cascade) blobbo.FluidEmitterUpdateEvent blobbo world
-
-        // shoot a particle toward the target position when enough are present in the body
-        World.monitor (fun event world ->
-            let blobbo : Entity = event.Subscriber
-            let mutable i = 0
-            let mutable shoot = ValueNone
-            World.chooseFluidParticles (fun p ->
-                i <- inc i
-                if i = minBlobboSize then
-                    shoot <- ValueSome { p with FluidParticleVelocity = p.FluidParticleVelocity + (event.Data - p.FluidParticlePosition) * 2f; FluidParticleConfig = "Water" }
-                    ValueNone
-                else ValueSome p) (blobbo.GetFluidEmitterId world) world
-            match shoot with
-            | ValueSome p ->
+            let fullness = blobbo.GetBlobboFullness world
+            if fullness > 0.0f then
+                let center = blobbo.GetBlobboCenter world
+                let delta = event.Data - center
+                let velocity = if delta.LengthSquared () > 0.000001f then Vector3.Normalize delta * 12.0f else v3Zero
+                let p =
+                    { FluidParticlePosition = center
+                      FluidParticleVelocity = velocity
+                      FluidParticleConfig = "Water" }
                 match tryResolve (blobbo.GetWorldFluidEmitter world) blobbo with
                 | Some emitter -> World.emitFluidParticles (SArray.singleton p) (emitter.GetFluidEmitterId world) world
                 | None -> ()
-            | ValueNone -> ()
+                blobbo.SetBlobboFullness (max 0.0f (fullness - 1.0f / fullnessCapacity)) world
             Cascade) blobbo.ShootEvent blobbo world
 
     override _.RegisterPhysics (blobbo, world) =
 
         // Create the center body directly, then the 32 contour box bodies and their joints.
+        let initialDistanceLength = getDistanceLength (blobbo.GetBlobboFullness world)
 
         // initialize BlobboCenter / BlobboContour to the default ring layout if not yet set
         let center, contour =
@@ -166,8 +221,8 @@ type BlobboDispatcher () =
                 let contour =
                     Array.init contourCount (fun i ->
                         let boxAngle = MathF.Tau * single i / boxCount
-                        let x = cos boxAngle * spawnScale
-                        let y = sin boxAngle * spawnScale
+                        let x = cos boxAngle * initialDistanceLength
+                        let y = sin boxAngle * initialDistanceLength
                         { BodyCenter = center + v3 x y 0f
                           BodyRotation = Quaternion.Identity
                           BodyLinearVelocity = v3Zero
@@ -178,34 +233,9 @@ type BlobboDispatcher () =
                 (center, contour)
 
         // create the actual physics body for the blobbo center
-        let centerBodyId = { BodySource = blobbo; BodyIndex = internalIndex }
-        let centerBodyProperties =
-            { Enabled = true
-              Center = center
-              Rotation = Quaternion.Identity
-              Scale = v3One
-              BodyShape = SphereShape { Radius = centerRadius; TransformOpt = None; PropertiesOpt = None }
-              BodyType = Dynamic
-              SleepingAllowed = true
-              Friction = Constants.Physics.FrictionDefault
-              Restitution = 0.333f
-              LinearVelocity = v3Zero
-              LinearDamping = 0f
-              AngularVelocity = v3Zero
-              AngularDamping = Constants.Physics.AngularDampingDefault
-              AngularFactor = v3One
-              KinematicPushLimitOpt = None
-              Substance = Mass 1f
-              Gravity = GravityWorld
-              CharacterProperties = (PogoSpringCharacterProperties PogoSpringCharacterProperties.defaultProperties)
-              VehicleProperties = VehiclePropertiesAbsent
-              CollisionDetection = Continuous
-              CollisionGroup = 0
-              CollisionCategories = Physics.categorizeCollisionMask "1"
-              CollisionMask = Physics.categorizeCollisionMask Constants.Physics.CollisionWildcard
-              Sensor = false
-              BodyIndex = internalIndex }
-        World.createBody2d centerBodyId centerBodyProperties world
+        let initialCenterRadius = getCenterRadius initialDistanceLength
+        createCenterBody center initialCenterRadius blobbo world
+        blobbo.SetBlobboDistanceJointLength initialDistanceLength world
         blobbo.SetPerimeter (computeBoundingBox blobbo world) world
         
         // create contour box bodies using the serialized contour transforms
@@ -224,9 +254,9 @@ type BlobboDispatcher () =
                   Friction = Constants.Physics.FrictionDefault
                   Restitution = 0.333f
                   LinearVelocity = t.BodyLinearVelocity
-                  LinearDamping = 0f
+                  LinearDamping = baseLinearDamping
                   AngularVelocity = t.BodyAngularVelocity
-                  AngularDamping = Constants.Physics.AngularDampingDefault
+                  AngularDamping = baseAngularDamping
                   AngularFactor = v3One
                   KinematicPushLimitOpt = None
                   Substance = Mass (1f / boxCount)
@@ -234,7 +264,7 @@ type BlobboDispatcher () =
                   CharacterProperties = (PogoSpringCharacterProperties PogoSpringCharacterProperties.defaultProperties)
                   VehicleProperties = VehiclePropertiesAbsent
                   CollisionDetection = Continuous
-                  CollisionGroup = 0
+                  CollisionGroup = -B2Constants.B2_SECRET_COOKIE // fluid particles share this group, so water flows through physically
                   CollisionCategories = Physics.categorizeCollisionMask "1"
                   CollisionMask = Physics.categorizeCollisionMask Constants.Physics.CollisionWildcard
                   Sensor = false
@@ -278,7 +308,7 @@ type BlobboDispatcher () =
                     let mutable jointDef = B2Joints.b2DefaultDistanceJointDef ()
                     jointDef.``base``.bodyIdA <- a
                     jointDef.``base``.bodyIdB <- b
-                    jointDef.length <- toPhysics spawnScale
+                    jointDef.length <- toPhysics initialDistanceLength
                     jointDef.enableSpring <- true
                     jointDef.hertz <- 3f
                     jointDef.dampingRatio <- 1f
@@ -334,37 +364,66 @@ type BlobboDispatcher () =
             | _ -> ()
         blobbo.SetBlobboContour contour world
 
-        blobbo.SetPerimeter (computeBoundingBox blobbo world) world
+        let contourBounds = computeBoundingBox blobbo world
+        blobbo.SetPerimeter contourBounds world
 
+        // Keep physical contour size in sync with fullness by adjusting center-distance spring rest length.
         let centerBodyId = { BodySource = blobbo; BodyIndex = internalIndex }
+        let fullness = blobbo.GetBlobboFullness world
+        let centerEnabled = fullness > 0.0f
+        let targetDistanceLength = getDistanceLength fullness
+        let currentDistanceLength = blobbo.GetBlobboDistanceJointLength world
+        let resizing = abs (targetDistanceLength - currentDistanceLength) > 0.125f
+        if resizing then
+            let targetCenterRadius = getCenterRadius targetDistanceLength
+            setCenterBodyRadius targetCenterRadius blobbo world
+            setDistanceJointsLength targetDistanceLength blobbo world
+            blobbo.SetBlobboDistanceJointLength targetDistanceLength world
+
+        if resizing then
+            setBlobboDamping resizeLinearDamping resizeAngularDamping blobbo world
+        elif centerEnabled then
+            setBlobboDamping baseLinearDamping baseAngularDamping blobbo world
+
+        World.setBodyEnabled centerEnabled centerBodyId world
         let contourAfter = blobbo.GetBlobboContour world
         if contourAfter.Length = contourCount then
             let centerPos = blobbo.GetBlobboCenter world
             let centerInside = isPointInsideContour centerPos.V2 contourAfter
-            let blobboForm = blobbo.GetBlobboForm world
 
-            if not centerInside && blobboForm = Upright then
-                blobbo.SetBlobboForm Flattened world
-                // Disable center collisions while flattened so the escaped center is not an invisible blocker.
+            if not centerInside && centerEnabled then
+                // Collapse: center escapes contour. Disable center collider and spill all logical water.
+                blobbo.SetLastExplosionTime world.UpdateTime world
                 World.setBodyEnabled false centerBodyId world
-
-            elif centerInside && blobboForm = Flattened then
-                // Keep center body disabled until an explicit revive action is requested.
-                ()
+                let fullness = blobbo.GetBlobboFullness world
+                let spillCount = int (ceil (fullness * fullnessCapacity))
+                if spillCount > 0 then
+                    let origin = contourCentroid contourAfter
+                    match tryResolve (blobbo.GetWorldFluidEmitter world) blobbo with
+                    | Some emitter ->
+                        World.emitFluidParticles
+                            (SArray.init spillCount (fun _ ->
+                                let jitter = v2 (Gen.randomf * 2.0f - 1.0f) (Gen.randomf * 2.0f - 1.0f) * 16.0f
+                                let velocity = v3 jitter.X jitter.Y 0.0f
+                                { FluidParticlePosition = origin + jitter.V3
+                                  FluidParticleVelocity = velocity
+                                  FluidParticleConfig = "Water" }))
+                            (emitter.GetFluidEmitterId world) world
+                    | None -> ()
+                blobbo.SetBlobboFullness 0.0f world
 
         if World.doSubscriptionAny "BlobboRevive" blobbo.ReviveEvent world then
-            // Explicit revive action: re-enable center body and re-wrap contour around it.
+            // Explicit revive action: if there is water, re-wrap contour around center at fullness-scaled radius.
             let contourAfter = blobbo.GetBlobboContour world
-            if contourAfter.Length = contourCount && blobbo.GetBlobboForm world = Flattened then
+            if contourAfter.Length = contourCount && fullness > 0.0f then
                 let centerPos = contourCentroid contourAfter
-                World.setBodyEnabled true centerBodyId world
-                World.setBodyCenter centerPos centerBodyId world
-                World.setBodyLinearVelocity v3Zero centerBodyId world
-                World.setBodyAngularVelocity v3Zero centerBodyId world
-                resetContourAroundCenter centerPos blobbo world
+                let reviveScale = getDistanceLength fullness
+                let reviveCenterRadius = getCenterRadius reviveScale
                 blobbo.SetBlobboCenter centerPos world
-                blobbo.SetPerimeter (computeBoundingBox blobbo world) world
-                blobbo.SetBlobboForm Upright world
+                setCenterBodyRadius reviveCenterRadius blobbo world
+                resetContourAroundCenter centerPos reviveScale blobbo world
+                setDistanceJointsLength reviveScale blobbo world
+                blobbo.SetBlobboDistanceJointLength reviveScale world
 
         if false then
             // update center to average of particle positions
@@ -377,39 +436,38 @@ type BlobboDispatcher () =
             if particleCount > 0 then
                 blobbo.SetPosition (newPosition / single particleCount) world
 
-        // absorb nearby world-emitter particles into the blobbo body
-        if blobbo.GetAbsorbingWater world then
-            let bounds = blobbo.GetBounds world
-            let maxParticles = 10
-            let absorbed = ResizeArray maxParticles
-            match tryResolve (blobbo.GetWorldFluidEmitter world) blobbo with
-            | Some (emitter : Entity) ->
-                World.chooseFluidParticles (fun p ->
-                    if bounds.Contains p.FluidParticlePosition <> ContainmentType.Disjoint && absorbed.Count < maxParticles then
-                        absorbed.Add p; ValueNone
-                    else ValueSome p) (emitter.GetFluidEmitterId world) world
-                World.emitFluidParticles
-                    (SArray.init absorbed.Count (fun i -> { absorbed[i] with FluidParticleConfig = "Oil" }))
-                    (blobbo.GetFluidEmitterId world) world
-            | None -> ()
-
-        // eject excess particles back to the world emitter when contracting
-        let mutable i = 0
-        let bounds = blobbo.GetBounds world
-        let maxParticles = 10
-        let ejected = ResizeArray maxParticles
-        match tryResolve (blobbo.GetWorldFluidEmitter world) blobbo with
-        | Some (emitter : Entity) ->
-            World.chooseFluidParticles (fun p ->
-                i <- inc i
-                if i >= minBlobboSize && bounds.Contains p.FluidParticlePosition <> ContainmentType.Disjoint && ejected.Count < maxParticles then
-                    ejected.Add p; ValueNone
-                else ValueSome p) (blobbo.GetFluidEmitterId world) world
-            if ejected.Count > 0 then
-                World.emitFluidParticles
-                    (SArray.init ejected.Count (fun i -> ejected[i]))
-                    (emitter.GetFluidEmitterId world) world
-        | None -> ()
+        // Absorb world water particles inside the contour polygon into logical fullness.
+        // Contour bodies use the fluid group so water flows through physically; absorption is purely logical.
+        let fullness = blobbo.GetBlobboFullness world
+        let cooledDown = world.UpdateTime - blobbo.GetLastExplosionTime world >= absorbCooldownUpdates
+        if fullness < 1.0f && cooledDown then
+            let contourForAbsorb = blobbo.GetBlobboContour world
+            let capacityLeft = int (floor ((1.0f - fullness) * fullnessCapacity))
+            let absorbLimit = min maxAbsorbPerUpdate capacityLeft
+            if absorbLimit > 0 && contourForAbsorb.Length = contourCount then
+                match tryResolve (blobbo.GetWorldFluidEmitter world) blobbo with
+                | Some (emitter : Entity) ->
+                    let mutable absorbedCount = 0
+                    World.chooseFluidParticles (fun p ->
+                        if  absorbedCount < absorbLimit &&
+                            isPointInsideContour p.FluidParticlePosition.V2 contourForAbsorb then
+                            absorbedCount <- inc absorbedCount
+                            ValueNone
+                        else ValueSome p) (emitter.GetFluidEmitterId world) world
+                    if absorbedCount > 0 then
+                        let fullness' = min 1.0f (fullness + single absorbedCount / fullnessCapacity)
+                        blobbo.SetBlobboFullness fullness' world
+                        // Auto-revive when water is first absorbed while center is disabled.
+                        if fullness <= 0.0f && fullness' > 0.0f then
+                            let centerPos = contourCentroid (blobbo.GetBlobboContour world)
+                            let reviveScale = getDistanceLength fullness'
+                            let reviveCenterRadius = getCenterRadius reviveScale
+                            blobbo.SetBlobboCenter centerPos world
+                            setCenterBodyRadius reviveCenterRadius blobbo world
+                            resetContourAroundCenter centerPos reviveScale blobbo world
+                            setDistanceJointsLength reviveScale blobbo world
+                            blobbo.SetBlobboDistanceJointLength reviveScale world
+                | None -> ()
 
     override _.Render (_, blobbo, world) =
         let contour = blobbo.GetBlobboContour world

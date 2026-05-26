@@ -533,9 +533,24 @@ and [<ReferenceEquality>] AetherPhysicsEngine =
         | (true, (_, body)) -> body.LinearVelocity <- AetherPhysicsEngine.toPhysicsV2 setBodyLinearVelocityMessage.LinearVelocity
         | (false, _) -> ()
 
+    static member private setBodyLinearDamping (setBodyLinearDampingMessage : SetBodyLinearDampingMessage) physicsEngine =
+        match physicsEngine.Bodies.TryGetValue setBodyLinearDampingMessage.BodyId with
+        | (true, (_, body)) -> body.LinearDamping <- setBodyLinearDampingMessage.LinearDamping
+        | (false, _) -> ()
+
     static member private setBodyAngularVelocity (setBodyAngularVelocityMessage : SetBodyAngularVelocityMessage) physicsEngine =
         match physicsEngine.Bodies.TryGetValue setBodyAngularVelocityMessage.BodyId with
         | (true, (_, body)) -> body.AngularVelocity <- setBodyAngularVelocityMessage.AngularVelocity.Z
+        | (false, _) -> ()
+
+    static member private setBodyAngularDamping (setBodyAngularDampingMessage : SetBodyAngularDampingMessage) physicsEngine =
+        match physicsEngine.Bodies.TryGetValue setBodyAngularDampingMessage.BodyId with
+        | (true, (_, body)) -> body.AngularDamping <- setBodyAngularDampingMessage.AngularDamping
+        | (false, _) -> ()
+
+    static member private setBodyShape (setBodyShapeMessage : SetBodyShapeMessage) physicsEngine =
+        match physicsEngine.Bodies.TryGetValue setBodyShapeMessage.BodyId with
+        | (true, _) -> ()
         | (false, _) -> ()
 
     static member private setBodyJointMotorEnabled (setBodyJointMotorEnabledMessage : SetBodyJointMotorEnabledMessage) physicsEngine =
@@ -563,6 +578,14 @@ and [<ReferenceEquality>] AetherPhysicsEngine =
         | (true, joint) ->
             match joint with
             | :? Dynamics.Joints.AngleJoint as joint -> joint.TargetAngle <- setBodyJointTargetAngleMessage.TargetAngle
+            | _ -> ()
+        | (false, _) -> ()
+
+    static member private setBodyJointDistance (setBodyJointDistanceMessage : SetBodyJointDistanceMessage) physicsEngine =
+        match physicsEngine.Joints.TryGetValue setBodyJointDistanceMessage.BodyJointId with
+        | (true, joint) ->
+            match joint with
+            | :? Dynamics.Joints.DistanceJoint as joint -> joint.Length <- setBodyJointDistanceMessage.Distance
             | _ -> ()
         | (false, _) -> ()
 
@@ -674,7 +697,10 @@ and [<ReferenceEquality>] AetherPhysicsEngine =
         | SetBodyCenterMessage setBodyCenterMessage -> AetherPhysicsEngine.setBodyCenter setBodyCenterMessage physicsEngine
         | SetBodyRotationMessage setBodyRotationMessage -> AetherPhysicsEngine.setBodyRotation setBodyRotationMessage physicsEngine
         | SetBodyLinearVelocityMessage setBodyLinearVelocityMessage -> AetherPhysicsEngine.setBodyLinearVelocity setBodyLinearVelocityMessage physicsEngine
+        | SetBodyLinearDampingMessage setBodyLinearDampingMessage -> AetherPhysicsEngine.setBodyLinearDamping setBodyLinearDampingMessage physicsEngine
         | SetBodyAngularVelocityMessage setBodyAngularVelocityMessage -> AetherPhysicsEngine.setBodyAngularVelocity setBodyAngularVelocityMessage physicsEngine
+        | SetBodyAngularDampingMessage setBodyAngularDampingMessage -> AetherPhysicsEngine.setBodyAngularDamping setBodyAngularDampingMessage physicsEngine
+        | SetBodyShapeMessage setBodyShapeMessage -> AetherPhysicsEngine.setBodyShape setBodyShapeMessage physicsEngine
         | SetBodyVehicleForwardInputMessage _ -> () // no vehicle controller support
         | SetBodyVehicleRightInputMessage _ -> () // no vehicle controller support
         | SetBodyVehicleBrakeInputMessage _ -> () // no vehicle controller support
@@ -682,6 +708,7 @@ and [<ReferenceEquality>] AetherPhysicsEngine =
         | SetBodyJointMotorEnabledMessage setBodyJointMotorEnabledMessage -> AetherPhysicsEngine.setBodyJointMotorEnabled setBodyJointMotorEnabledMessage physicsEngine
         | SetBodyJointMotorSpeedMessage setBodyJointMotorSpeedMessage -> AetherPhysicsEngine.setBodyJointMotorSpeed setBodyJointMotorSpeedMessage physicsEngine
         | SetBodyJointTargetAngleMessage setBodyJointTargetAngleMessage -> AetherPhysicsEngine.setBodyJointTargetAngle setBodyJointTargetAngleMessage physicsEngine
+        | SetBodyJointDistanceMessage setBodyJointDistanceMessage -> AetherPhysicsEngine.setBodyJointDistance setBodyJointDistanceMessage physicsEngine
         | ApplyBodyLinearImpulseMessage applyBodyLinearImpulseMessage -> AetherPhysicsEngine.applyBodyLinearImpulse applyBodyLinearImpulseMessage physicsEngine
         | ApplyBodyAngularImpulseMessage applyBodyAngularImpulseMessage -> AetherPhysicsEngine.applyBodyAngularImpulse applyBodyAngularImpulseMessage physicsEngine
         | ApplyBodyForceMessage applyBodyForceMessage -> AetherPhysicsEngine.applyBodyForce applyBodyForceMessage physicsEngine

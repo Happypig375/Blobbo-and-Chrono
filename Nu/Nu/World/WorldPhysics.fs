@@ -329,11 +329,29 @@ module WorldPhysics =
             World.handlePhysicsMessage3d setBodyLinearVelocityMessage world
             World.handlePhysicsMessage2d setBodyLinearVelocityMessage world
 
+        /// Send a physics message to set the linear damping of a body with the given body id.
+        static member setBodyLinearDamping linearDamping bodyId world =
+            let setBodyLinearDampingMessage = SetBodyLinearDampingMessage { BodyId = bodyId; LinearDamping = linearDamping }
+            World.handlePhysicsMessage3d setBodyLinearDampingMessage world
+            World.handlePhysicsMessage2d setBodyLinearDampingMessage world
+
         /// Send a physics message to set the angular velocity of a body with the given body id.
         static member setBodyAngularVelocity angularVelocity bodyId world =
             let setBodyAngularVelocityMessage = SetBodyAngularVelocityMessage { BodyId = bodyId; AngularVelocity = angularVelocity }
             World.handlePhysicsMessage3d setBodyAngularVelocityMessage world
             World.handlePhysicsMessage2d setBodyAngularVelocityMessage world
+
+        /// Send a physics message to set the angular damping of a body with the given body id.
+        static member setBodyAngularDamping angularDamping bodyId world =
+            let setBodyAngularDampingMessage = SetBodyAngularDampingMessage { BodyId = bodyId; AngularDamping = angularDamping }
+            World.handlePhysicsMessage3d setBodyAngularDampingMessage world
+            World.handlePhysicsMessage2d setBodyAngularDampingMessage world
+
+        /// Send a physics message to set the body shape of a body with the given body id.
+        static member setBodyShape bodyShape bodyId world =
+            let setBodyShapeMessage = SetBodyShapeMessage { BodyId = bodyId; BodyShape = bodyShape }
+            World.handlePhysicsMessage3d setBodyShapeMessage world
+            World.handlePhysicsMessage2d setBodyShapeMessage world
 
         /// Send a physics message to set the forward input of a vehicle body with the given body id.
         static member setBodyVehicleForwardInput forwardInput bodyId world =
@@ -370,6 +388,12 @@ module WorldPhysics =
             let setBodyJointMotorSpeed = SetBodyJointMotorSpeedMessage { BodyJointId = bodyJointId; MotorSpeed = motorSpeed }
             World.handlePhysicsMessage3d setBodyJointMotorSpeed world
             World.handlePhysicsMessage2d setBodyJointMotorSpeed world
+
+        /// Send a physics message to set the distance length of a body joint.
+        static member setBodyJointDistance distance bodyJointId world =
+            let setBodyJointDistance = SetBodyJointDistanceMessage { BodyJointId = bodyJointId; Distance = distance }
+            World.handlePhysicsMessage3d setBodyJointDistance world
+            World.handlePhysicsMessage2d setBodyJointDistance world
 
         /// Send a physics message to apply linear impulse to a body with the given body id.
         static member applyBodyLinearImpulse linearImpulse originWorldOpt bodyId world =

@@ -68,10 +68,25 @@ type SetBodyLinearVelocityMessage =
     { BodyId : BodyId
       LinearVelocity : Vector3 }
 
+/// A message to the physics system to set the linear damping of a body.
+type SetBodyLinearDampingMessage =
+    { BodyId : BodyId
+      LinearDamping : single }
+
 /// A message to the physics system to set the angular velocity of a body.
 type SetBodyAngularVelocityMessage =
     { BodyId : BodyId
       AngularVelocity : Vector3 }
+
+/// A message to the physics system to set the angular damping of a body.
+type SetBodyAngularDampingMessage =
+    { BodyId : BodyId
+      AngularDamping : single }
+
+/// A message to the physics system to set the body shape of a body.
+type SetBodyShapeMessage =
+    { BodyId : BodyId
+      BodyShape : BodyShape }
 
 /// A message to the physics system to set the forward input of a vehicle body.
 type SetBodyVehicleForwardInputMessage =
@@ -107,6 +122,11 @@ type SetBodyJointMotorSpeedMessage =
 type SetBodyJointTargetAngleMessage =
     { BodyJointId : BodyJointId
       TargetAngle : single }
+
+/// A message to the physics system to set distance length of a body joint.
+type SetBodyJointDistanceMessage =
+    { BodyJointId : BodyJointId
+      Distance : single }
 
 /// A message to the physics system to apply a linear impulse to a body.
 type ApplyBodyLinearImpulseMessage =
@@ -221,7 +241,10 @@ type PhysicsMessage =
     | SetBodyCenterMessage of SetBodyCenterMessage
     | SetBodyRotationMessage of SetBodyRotationMessage
     | SetBodyLinearVelocityMessage of SetBodyLinearVelocityMessage
+    | SetBodyLinearDampingMessage of SetBodyLinearDampingMessage
     | SetBodyAngularVelocityMessage of SetBodyAngularVelocityMessage
+    | SetBodyAngularDampingMessage of SetBodyAngularDampingMessage
+    | SetBodyShapeMessage of SetBodyShapeMessage
     | SetBodyVehicleForwardInputMessage of SetBodyVehicleForwardInputMessage
     | SetBodyVehicleRightInputMessage of SetBodyVehicleRightInputMessage
     | SetBodyVehicleBrakeInputMessage of SetBodyVehicleBrakeInputMessage
@@ -229,6 +252,7 @@ type PhysicsMessage =
     | SetBodyJointMotorEnabledMessage of SetBodyJointMotorEnabledMessage
     | SetBodyJointMotorSpeedMessage of SetBodyJointMotorSpeedMessage
     | SetBodyJointTargetAngleMessage of SetBodyJointTargetAngleMessage
+    | SetBodyJointDistanceMessage of SetBodyJointDistanceMessage
     | UpdateFluidEmitterMessage of UpdateFluidEmitterMessage
     | SetFluidParticlesMessage of SetFluidParticlesMessage
     | ChooseFluidParticlesMessage of ChooseFluidParticlesMessage
