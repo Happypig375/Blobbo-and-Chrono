@@ -174,7 +174,6 @@ module Hl =
             | D32fs8ui -> width * height * 5
 
         /// Determine if format is supported for use as an attachment.
-        /// TODO: P0: DJL: investigate working around depth blitting as some MESA drivers may deny us that feature.
         static member supportsAttachment vkPhysicalDevice format =
             let requiredFeatures =
                 match format with
@@ -192,7 +191,7 @@ module Hl =
                 | D32f
                 | D16s8ui
                 | D24s8ui
-                | D32fs8ui -> VkFormatFeatureFlags.BlitSrc ||| VkFormatFeatureFlags.BlitDst ||| VkFormatFeatureFlags.DepthStencilAttachment
+                | D32fs8ui -> VkFormatFeatureFlags.DepthStencilAttachment
             let mutable properties = Unchecked.defaultof<VkFormatProperties>
             Vulkan.vkGetPhysicalDeviceFormatProperties (vkPhysicalDevice, format.VkFormat, &properties)
             properties.optimalTilingFeatures &&& requiredFeatures = requiredFeatures
@@ -1641,7 +1640,8 @@ module Hl =
 
             // get swapchain extension
             let swapchainExtensionName = NativePtr.spanToString Vulkan.VK_KHR_SWAPCHAIN_EXTENSION_NAME
-            use extensionArrayWrap = new StringArrayWrap ([|swapchainExtensionName|])
+            let extensionArray = [|swapchainExtensionName|]
+            use extensionArrayWrap = new StringArrayWrap (extensionArray)
 
             // NOTE: DJL: for particularly dated implementations of Vulkan, validation depends on device layers which
             // are deprecated. These must be enabled if validation support for said implementations is desired.
@@ -1655,7 +1655,7 @@ module Hl =
             info.pNext <- asVoidPtr &vulkan13
             info.queueCreateInfoCount <- uint queueCreateInfos.Length
             info.pQueueCreateInfos <- queueCreateInfosPin.Pointer
-            info.enabledExtensionCount <- 1u
+            info.enabledExtensionCount <- uint extensionArray.Length
             info.ppEnabledExtensionNames <- extensionArrayWrap.Pointer
             info.pEnabledFeatures <- asPointer &features
             let mutable device = Unchecked.defaultof<VkDevice>
