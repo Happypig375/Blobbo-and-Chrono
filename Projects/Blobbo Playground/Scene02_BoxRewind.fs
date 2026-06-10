@@ -16,31 +16,31 @@ type Scene02_BoxRewindDispatcher () =
     // here we define the behavior of our gameplay
     override this.Process (selectionResults, screen, world) =
 
-        World.beginGroup "Group" [] world
-        // declare border
-        World.doBlockBody2d "Border"
-            [Entity.Size .= Constants.Render.DisplayVirtualResolution.V3
-             Entity.BodyShape .= ContourShape
-                 { Links =
-                     [|v3 -0.5f 0.5f 0f
-                       v3 0.5f 0.5f 0f
-                       v3 0.5f -0.5f 0f
-                       v3 -0.5f -0.5f 0f|]
-                   Closed = true
-                   TransformOpt = None
-                   PropertiesOpt = None }
-             Entity.Elevation .= -1f
-             Entity.StaticImage .= Assets.Gameplay.Background] world |> ignore
-
-        let (box, _) =
-            World.doBoxBody2d "Box"
-                [Entity.Position |= v3 -90f 0f 0f
-                 Entity.Size .= v3Dup 16f
-                 Entity.LinearVelocity |= v3 100f 0f 0f
-                 Entity.Friction .= 0f
-                 Entity.FacetNames .= Set.ofList [nameof RewindableFacet]] world
-            
         if screen.GetSelected world then
+            World.beginGroup "Group" [] world
+            // declare border
+            World.doBlockBody2d "Border"
+                [Entity.Size .= Constants.Render.DisplayVirtualResolution.V3
+                 Entity.BodyShape .= ContourShape
+                     { Links =
+                         [|v3 -0.5f 0.5f 0f
+                           v3 0.5f 0.5f 0f
+                           v3 0.5f -0.5f 0f
+                           v3 -0.5f -0.5f 0f|]
+                       Closed = true
+                       TransformOpt = None
+                       PropertiesOpt = None }
+                 Entity.Elevation .= -1f
+                 Entity.StaticImage .= Assets.Gameplay.Background] world |> ignore
+
+            let (box, _) =
+                World.doBoxBody2d "Box"
+                    [Entity.Position |= v3 -90f 0f 0f
+                     Entity.Size .= v3Dup 16f
+                     Entity.LinearVelocity |= v3 100f 0f 0f
+                     Entity.Friction .= 0f
+                     Entity.FacetNames .= Set.ofList [nameof RewindableFacet]] world
+            
             World.setEye2dCenter v2Zero world
         
             if World.isKeyboardKeyPressed KeyboardKey.Down world then
@@ -66,15 +66,15 @@ type Scene02_BoxRewindDispatcher () =
                      Entity.Size .= Constants.Render.DisplayVirtualResolution.V3
                      Entity.StaticImage .= Assets.Default.White
                      Entity.Color .= color 0.5f 0.5f 0.5f 0.5f] world |> ignore
-        let (box2, _) =
-            World.doBoxBody2d "Box2"
-                [Entity.Position |= v3 90f 0f 0f
-                 Entity.Size .= v3Dup 16f
-                 Entity.Friction .= 0f
-                 Entity.FacetNames .= Set.ofList [nameof RewindableFacet]] world
+            let (box2, _) =
+                World.doBoxBody2d "Box2"
+                    [Entity.Position |= v3 90f 0f 0f
+                     Entity.Size .= v3Dup 16f
+                     Entity.Friction .= 0f
+                     Entity.FacetNames .= Set.ofList [nameof RewindableFacet]] world
 
-        // declare quit button
-        if World.doButton "Quit" [Entity.Position .= v3 232.0f -144.0f 0.0f; Entity.Text .= "Quit"] world then
-            screen.SetGameplayState Quit world
+            // declare quit button
+            if World.doButton "Quit" [Entity.Position .= v3 232.0f -144.0f 0.0f; Entity.Text .= "Quit"] world then
+                screen.SetGameplayState Quit world
 
-        World.endGroup world
+            World.endGroup world

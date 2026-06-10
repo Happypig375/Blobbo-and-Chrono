@@ -59,6 +59,7 @@
 		<Compile Include="Rewindable.fs" />
 		<Compile Include="MathObject.fs" />
 		<Compile Include="Blobbo.fs" />
+		<Compile Include="WaterBalloon.fs" />
 		<Compile Include="Scene01_BlobboThrow.fs" />
 		<Compile Include="Scene02_BoxRewind.fs" />
 		<Compile Include="Scene03_MathSimplify.fs" />

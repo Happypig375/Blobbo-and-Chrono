@@ -158,60 +158,61 @@ type Scene04_SquareRaceDispatcher () =
     // here we define the behavior of our gameplay
     override this.Process (selectionResults, screen, world) =
 
-        World.beginGroup "Group" [] world
-        // declare border
-        World.doBlockBody2d "Border"
-            [Entity.Size .= Constants.Render.DisplayVirtualResolution.V3
-             Entity.BodyShape .= ContourShape
-                 { Links =
-                     [|v3 -0.5f 0.5f 0f
-                       v3 0.5f 0.5f 0f
-                       v3 0.5f -0.5f 0f
-                       v3 -0.5f -0.5f 0f|]
-                   Closed = true
-                   TransformOpt = None
-                   PropertiesOpt = None }
-             Entity.Elevation .= -1f
-             Entity.StaticImage .= Assets.Gameplay.Background] world |> ignore
+        if screen.GetSelected world then
+            World.beginGroup "Group" [] world
+            // declare border
+            World.doBlockBody2d "Border"
+                [Entity.Size .= Constants.Render.DisplayVirtualResolution.V3
+                 Entity.BodyShape .= ContourShape
+                     { Links =
+                         [|v3 -0.5f 0.5f 0f
+                           v3 0.5f 0.5f 0f
+                           v3 0.5f -0.5f 0f
+                           v3 -0.5f -0.5f 0f|]
+                       Closed = true
+                       TransformOpt = None
+                       PropertiesOpt = None }
+                 Entity.Elevation .= -1f
+                 Entity.StaticImage .= Assets.Gameplay.Background] world |> ignore
 
-        World.doEntity<SquareDispatcher> "Green"
-            [Entity.Position |= v3 -100f 0f 0f
-             Entity.LinearVelocity |= v3 32f 32f 0f] world |> ignore
-        World.doEntity<SquareDispatcher> "Red"
-            [Entity.Position |= v3 -132f 0f 0f
-             Entity.LinearVelocity |= v3 -32f 32f 0f
-             Entity.FillColor .= Color.Red] world |> ignore
-        World.doEntity<SquareDispatcher> "Yellow"
-            [Entity.Position |= v3 -100f -32f 0f
-             Entity.LinearVelocity |= v3 32f -32f 0f
-             Entity.FillColor .= Color.Yellow] world |> ignore
-        World.doEntity<SquareDispatcher> "Blue"
-            [Entity.Position |= v3 -132f -32f 0f
-             Entity.LinearVelocity |= v3 -32f -32f 0f
-             Entity.FillColor .= Color.Blue] world |> ignore
-        // https://www.shadertoy.com/view/lsfBWs
-        let rainbow level =
-            match level with
-            | 0 -> color 1.0f 0.0f 0.0f 1.0f // red
-            | 1 -> color 1.0f 0.5f 0.0f 1.0f // orange
-            | 2 -> color 1.0f 1.0f 0.0f 1.0f // yellow
-            | 3 -> color 0.0f 0.5f 0.0f 1.0f // green
-            | 4 -> color 0.0f 0.0f 1.0f 1.0f // blue
-            | _ -> color 0.5f 0.0f 0.5f 1.0f // purple
-        let smoothRainbow x =
-            let rainbowLevel = x * 6.0f
-            let level1 = int rainbowLevel % 6
-            let level2 = (level1 + 1) % 6
-            let a = rainbow level1
-            let b = rainbow level2
-            Color.Lerp (a, b, rainbowLevel - floor rainbowLevel)
-        World.doEntity<SquareDispatcher> "Rainbow"
-            [Entity.Position |= v3 -68f -32f 0f
-             Entity.LinearVelocity |= v3 -32f -0f 0f
-             Entity.FillColor @= smoothRainbow (world.ClockTime / 2.0f)] world |> ignore
+            World.doEntity<SquareDispatcher> "Green"
+                [Entity.Position |= v3 -100f 0f 0f
+                 Entity.LinearVelocity |= v3 32f 32f 0f] world |> ignore
+            World.doEntity<SquareDispatcher> "Red"
+                [Entity.Position |= v3 -132f 0f 0f
+                 Entity.LinearVelocity |= v3 -32f 32f 0f
+                 Entity.FillColor .= Color.Red] world |> ignore
+            World.doEntity<SquareDispatcher> "Yellow"
+                [Entity.Position |= v3 -100f -32f 0f
+                 Entity.LinearVelocity |= v3 32f -32f 0f
+                 Entity.FillColor .= Color.Yellow] world |> ignore
+            World.doEntity<SquareDispatcher> "Blue"
+                [Entity.Position |= v3 -132f -32f 0f
+                 Entity.LinearVelocity |= v3 -32f -32f 0f
+                 Entity.FillColor .= Color.Blue] world |> ignore
+            // https://www.shadertoy.com/view/lsfBWs
+            let rainbow level =
+                match level with
+                | 0 -> color 1.0f 0.0f 0.0f 1.0f // red
+                | 1 -> color 1.0f 0.5f 0.0f 1.0f // orange
+                | 2 -> color 1.0f 1.0f 0.0f 1.0f // yellow
+                | 3 -> color 0.0f 0.5f 0.0f 1.0f // green
+                | 4 -> color 0.0f 0.0f 1.0f 1.0f // blue
+                | _ -> color 0.5f 0.0f 0.5f 1.0f // purple
+            let smoothRainbow x =
+                let rainbowLevel = x * 6.0f
+                let level1 = int rainbowLevel % 6
+                let level2 = (level1 + 1) % 6
+                let a = rainbow level1
+                let b = rainbow level2
+                Color.Lerp (a, b, rainbowLevel - floor rainbowLevel)
+            World.doEntity<SquareDispatcher> "Rainbow"
+                [Entity.Position |= v3 -68f -32f 0f
+                 Entity.LinearVelocity |= v3 -32f -0f 0f
+                 Entity.FillColor @= smoothRainbow (world.ClockTime / 2.0f)] world |> ignore
 
-        // declare quit button
-        if World.doButton "Quit" [Entity.Position .= v3 232.0f -144.0f 0.0f; Entity.Text .= "Quit"] world then
-            screen.SetGameplayState Quit world
+            // declare quit button
+            if World.doButton "Quit" [Entity.Position .= v3 232.0f -144.0f 0.0f; Entity.Text .= "Quit"] world then
+                screen.SetGameplayState Quit world
 
-        World.endGroup world
+            World.endGroup world
