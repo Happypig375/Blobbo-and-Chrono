@@ -52,22 +52,23 @@ type Scene01_BlobboThrowDispatcher () =
                 
             World.doEntity<FluidEmitter2dDispatcher> "World fluid"
                 [Entity.Size .= v3 640f 400f 0f] world
+            let fluidEmitter = world.DeclaredEntity
             if World.isKeyboardKeyDown KeyboardKey.Grave world then
                let spawn = v2 0f 0f
                World.emitFluidParticles (SArray.init 32 (fun _ ->
                    let jitter = v2 (Gen.randomf * 2f - 1f) (Gen.randomf - 0.5f) * 32.0f
                    { FluidParticlePosition = (spawn + jitter).V3; FluidParticleVelocity = v3Zero; FluidParticleConfig = "Water" }))
-                (world.DeclaredEntity.GetFluidEmitterId world)
+                (fluidEmitter.GetFluidEmitterId world)
                 world
             World.doEntity<WaterBalloonDispatcher> "Balloon1"
-                [Entity.SpawnPosition .= v2 -90f 0f
-                 Entity.WorldFluidEmitter .= world.DeclaredEntity.EntityAddress] world
+                [Entity.Position .= v3 -90f 0f 0f
+                 Entity.WorldFluidEmitter .= fluidEmitter.EntityAddress] world
             World.doEntity<WaterBalloonDispatcher> "Balloon2"
-                [Entity.SpawnPosition .= v2 90f 0f
-                 Entity.WorldFluidEmitter .= world.DeclaredEntity.EntityAddress] world
+                [Entity.Position .= v3 90f 0f 0f
+                 Entity.WorldFluidEmitter .= fluidEmitter.EntityAddress] world
             World.doEntity<BlobboDispatcher> "Blobbo"
-                [Entity.SpawnPosition .= v2 0f 0f
-                 Entity.WorldFluidEmitter .= world.DeclaredEntity.EntityAddress
+                [Entity.Position .= v3 0f 0f 0f
+                 Entity.WorldFluidEmitter .= fluidEmitter.EntityAddress
                  Entity.FacetNames .= set [nameof FeelerFacet]] world
             let blobbo = world.DeclaredEntity
             let mousePosition = (World.getMousePosition2dWorld false world).V3

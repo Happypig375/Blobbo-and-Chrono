@@ -76,7 +76,6 @@ type WaterBalloonDispatcher () =
          define Entity.WorldFluidEmitter Address.empty
          define Entity.BlobboCenter initialBlobboCenter
          define Entity.BlobboContour initialBlobboContour
-         define Entity.SpawnPosition v2Zero
          nonPersistent Entity.PhysicsMotion ManualMotion // disable automatic Position/Rotation/LinearVelocity/AngularVelocity updates for internalIndex.
          computed Entity.BodyId (fun blobbo _ -> { BodySource = blobbo; BodyIndex = internalIndex }) None // points to BlobboCenter
          ]
@@ -219,14 +218,14 @@ type WaterBalloonDispatcher () =
     override _.Process (blobbo, world) =
 
         if world.ContextInitializing then
-            let spawnPos = blobbo.GetSpawnPosition world
+            let spawnPos = blobbo.GetPosition world
             let center = blobbo.GetBlobboCenter world
-            let delta = spawnPos - center.BodyCenter
-            let center' = { center with BodyCenter = spawnPos }
+            let delta = spawnPos.V2 - center.BodyCenter
+            let center' = { center with BodyCenter = spawnPos.V2 }
             blobbo.SetBlobboCenter center' world
             let centerBodyId = { BodySource = blobbo; BodyIndex = internalIndex }
-            World.setBodyCenter spawnPos.V3 centerBodyId world
-            let contour = blobbo.GetBlobboContour world
+            World.setBodyCenter spawnPos centerBodyId world
+            let contour = Array.copy (blobbo.GetBlobboContour world)
             for i in 0 .. contour.Length - 1 do
                 let t = contour[i]
                 let t' = { t with BodyCenter = t.BodyCenter + delta }
