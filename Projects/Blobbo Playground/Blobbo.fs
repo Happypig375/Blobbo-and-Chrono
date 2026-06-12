@@ -23,6 +23,9 @@ module [<AutoOpen>] BlobboExtensions =
         member this.SetBlobboContour (value : PhysicsBodyTransform array) world = this.Set (nameof this.BlobboContour) value world
         member this.BlobboContour = lens (nameof this.BlobboContour) this this.GetBlobboContour this.SetBlobboContour
         member this.ReviveEvent = stoa<unit> "Revive/Event" --> this
+        member this.GetWaterContent world : single = this.Get (nameof this.WaterContent) world
+        member this.SetWaterContent (value : single) world = this.Set (nameof this.WaterContent) value world
+        member this.WaterContent = lens (nameof this.WaterContent) this this.GetWaterContent this.SetWaterContent
 
 type BlobboDispatcher () =
     inherit Entity2dDispatcherImSim (true, false, false)
@@ -46,16 +49,24 @@ type BlobboDispatcher () =
     static let interContourDistance = Vector2.Distance (initialBlobboContour[0].BodyCenter, initialBlobboContour[1].BodyCenter)
     static let contourCircleRadius = interContourDistance / 2f
     static let centerCircleRadius = contourCircleRadius * 1.5f
+    static let absorptionRadius = centerToContourDistance * 1.5f
+    static let maxWaterContent = 1.0f
+    static let waterPerParticle = 1.0f / 32.0f
+    static let growthFactor = 0.5f
+    static let blobboFullCollisionCategories = "10000000000000000" // bit 16, outside fluid default mask (0xFFFF)
 
     static member Facets = []
     static member Properties =
         [define Entity.WorldFluidEmitter Address.empty
          define Entity.BlobboCenter initialBlobboCenter
          define Entity.BlobboContour initialBlobboContour
+         define Entity.WaterContent 0.0f
          define Entity.AwakeTimeStamp 0
          nonPersistent Entity.PhysicsMotion ManualMotion]
 
     override _.RegisterPhysics (blobbo, world) =
+        let isFull = blobbo.GetWaterContent world >= maxWaterContent
+        let collisionCategories = if isFull then blobboFullCollisionCategories else "1"
         let registerPhysicsTransform radius i physicsTransform =
             let bodyId = { BodySource = blobbo; BodyIndex = i }
             let bodyProperties =
@@ -79,8 +90,8 @@ type BlobboDispatcher () =
                   CharacterProperties = PogoSpringCharacterProperties PogoSpringCharacterProperties.defaultProperties
                   VehicleProperties = VehiclePropertiesAbsent
                   CollisionDetection = Continuous
-                  CollisionGroup = -B2Constants.B2_SECRET_COOKIE // fluid particles share this group, so water flows through physically
-                  CollisionCategories = Physics.categorizeCollisionMask "1"
+                  CollisionGroup = 0
+                  CollisionCategories = Physics.categorizeCollisionMask collisionCategories
                   CollisionMask = Physics.categorizeCollisionMask Constants.Physics.CollisionWildcard
                   Sensor = false
                   BodyIndex = i }
@@ -172,6 +183,30 @@ type BlobboDispatcher () =
             | _ -> ()
         blobbo.SetBlobboContour contour world
         let center = blobbo.GetBlobboCenter world
+        let waterContent = blobbo.GetWaterContent world
+
+        // Absorb nearby fluid particles when not full.
+        if world.Advancing && waterContent < maxWaterContent then
+            match tryResolve (blobbo.GetWorldFluidEmitter world) blobbo with
+            | Some emitter ->
+                let mutable absorbed = 0
+                let remainingCapacity = maxWaterContent - waterContent
+                World.chooseFluidParticles (fun particle ->
+                    if single absorbed * waterPerParticle < remainingCapacity &&
+                       Vector2.Distance (particle.FluidParticlePosition.V2, center.BodyCenter) < absorptionRadius then
+                        absorbed <- absorbed + 1
+                        ValueNone
+                    else ValueSome particle)
+                    (emitter.GetFluidEmitterId world) world
+                if absorbed > 0 then
+                    let waterContent' = min maxWaterContent (waterContent + single absorbed * waterPerParticle)
+                    let wasFull = waterContent >= maxWaterContent
+                    blobbo.SetWaterContent waterContent' world
+                    let isFull = waterContent' >= maxWaterContent
+                    if isFull <> wasFull then
+                        blobbo.PropagatePhysics world
+            | None -> ()
+
         let perimeter =
             (box2 (center.BodyCenter - v2Dup centerCircleRadius) (v2Dup (centerCircleRadius * 2f)), contour)
             ||> Array.fold (fun perimeter t -> box2 (t.BodyCenter - v2Dup contourCircleRadius) (v2Dup (contourCircleRadius * 2f)) |> perimeter.Combine)
@@ -182,7 +217,13 @@ type BlobboDispatcher () =
         if contour.Length >= 3 then
             let position = blobbo.GetPosition world
             let size = (blobbo.GetSize world).V2
-            let points = contour |> Array.map (fun t -> (t.BodyCenter - position.V2) / size)
+            let center = blobbo.GetBlobboCenter world
+            let waterContent = blobbo.GetWaterContent world
+            let visualScale = 1.0f + waterContent * growthFactor
+            let points =
+                contour |> Array.map (fun t ->
+                    let expanded = center.BodyCenter + (t.BodyCenter - center.BodyCenter) * visualScale
+                    (expanded - position.V2) / size)
             let commands = Array.zeroCreate<ContourCommand> (points.Length + 1)
             commands[0] <- MoveTo points[0]
             for i in 1 .. points.Length - 1 do
