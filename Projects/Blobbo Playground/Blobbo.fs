@@ -241,23 +241,19 @@ type BlobboDispatcher () =
                     let q = worldPoints[(i + 1) % worldPoints.Length]
                     signedArea2x <- signedArea2x + (p.X * q.Y - q.X * p.Y)
                 if signedArea2x < 0.0f then Array.rev worldPoints else worldPoints
-            // Expand polygon outward by contourCircleRadius using edge normals (handles concave contours).
+            // Expand polygon outward by contourCircleRadius using center-radial offset.
+            // Each vertex is pushed directly away from the center body, which guarantees
+            // the expansion is always outward regardless of contour winding or shape.
+            let center = (blobbo.GetBlobboCenter world).BodyCenter
             let n = worldPoints.Length
             let worldPoints =
                 Array.init n (fun i ->
-                    let iPrev = (i - 1 + n) % n
-                    let iNext = (i + 1) % n
-                    let dPrev = worldPoints[i] - worldPoints[iPrev]
-                    let dNext = worldPoints[iNext] - worldPoints[i]
-                    let lenPrev = dPrev.Magnitude
-                    let lenNext = dNext.Magnitude
-                    // Outward normals for CCW polygon: right normal of edge direction.
-                    let nPrev = if lenPrev > 0.0001f then v2 (dPrev.Y / lenPrev) (-dPrev.X / lenPrev) else v2Zero
-                    let nNext = if lenNext > 0.0001f then v2 (dNext.Y / lenNext) (-dNext.X / lenNext) else v2Zero
-                    let vn = nPrev + nNext
-                    let vnLen = vn.Magnitude
-                    let outward = if vnLen > 0.0001f then vn * (contourCircleRadius / vnLen) else v2Zero
-                    worldPoints[i] + outward)
+                    let dirFromCenter = worldPoints[i] - center
+                    let dist = dirFromCenter.Magnitude
+                    if dist > 0.0001f then
+                        worldPoints[i] + (dirFromCenter / dist) * contourCircleRadius
+                    else
+                        worldPoints[i])
             // Normalize to entity-local space for tessellation.
             let points = worldPoints |> Array.map (fun p -> (p - position.V2) / size)
             let commands = Array.zeroCreate<ContourCommand> (points.Length + 1)
@@ -268,7 +264,7 @@ type BlobboDispatcher () =
             let tessellation =
                 ContourTessellation.make
                     commands
-                    (ContourFill.ofColor Color.Aqua)
+                    (ContourFill.ofColorWinding Color.Aqua ContourWinding.NonZero)
                     ContourStroke.none
                     size
             let mutable transform = blobbo.GetTransform world
