@@ -76,6 +76,7 @@ type WaterBalloonDispatcher () =
          define Entity.WorldFluidEmitter Address.empty
          define Entity.BlobboCenter initialBlobboCenter
          define Entity.BlobboContour initialBlobboContour
+         define Entity.Popped false
          nonPersistent Entity.PhysicsMotion ManualMotion // disable automatic Position/Rotation/LinearVelocity/AngularVelocity updates for internalIndex.
          computed Entity.BodyId (fun blobbo _ -> { BodySource = blobbo; BodyIndex = internalIndex }) None // points to BlobboCenter
          ]
@@ -106,7 +107,7 @@ type WaterBalloonDispatcher () =
               CharacterProperties = (PogoSpringCharacterProperties PogoSpringCharacterProperties.defaultProperties)
               VehicleProperties = VehiclePropertiesAbsent
               CollisionDetection = Continuous
-              CollisionGroup = -B2Constants.B2_SECRET_COOKIE
+              CollisionGroup = 1 // positive group: all water balloon bodies always collide with each other
               CollisionCategories = Physics.categorizeCollisionMask "1"
               CollisionMask = Physics.categorizeCollisionMask Constants.Physics.CollisionWildcard
               Sensor = false
@@ -137,7 +138,7 @@ type WaterBalloonDispatcher () =
                   CharacterProperties = (PogoSpringCharacterProperties PogoSpringCharacterProperties.defaultProperties)
                   VehicleProperties = VehiclePropertiesAbsent
                   CollisionDetection = Continuous
-                  CollisionGroup = -B2Constants.B2_SECRET_COOKIE // fluid particles share this group, so water flows through physically
+                  CollisionGroup = 1 // positive group: all water balloon bodies always collide with each other
                   CollisionCategories = Physics.categorizeCollisionMask "1"
                   CollisionMask = Physics.categorizeCollisionMask Constants.Physics.CollisionWildcard
                   Sensor = false
@@ -262,16 +263,18 @@ type WaterBalloonDispatcher () =
         blobbo.SetPerimeter contourBounds world
 
         // Pop check: if the center body escapes the contour ring, emit water particles and disable the center.
-        if contour.Length = contourCount then
+        // Only pop once per balloon lifetime.
+        if contour.Length = contourCount && not (blobbo.GetPopped world) then
             let center = blobbo.GetBlobboCenter world
             if not (isPointInsideContour center.BodyCenter contour) then
-                // Pop! Emit water particles.
+                blobbo.SetPopped true world
+                // Emit water particles from the centroid.
                 let centroid = contourCentroid contour
                 match tryResolve (blobbo.GetWorldFluidEmitter world) blobbo with
                 | Some emitter ->
                     World.emitFluidParticles
-                        (SArray.init 32 (fun _ ->
-                            let jitter = v2 (Gen.randomf * 2.0f - 1.0f) (Gen.randomf * 2.0f - 1.0f) * 16.0f
+                        (SArray.init 12 (fun _ ->
+                            let jitter = v2 (Gen.randomf * 2.0f - 1.0f) (Gen.randomf * 2.0f - 1.0f) * 6.0f
                             { FluidParticlePosition = (centroid + jitter).V3
                               FluidParticleVelocity = v3 jitter.X jitter.Y 0.0f
                               FluidParticleConfig = "Water" }))
@@ -288,7 +291,35 @@ type WaterBalloonDispatcher () =
             let size =
                 let s = (blobbo.GetSize world).V2
                 v2 (max 0.0001f s.X) (max 0.0001f s.Y)
-            let points = contour |> Array.map (fun t -> (t.BodyCenter - position.V2) / size)
+            // Compute base polygon from body centers in world space.
+            let worldPoints = contour |> Array.map (fun t -> t.BodyCenter)
+            // Force CCW winding so edge normals expand outward correctly.
+            let worldPoints =
+                let mutable signedArea2x = 0.0f
+                for i in 0 .. worldPoints.Length - 1 do
+                    let p = worldPoints[i]
+                    let q = worldPoints[(i + 1) % worldPoints.Length]
+                    signedArea2x <- signedArea2x + (p.X * q.Y - q.X * p.Y)
+                if signedArea2x < 0.0f then Array.rev worldPoints else worldPoints
+            // Expand polygon outward by contourRadius using edge normals (handles concave contours).
+            let n = worldPoints.Length
+            let worldPoints =
+                Array.init n (fun i ->
+                    let iPrev = (i - 1 + n) % n
+                    let iNext = (i + 1) % n
+                    let dPrev = worldPoints[i] - worldPoints[iPrev]
+                    let dNext = worldPoints[iNext] - worldPoints[i]
+                    let lenPrev = dPrev.Magnitude
+                    let lenNext = dNext.Magnitude
+                    // Outward normals for CCW polygon: right normal of edge direction.
+                    let nPrev = if lenPrev > 0.0001f then v2 (dPrev.Y / lenPrev) (-dPrev.X / lenPrev) else v2Zero
+                    let nNext = if lenNext > 0.0001f then v2 (dNext.Y / lenNext) (-dNext.X / lenNext) else v2Zero
+                    let vn = nPrev + nNext
+                    let vnLen = vn.Magnitude
+                    let outward = if vnLen > 0.0001f then vn * (contourRadius / vnLen) else v2Zero
+                    worldPoints[i] + outward)
+            // Normalize to entity-local space for tessellation.
+            let points = worldPoints |> Array.map (fun p -> (p - position.V2) / size)
             let commands = Array.zeroCreate<ContourCommand> (points.Length + 1)
             commands[0] <- MoveTo points[0]
             for i in 1 .. points.Length - 1 do
