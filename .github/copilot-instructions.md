@@ -29,6 +29,8 @@ dotnet build Nu.sln
 ```
 
 ## Architecture
+[DeepWiki: Nu Game Engine](https://deepwiki.com/bryanedds/Nu) is the authoritative reference for architecture and concepts.
+
 - Entity hierarchy: Game → Screen → Group → Entity — each with its own dispatcher type. There is only one game dispatcher. Screen and Entity dispatchers are most common, where only one screen is active at once; Group is mainly for loading entities together such as from a file so group dispatchers are rare.
   - **ImSim** programming model (immediate-mode simulation) — entities declared inline in `Process` methods with `World.begin*`/`World.do*`/`World.end*`
     - Game dispatcher: `GameDispatcherImSim` → `Process` method with `World.beginScreen/endScreen`.
@@ -36,13 +38,12 @@ dotnet build Nu.sln
     - Entity dispatchers: `Entity2dDispatcherImSim` / `Entity3dDispatcherImSim`
   - **MMCC** programming model (Model-Message-Command-Content, Elm-like MVU pattern): `Entity2dDispatcher<'model, 'message, 'command>` / `Entity3dDispatcher<'model, 'message, 'command>` etc — see `Projects/Nelmish`, `Projects/Breakout Mmcc`, `Projects/Twenty 48`, `Projects/Blaze Vector Mmcc` in increasing order of complexity
   - **Classic** programming model (without the conveniences of ImSim or MMCC): non-generic `Entity2dDispatcher` / `Entity3dDispatcher` etc — entities declared in `Register` methods, with event handlers registered via `World.sense` and friends. The built-in entity dispatchers in `Nu/Nu/World/WorldDispatchers.fs` are written in this style.
-- Facets: reusable entity behavior via `Facet` base class (Classic Nu model, not ImSim)
+- Facets: reusable entity behavior via `Facet` base class (Classic Nu model, not ImSim/MMCC)
 - Physics: Box2D.NET (2D) and Jolt Physics (3D). Aether Physics is considered legacy and not recommended for new projects.
+  - Box2D API reference: https://box2d.org/documentation/
 - Custom skills in `.github/skills/` document engine-specific patterns. Always update this file as well as any skill document if they are out of date, missing important patterns, need clarification, can be simplified, etc.
 
 ## ImSim Property Operators
-| Operator | Meaning |
-|----------|---------|
-| `.=` | Set once (static), reapply on code reload |
-| `|=` | Set once (initialize-once), NO reapply on code reload |
-| `@=` | Set every frame (dynamic binding) |
+`.=` Set once (static), reapply on code reload
+`|=` Set once (initialize-once), NO reapply on code reload
+`@=` Set every frame (dynamic binding) 

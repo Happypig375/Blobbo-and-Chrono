@@ -3,8 +3,6 @@ name: nu-quickstart
 description: Copy-paste templates for Nu game engine patterns not covered by DeepWiki — facet skeleton, screen dispatcher skeleton, event wiring, Box2D joint creation, ImSim property operators. Use when starting a new dispatcher, facet, joint, or entity.
 ---
 
-[DeepWiki: Nu Game Engine](https://deepwiki.com/bryanedds/Nu) is the authoritative reference for architecture and concepts. This skill provides only copy-paste templates.
-
 ## Facet Skeleton
 (The type is outside the module and `[<AutoOpen>]` there is valid syntax.)
 ```fsharp
