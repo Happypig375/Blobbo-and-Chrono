@@ -78,10 +78,10 @@ type WaterBalloonDispatcher () =
               BodyLinearVelocity = v2Zero
               BodyAngularVelocity = v2Zero }
         |]
-    static member Facets = []
+    static member Facets =
+        [typeof<WaterContainerFacet>]
     static member Properties =
         [define Entity.Visible true
-         define Entity.WorldFluidEmitter Address.empty
          define Entity.WaterBalloonCenter initialWaterBalloonCenter
          define Entity.WaterBalloonContour initialWaterBalloonContour
          nonPersistent Entity.PhysicsMotion ManualMotion // disable automatic Position/Rotation/LinearVelocity/AngularVelocity updates for internalIndex.

@@ -13,9 +13,6 @@ type PhysicsBodyTransform =
 
 module [<AutoOpen>] BlobboExtensions =
     type Entity with
-        member this.GetWorldFluidEmitter world : Entity Address = this.Get (nameof this.WorldFluidEmitter) world
-        member this.SetWorldFluidEmitter (value : Entity Address) world = this.Set (nameof this.WorldFluidEmitter) value world
-        member this.WorldFluidEmitter = lens (nameof this.WorldFluidEmitter) this this.GetWorldFluidEmitter this.SetWorldFluidEmitter
         member this.GetBlobboCenter world : PhysicsBodyTransform = this.Get (nameof this.BlobboCenter) world
         member this.SetBlobboCenter (value : PhysicsBodyTransform) world = this.Set (nameof this.BlobboCenter) value world
         member this.BlobboCenter = lens (nameof this.BlobboCenter) this this.GetBlobboCenter this.SetBlobboCenter
@@ -23,9 +20,6 @@ module [<AutoOpen>] BlobboExtensions =
         member this.SetBlobboContour (value : PhysicsBodyTransform array) world = this.Set (nameof this.BlobboContour) value world
         member this.BlobboContour = lens (nameof this.BlobboContour) this this.GetBlobboContour this.SetBlobboContour
         member this.ReviveEvent = stoa<unit> "Revive/Event" --> this
-        member this.GetWaterContent world : single = this.Get (nameof this.WaterContent) world
-        member this.SetWaterContent (value : single) world = this.Set (nameof this.WaterContent) value world
-        member this.WaterContent = lens (nameof this.WaterContent) this this.GetWaterContent this.SetWaterContent
 
 type BlobboDispatcher () =
     inherit Entity2dDispatcherImSim (true, false, false)
@@ -55,12 +49,11 @@ type BlobboDispatcher () =
     static let growthFactor = 0.5f
     static let blobboFullCollisionCategories = "10000000000000000" // bit 16, outside fluid default mask (0xFFFF)
 
-    static member Facets = []
+    static member Facets =
+        [typeof<WaterContainerFacet>]
     static member Properties =
-        [define Entity.WorldFluidEmitter Address.empty
-         define Entity.BlobboCenter initialBlobboCenter
+        [define Entity.BlobboCenter initialBlobboCenter
          define Entity.BlobboContour initialBlobboContour
-         define Entity.WaterContent 0.0f
          define Entity.AwakeTimeStamp 0
          nonPersistent Entity.PhysicsMotion ManualMotion]
 

@@ -58,6 +58,7 @@
 		<Compile Include="Simulants.fs" />
 		<Compile Include="Rewindable.fs" />
 		<Compile Include="MathObject.fs" />
+		<Compile Include="WaterContainerFacet.fs" />
 		<Compile Include="Blobbo.fs" />
 		<Compile Include="WaterBalloon.fs" />
 		<Compile Include="Scene01_BlobboThrow.fs" />
