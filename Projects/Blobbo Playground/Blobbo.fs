@@ -26,9 +26,6 @@ module [<AutoOpen>] BlobboExtensions =
         member this.GetWaterContent world : single = this.Get (nameof this.WaterContent) world
         member this.SetWaterContent (value : single) world = this.Set (nameof this.WaterContent) value world
         member this.WaterContent = lens (nameof this.WaterContent) this this.GetWaterContent this.SetWaterContent
-        member this.GetPopped world : bool = this.Get (nameof this.Popped) world
-        member this.SetPopped (value : bool) world = this.Set (nameof this.Popped) value world
-        member this.Popped = lens (nameof this.Popped) this this.GetPopped this.SetPopped
 
 type BlobboDispatcher () =
     inherit Entity2dDispatcherImSim (true, false, false)

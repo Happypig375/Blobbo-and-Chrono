@@ -5,6 +5,14 @@ open Box2D.NET
 open Prime
 open Nu
 
+module [<AutoOpen>] WaterBalloonExtensions =
+    type Entity with
+        member this.GetWaterBalloonCenter world : PhysicsBodyTransform option = this.Get (nameof this.WaterBalloonCenter) world
+        member this.SetWaterBalloonCenter (value : PhysicsBodyTransform option) world = this.Set (nameof this.WaterBalloonCenter) value world
+        member this.WaterBalloonCenter = lens (nameof this.WaterBalloonCenter) this this.GetWaterBalloonCenter this.SetWaterBalloonCenter
+        member this.GetWaterBalloonContour world : PhysicsBodyTransform array = this.Get (nameof this.WaterBalloonContour) world
+        member this.SetWaterBalloonContour (value : PhysicsBodyTransform array) world = this.Set (nameof this.WaterBalloonContour) value world
+        member this.WaterBalloonContour = lens (nameof this.WaterBalloonContour) this this.GetWaterBalloonContour this.SetWaterBalloonContour
 
 // A water balloon is a soft-body made of a Dynamic center body surrounded by
 // a ring of 32 contour bodies linked with revolute joints (perimeter chain) and
@@ -28,8 +36,8 @@ type WaterBalloonDispatcher () =
     //   0 .. contourCount-1                  = revolute (perimeter) joints
     //   contourCount .. 2*contourCount-1     = distance (spring) joints to center
 
-    let computeBoundingBox (blobbo : Entity) world =
-        blobbo.GetBlobboContour world
+    let computeBoundingBox (waterBalloon : Entity) world =
+        waterBalloon.GetWaterBalloonContour world
         |> Array.map (fun t -> Box2 (t.BodyCenter - v2Dup contourRadius, v2Dup (contourRadius * 2.0f)))
         |> Array.reduce _.Combine
         |> fun bounds -> bounds.Box3
@@ -56,12 +64,12 @@ type WaterBalloonDispatcher () =
         sum / single contour.Length
 
 
-    static let initialBlobboCenter =
-        { BodyCenter = v2Zero
-          BodyRotation = Quaternion.Identity
-          BodyLinearVelocity = v2Zero
-          BodyAngularVelocity = v2Zero }
-    static let initialBlobboContour =
+    static let initialWaterBalloonCenter : PhysicsBodyTransform option =
+        Some { BodyCenter = v2Zero
+               BodyRotation = Quaternion.Identity
+               BodyLinearVelocity = v2Zero
+               BodyAngularVelocity = v2Zero }
+    static let initialWaterBalloonContour =
         let count = 32
         [|for i in 0 .. count - 1 ->
             let angle = single i * MathF.TWO_PI / single count
@@ -74,49 +82,19 @@ type WaterBalloonDispatcher () =
     static member Properties =
         [define Entity.Visible true
          define Entity.WorldFluidEmitter Address.empty
-         define Entity.BlobboCenter initialBlobboCenter
-         define Entity.BlobboContour initialBlobboContour
-         define Entity.Popped false
+         define Entity.WaterBalloonCenter initialWaterBalloonCenter
+         define Entity.WaterBalloonContour initialWaterBalloonContour
          nonPersistent Entity.PhysicsMotion ManualMotion // disable automatic Position/Rotation/LinearVelocity/AngularVelocity updates for internalIndex.
-         computed Entity.BodyId (fun blobbo _ -> { BodySource = blobbo; BodyIndex = internalIndex }) None // points to BlobboCenter
+         computed Entity.BodyId (fun waterBalloon _ -> { BodySource = waterBalloon; BodyIndex = internalIndex }) None
          ]
 
-    override _.RegisterPhysics (blobbo, world) =
+    override _.RegisterPhysics (waterBalloon, world) =
 
-        // Create the center body.
-        let centerBodyId = { BodySource = blobbo; BodyIndex = internalIndex }
-        let center = blobbo.GetBlobboCenter world
-        World.createBody2d centerBodyId
-            { Enabled = true
-              Center = center.BodyCenter.V3
-              Rotation = center.BodyRotation
-              Scale = v3One
-              BodyShape = SphereShape { Radius = centerRadius; TransformOpt = None; PropertiesOpt = None }
-              BodyType = Dynamic
-              SleepingAllowed = true
-              Friction = Constants.Physics.FrictionDefault
-              Restitution = 0.333f
-              LinearVelocity = center.BodyLinearVelocity.V3
-              LinearDamping = baseLinearDamping
-              AngularVelocity = center.BodyAngularVelocity.V3
-              AngularDamping = baseAngularDamping
-              AngularFactor = v3One
-              KinematicPushLimitOpt = None
-              Substance = Mass 1f
-              Gravity = GravityWorld
-              CharacterProperties = (PogoSpringCharacterProperties PogoSpringCharacterProperties.defaultProperties)
-              VehicleProperties = VehiclePropertiesAbsent
-              CollisionDetection = Continuous
-              CollisionGroup = 1 // positive group: all water balloon bodies always collide with each other
-              CollisionCategories = Physics.categorizeCollisionMask "1"
-              CollisionMask = Physics.categorizeCollisionMask Constants.Physics.CollisionWildcard
-              Sensor = false
-              BodyIndex = internalIndex } world
 
         // Create contour bodies.
         for i in 0 .. contourCount - 1 do
-            let t = (blobbo.GetBlobboContour world)[i]
-            let bodyId = { BodySource = blobbo; BodyIndex = i }
+            let t = (waterBalloon.GetWaterBalloonContour world)[i]
+            let bodyId = { BodySource = waterBalloon; BodyIndex = i }
             World.createBody2d bodyId
                 { Enabled = true
                   Center = t.BodyCenter.V3
@@ -147,10 +125,10 @@ type WaterBalloonDispatcher () =
         // Create revolute joints linking contour bodies in a closed ring.
         for i in 0 .. contourCount - 1 do
             let next = (i + 1) % contourCount
-            let bodyIdA = { BodySource = blobbo; BodyIndex = i }
-            let bodyIdB = { BodySource = blobbo; BodyIndex = next }
-            let bodyJointId = { BodyJointSource = blobbo; BodyJointIndex = i }
-            World.createBodyJoint2d blobbo
+            let bodyIdA = { BodySource = waterBalloon; BodyIndex = i }
+            let bodyIdB = { BodySource = waterBalloon; BodyIndex = next }
+            let bodyJointId = { BodyJointSource = waterBalloon; BodyJointIndex = i }
+            World.createBodyJoint2d waterBalloon
                 { BodyJoint = Box2dNetBodyJoint { CreateBodyJoint = fun _ _ a b world ->
                     let posA = B2Bodies.b2Body_GetPosition a
                     let posB = B2Bodies.b2Body_GetPosition b
@@ -170,84 +148,119 @@ type WaterBalloonDispatcher () =
                   CollideConnected = true
                   BodyJointIndex = bodyJointId.BodyJointIndex } world
 
-        // Create distance (spring) joints from each contour body back to the center.
-        for i in 0 .. contourCount - 1 do
-            let contourBodyId = { BodySource = blobbo; BodyIndex = i }
-            let bodyJointId = { BodyJointSource = blobbo; BodyJointIndex = contourCount + i }
-            World.createBodyJoint2d blobbo
-                { BodyJoint = Box2dNetBodyJoint { CreateBodyJoint = fun toPhysics _ a b world ->
-                    let mutable jointDef = B2Joints.b2DefaultDistanceJointDef ()
-                    jointDef.``base``.bodyIdA <- a
-                    jointDef.``base``.bodyIdB <- b
-                    jointDef.length <- toPhysics centerToContourDistance
-                    jointDef.enableSpring <- true
-                    jointDef.hertz <- 3f
-                    jointDef.dampingRatio <- 1f
-                    B2Joints.b2CreateDistanceJoint (world, &jointDef) }
-                  BodyJointTarget = centerBodyId
-                  BodyJointTarget2 = contourBodyId
-                  BodyJointEnabled = true
-                  BreakingPointOpt = None
-                  Broken = false
-                  CollideConnected = false
-                  BodyJointIndex = bodyJointId.BodyJointIndex } world
+        match waterBalloon.GetWaterBalloonCenter world with
+        | Some center ->
 
-    override _.UnregisterPhysics (blobbo, world) =
+            // Create the center body.
+            let centerBodyId = { BodySource = waterBalloon; BodyIndex = internalIndex }
+            World.createBody2d centerBodyId
+                { Enabled = true
+                  Center = center.BodyCenter.V3
+                  Rotation = center.BodyRotation
+                  Scale = v3One
+                  BodyShape = SphereShape { Radius = centerRadius; TransformOpt = None; PropertiesOpt = None }
+                  BodyType = Dynamic
+                  SleepingAllowed = true
+                  Friction = Constants.Physics.FrictionDefault
+                  Restitution = 0.333f
+                  LinearVelocity = center.BodyLinearVelocity.V3
+                  LinearDamping = baseLinearDamping
+                  AngularVelocity = center.BodyAngularVelocity.V3
+                  AngularDamping = baseAngularDamping
+                  AngularFactor = v3One
+                  KinematicPushLimitOpt = None
+                  Substance = Mass 1f
+                  Gravity = GravityWorld
+                  CharacterProperties = (PogoSpringCharacterProperties PogoSpringCharacterProperties.defaultProperties)
+                  VehicleProperties = VehiclePropertiesAbsent
+                  CollisionDetection = Continuous
+                  CollisionGroup = 1 // positive group: all water balloon bodies always collide with each other
+                  CollisionCategories = Physics.categorizeCollisionMask "1"
+                  CollisionMask = Physics.categorizeCollisionMask Constants.Physics.CollisionWildcard
+                  Sensor = false
+                  BodyIndex = internalIndex } world
 
-        // destroy distance joints (center-to-contour)
-        let centerBodyId = { BodySource = blobbo; BodyIndex = internalIndex }
-        for i in 0 .. contourCount - 1 do
-            let contourBodyId = { BodySource = blobbo; BodyIndex = i }
-            let bodyJointId = { BodyJointSource = blobbo; BodyJointIndex = contourCount + i }
-            World.destroyBodyJoint2d centerBodyId contourBodyId bodyJointId world
+            // Create distance (spring) joints from each contour body back to the center.
+            for i in 0 .. contourCount - 1 do
+                let contourBodyId = { BodySource = waterBalloon; BodyIndex = i }
+                let bodyJointId = { BodyJointSource = waterBalloon; BodyJointIndex = contourCount + i }
+                World.createBodyJoint2d waterBalloon
+                    { BodyJoint = Box2dNetBodyJoint { CreateBodyJoint = fun toPhysics _ a b world ->
+                        let mutable jointDef = B2Joints.b2DefaultDistanceJointDef ()
+                        jointDef.``base``.bodyIdA <- a
+                        jointDef.``base``.bodyIdB <- b
+                        jointDef.length <- toPhysics centerToContourDistance
+                        jointDef.enableSpring <- true
+                        jointDef.hertz <- 3f
+                        jointDef.dampingRatio <- 1f
+                        B2Joints.b2CreateDistanceJoint (world, &jointDef) }
+                      BodyJointTarget = centerBodyId
+                      BodyJointTarget2 = contourBodyId
+                      BodyJointEnabled = true
+                      BreakingPointOpt = None
+                      Broken = false
+                      CollideConnected = false
+                      BodyJointIndex = bodyJointId.BodyJointIndex } world
+        | None -> ()
+
+    override _.UnregisterPhysics (waterBalloon, world) =
 
         // destroy revolute joints (perimeter)
         for i in 0 .. contourCount - 1 do
             let next = (i + 1) % contourCount
-            let bodyIdA = { BodySource = blobbo; BodyIndex = i }
-            let bodyIdB = { BodySource = blobbo; BodyIndex = next }
-            let bodyJointId = { BodyJointSource = blobbo; BodyJointIndex = i }
+            let bodyIdA = { BodySource = waterBalloon; BodyIndex = i }
+            let bodyIdB = { BodySource = waterBalloon; BodyIndex = next }
+            let bodyJointId = { BodyJointSource = waterBalloon; BodyJointIndex = i }
             World.destroyBodyJoint2d bodyIdA bodyIdB bodyJointId world
+    
+        if waterBalloon.GetWaterBalloonCenter world |> Option.isSome then
+            // destroy distance joints (center-to-contour)
+            let centerBodyId = { BodySource = waterBalloon; BodyIndex = internalIndex }
+            for i in 0 .. contourCount - 1 do
+                let contourBodyId = { BodySource = waterBalloon; BodyIndex = i }
+                let bodyJointId = { BodyJointSource = waterBalloon; BodyJointIndex = contourCount + i }
+                World.destroyBodyJoint2d centerBodyId contourBodyId bodyJointId world
 
-        // destroy center body
-        World.destroyBody2d centerBodyId world
+            // destroy center body
+            World.destroyBody2d centerBodyId world
 
         // destroy contour bodies
         for i in 0 .. contourCount - 1 do
-            World.destroyBody2d { BodySource = blobbo; BodyIndex = i } world
+            World.destroyBody2d { BodySource = waterBalloon; BodyIndex = i } world
 
-    override _.Process (blobbo, world) =
+    override _.Process (waterBalloon, world) =
 
         if world.ContextInitializing then
-            let spawnPos = blobbo.GetPosition world
-            let center = blobbo.GetBlobboCenter world
-            let delta = spawnPos.V2 - center.BodyCenter
-            let center' = { center with BodyCenter = spawnPos.V2 }
-            blobbo.SetBlobboCenter center' world
-            let centerBodyId = { BodySource = blobbo; BodyIndex = internalIndex }
-            World.setBodyCenter spawnPos centerBodyId world
-            let contour = Array.copy (blobbo.GetBlobboContour world)
+            let spawnPos = waterBalloon.GetPosition world
+            match waterBalloon.GetWaterBalloonCenter world with
+            | Some center ->
+                let center' = { center with BodyCenter = spawnPos.V2 }
+                waterBalloon.SetWaterBalloonCenter (Some center') world
+                let centerBodyId = { BodySource = waterBalloon; BodyIndex = internalIndex }
+                World.setBodyCenter spawnPos centerBodyId world
+            | None -> ()
+            let contour = Array.copy (waterBalloon.GetWaterBalloonContour world)
             for i in 0 .. contour.Length - 1 do
                 let t = contour[i]
-                let t' = { t with BodyCenter = t.BodyCenter + delta }
+                let t' = { t with BodyCenter = t.BodyCenter + spawnPos.V2 }
                 contour[i] <- t'
-                World.setBodyCenter t'.BodyCenter.V3 { BodySource = blobbo; BodyIndex = i } world
-            blobbo.SetBlobboContour contour world
+                World.setBodyCenter t'.BodyCenter.V3 { BodySource = waterBalloon; BodyIndex = i } world
+            waterBalloon.SetWaterBalloonContour contour world
 
         // Track body transforms from physics events.
         let contour =
-            let existing = blobbo.GetBlobboContour world
+            let existing = waterBalloon.GetWaterBalloonContour world
             if existing.Length = contourCount then Array.copy existing
             else Array.zeroCreate contourCount
-
-        for event in World.doSubscriptionToBodyEvents "WaterBalloonBodyEvents" blobbo world do
+        let inflated = waterBalloon.GetWaterBalloonCenter world |> Option.isSome
+        for event in World.doSubscriptionToBodyEvents "WaterBalloonBodyEvents" waterBalloon world do
             match event with
-            | BodyTransformData transform when transform.BodyId.BodyIndex = internalIndex ->
-                blobbo.SetBlobboCenter
+            | BodyTransformData transform when transform.BodyId.BodyIndex = internalIndex && inflated ->
+                waterBalloon.SetWaterBalloonCenter (Some
                     { BodyCenter = transform.BodyCenter.V2
                       BodyRotation = transform.BodyRotation
                       BodyLinearVelocity = transform.BodyLinearVelocity.V2
-                      BodyAngularVelocity = transform.BodyAngularVelocity.V2 } world
+                      BodyAngularVelocity = transform.BodyAngularVelocity.V2 }) world
             | BodyTransformData transform when transform.BodyId.BodyIndex >= 0 && transform.BodyId.BodyIndex < contourCount ->
                 contour[transform.BodyId.BodyIndex] <-
                     { BodyCenter = transform.BodyCenter.V2
@@ -255,41 +268,39 @@ type WaterBalloonDispatcher () =
                       BodyLinearVelocity = transform.BodyLinearVelocity.V2
                       BodyAngularVelocity = transform.BodyAngularVelocity.V2 }
             | _ -> ()
+        waterBalloon.SetWaterBalloonContour contour world
 
-        blobbo.SetBlobboContour contour world
-
-        // Update perimeter for broad-phase queries.
-        let contourBounds = computeBoundingBox blobbo world
-        blobbo.SetPerimeter contourBounds world
+        // Update perimeter for rendering presence etc.
+        let contourBounds = computeBoundingBox waterBalloon world
+        waterBalloon.SetPerimeter contourBounds world
 
         // Pop check: if the center body escapes the contour ring, emit water particles and disable the center.
-        // Only pop once per balloon lifetime.
-        if contour.Length = contourCount && not (blobbo.GetPopped world) then
-            let center = blobbo.GetBlobboCenter world
-            if not (isPointInsideContour center.BodyCenter contour) then
-                blobbo.SetPopped true world
-                // Emit water particles from the centroid.
-                let centroid = contourCentroid contour
-                match tryResolve (blobbo.GetWorldFluidEmitter world) blobbo with
-                | Some emitter ->
-                    World.emitFluidParticles
-                        (SArray.init 12 (fun _ ->
-                            let jitter = v2 (Gen.randomf * 2.0f - 1.0f) (Gen.randomf * 2.0f - 1.0f) * 6.0f
-                            { FluidParticlePosition = (centroid + jitter).V3
-                              FluidParticleVelocity = v3 jitter.X jitter.Y 0.0f
-                              FluidParticleConfig = "Water" }))
-                        (emitter.GetFluidEmitterId world) world
-                | None -> ()
-                // Disable the center body so the balloon goes limp.
-                let centerBodyId = { BodySource = blobbo; BodyIndex = internalIndex }
-                World.setBodyEnabled false centerBodyId world
+        if contour.Length = contourCount then
+            match waterBalloon.GetWaterBalloonCenter world with
+            | Some center ->
+                if not (isPointInsideContour center.BodyCenter contour) then
+                    // Emit water particles from the centroid.
+                    let centroid = contourCentroid contour
+                    match tryResolve (waterBalloon.GetWorldFluidEmitter world) waterBalloon with
+                    | Some emitter ->
+                        World.emitFluidParticles
+                            (SArray.init 12 (fun _ ->
+                                let jitter = v2 (Gen.randomf * 2.0f - 1.0f) (Gen.randomf * 2.0f - 1.0f) * 6.0f
+                                { FluidParticlePosition = (centroid + jitter).V3
+                                  FluidParticleVelocity = v3 jitter.X jitter.Y 0.0f
+                                  FluidParticleConfig = "Water" }))
+                            (emitter.GetFluidEmitterId world) world
+                    | None -> ()
+                    waterBalloon.SetWaterBalloonCenter None world
+                    waterBalloon.PropagatePhysics world
+            | None -> ()
 
-    override _.Render (_, blobbo, world) =
-        let contour = blobbo.GetBlobboContour world
+    override _.Render (_, waterBalloon, world) =
+        let contour = waterBalloon.GetWaterBalloonContour world
         if contour.Length >= 3 then
-            let position = blobbo.GetPosition world
+            let position = waterBalloon.GetPosition world
             let size =
-                let s = (blobbo.GetSize world).V2
+                let s = (waterBalloon.GetSize world).V2
                 v2 (max 0.0001f s.X) (max 0.0001f s.Y)
             // Compute base polygon from body centers in world space.
             let worldPoints = contour |> Array.map (fun t -> t.BodyCenter)
@@ -331,7 +342,7 @@ type WaterBalloonDispatcher () =
                     (ContourFill.ofColorWinding Color.Red ContourWinding.NonZero)
                     ContourStroke.none
                     size
-            let mutable transform = blobbo.GetTransform world
+            let mutable transform = waterBalloon.GetTransform world
             transform.Rotation <- Quaternion.Identity
             transform.Scale <- v3One
             World.renderContour
