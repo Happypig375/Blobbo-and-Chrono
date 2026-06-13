@@ -71,7 +71,9 @@ type Scene01_BlobboThrowDispatcher () =
                  Entity.WorldFluidEmitter .= fluidEmitter.EntityAddress
                  Entity.FacetNames .= set [nameof FeelerFacet]] world
             let blobbo = world.DeclaredEntity
-            let mousePosition = (World.getMousePosition2dWorld false world).V3
+            let eyeBounds = World.getEye2dBounds world
+            let raw = World.getMousePosition2dWorld false world
+            let mousePosition = v3 (max eyeBounds.Min.X (min eyeBounds.Max.X raw.X)) (max eyeBounds.Min.Y (min eyeBounds.Max.Y raw.Y)) 0f
             if blobbo.GetTouched world then
                 screen.SetHeldEntity blobbo.EntityAddress world
             elif World.isMouseButtonUp MouseLeft world then
