@@ -23,6 +23,7 @@ type WaterBalloonDispatcher () =
 
     static let internalIndex = -1
     static let contourCount = 32
+    static let initialWaterContent = 12
     static let centerRadius = 8.0f
     static let centerToContourDistance = 32.0f
     static let contourRadius = MathF.PI * centerToContourDistance / single contourCount // half arc-spacing so bodies just touch
@@ -88,7 +89,7 @@ type WaterBalloonDispatcher () =
          computed Entity.BodyId (fun waterBalloon _ -> { BodySource = waterBalloon; BodyIndex = internalIndex }) None
          ]
 
-    override _.RegisterPhysics (waterBalloon, world) =
+    override this.RegisterPhysics (waterBalloon, world) =
 
 
         // Create contour bodies.
@@ -203,7 +204,7 @@ type WaterBalloonDispatcher () =
                       BodyJointIndex = bodyJointId.BodyJointIndex } world
         | None -> ()
 
-    override _.UnregisterPhysics (waterBalloon, world) =
+    override this.UnregisterPhysics (waterBalloon, world) =
 
         // destroy revolute joints (perimeter)
         for i in 0 .. contourCount - 1 do
@@ -228,10 +229,11 @@ type WaterBalloonDispatcher () =
         for i in 0 .. contourCount - 1 do
             World.destroyBody2d { BodySource = waterBalloon; BodyIndex = i } world
 
-    override _.Process (waterBalloon, world) =
+    override this.Process (waterBalloon, world) =
 
         if world.ContextInitializing then
             let spawnPos = waterBalloon.GetPosition world
+            waterBalloon.SetWaterContent initialWaterContent world
             match waterBalloon.GetWaterBalloonCenter world with
             | Some center ->
                 let center' = { center with BodyCenter = spawnPos.V2 }
@@ -283,16 +285,19 @@ type WaterBalloonDispatcher () =
                     let centroid = contourCentroid contour
                     match tryResolve (waterBalloon.GetWorldFluidEmitter world) waterBalloon with
                     | Some emitter ->
+                        let particleCount = waterBalloon.GetWaterContent world |> max 1
                         World.emitFluidParticles
-                            (SArray.init 12 (fun _ ->
+                            (SArray.init particleCount (fun _ ->
                                 let jitter = v2 (Gen.randomf * 2.0f - 1.0f) (Gen.randomf * 2.0f - 1.0f) * 6.0f
                                 { FluidParticlePosition = (centroid + jitter).V3
                                   FluidParticleVelocity = v3 jitter.X jitter.Y 0.0f
                                   FluidParticleConfig = "Water" }))
                             (emitter.GetFluidEmitterId world) world
                     | None -> ()
+                    this.UnregisterPhysics (waterBalloon, world)
                     waterBalloon.SetWaterBalloonCenter None world
-                    waterBalloon.PropagatePhysics world
+                    this.RegisterPhysics (waterBalloon, world)
+                    waterBalloon.SetWaterContent 0 world
             | None -> ()
 
     override _.Render (_, waterBalloon, world) =

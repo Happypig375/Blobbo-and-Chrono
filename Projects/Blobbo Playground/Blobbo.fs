@@ -44,8 +44,7 @@ type BlobboDispatcher () =
     static let contourCircleRadius = interContourDistance / 2f
     static let centerCircleRadius = contourCircleRadius * 1.5f
     static let absorptionRadius = centerToContourDistance * 1.5f
-    static let maxWaterContent = 1.0f
-    static let waterPerParticle = 1.0f / 32.0f
+    static let maxWaterContent = 32 // capacity in particle count
     static let growthFactor = 0.5f
     static let blobboFullCollisionCategories = "10000000000000000" // bit 16, outside fluid default mask (0xFFFF)
 
@@ -61,7 +60,7 @@ type BlobboDispatcher () =
         let waterContent = blobbo.GetWaterContent world
         let isFull = waterContent >= maxWaterContent
         let collisionCategories = if isFull then blobboFullCollisionCategories else "1"
-        let expansionScale = 1.0f + waterContent * growthFactor
+        let expansionScale = 1.0f + (single waterContent / single maxWaterContent) * growthFactor
         let registerPhysicsTransform radius i physicsTransform =
             let bodyId = { BodySource = blobbo; BodyIndex = i }
             let bodyProperties =
@@ -187,16 +186,16 @@ type BlobboDispatcher () =
                 let mutable absorbed = 0
                 let remainingCapacity = maxWaterContent - waterContent
                 World.chooseFluidParticles (fun particle ->
-                    if single absorbed * waterPerParticle < remainingCapacity &&
+                    if absorbed < remainingCapacity &&
                        Vector2.Distance (particle.FluidParticlePosition.V2, center.BodyCenter) < absorptionRadius then
                         absorbed <- absorbed + 1
                         ValueNone
                     else ValueSome particle)
                     (emitter.GetFluidEmitterId world) world
                 if absorbed > 0 then
-                    let waterContent' = min maxWaterContent (waterContent + single absorbed * waterPerParticle)
-                    let oldScale = 1.0f + waterContent * growthFactor
-                    let newScale = 1.0f + waterContent' * growthFactor
+                    let waterContent' = min maxWaterContent (waterContent + absorbed)
+                    let oldScale = 1.0f + (single waterContent / single maxWaterContent) * growthFactor
+                    let newScale = 1.0f + (single waterContent' / single maxWaterContent) * growthFactor
                     // Expand contour bodies outward from center so physics matches fullness.
                     let scaleRatio = newScale / oldScale
                     for i in 0 .. contour.Length - 1 do
