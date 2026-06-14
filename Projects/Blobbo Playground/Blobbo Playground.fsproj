@@ -65,6 +65,7 @@
 		<Compile Include="Scene02_BoxRewind.fs" />
 		<Compile Include="Scene03_MathSimplify.fs" />
 		<Compile Include="Scene04_SquareRace.fs" />
+		<Compile Include="Scene05_HeaterCooler.fs" />
 		<Compile Include="BlobboPlayground.fs" />
 		<Compile Include="BlobboPlaygroundPlugin.fs" />
 		<Compile Include="Program.fs" />

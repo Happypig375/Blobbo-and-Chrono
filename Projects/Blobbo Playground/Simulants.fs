@@ -14,3 +14,4 @@ module Simulants =
     let Scene02_BoxRewind = Game / "Scene02_BoxRewind"
     let Scene03_MathSimplify = Game / "Scene03_MathSimplify"
     let Scene04_SquareRace = Game / "Scene04_SquareRace"
+    let Scene05_HeaterCooler = Game / "Scene05_HeaterCooler"

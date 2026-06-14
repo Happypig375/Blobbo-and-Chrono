@@ -14,7 +14,7 @@ type GameState =
     | Scene02_BoxRewind
     | Scene03_MathSimplify
     | Scene04_SquareRace
-
+    | Scene05_HeaterCooler
 // this extends the Game API to expose the above ImSim model as a property.
 [<AutoOpen>]
 module BlobboPlaygroundExtensions =
@@ -49,6 +49,7 @@ type BlobboPlaygroundDispatcher () =
         if World.doButton "Scene02_BoxRewind" [Entity.Text .= "02"] world then game.SetGameState Scene02_BoxRewind world
         if World.doButton "Scene03_MathSimplify" [Entity.Text .= "03"] world then game.SetGameState Scene03_MathSimplify world
         if World.doButton "Scene04_SquareRace" [Entity.Text .= "04"] world then game.SetGameState Scene04_SquareRace world
+        if World.doButton "Scene05_HeaterCooler" [Entity.Text .= "05"] world then game.SetGameState Scene05_HeaterCooler world
         if World.doButton "Exit" [Entity.Text .= "Exit"] world && world.Unaccompanied then World.exit world
         World.endPanel world
         World.endGroup world
@@ -84,6 +85,14 @@ type BlobboPlaygroundDispatcher () =
         if FQueue.contains Select results then Simulants.Scene04_SquareRace.SetGameplayState Playing world
         if FQueue.contains Deselecting results then Simulants.Scene04_SquareRace.SetGameplayState Quit world
         if Simulants.Scene04_SquareRace.GetSelected world && Simulants.Scene04_SquareRace.GetGameplayState world = Quit then game.SetGameState Title world
+        World.endScreen world
+
+        // declare scene 05
+        let behavior = Dissolve (Constants.Dissolve.Default, None)
+        let results = World.beginScreen<Scene05_HeaterCoolerDispatcher> Simulants.Scene05_HeaterCooler.Name (game.GetGameState world = Scene05_HeaterCooler) behavior [] world
+        if FQueue.contains Select results then Simulants.Scene05_HeaterCooler.SetGameplayState Playing world
+        if FQueue.contains Deselecting results then Simulants.Scene05_HeaterCooler.SetGameplayState Quit world
+        if Simulants.Scene05_HeaterCooler.GetSelected world && Simulants.Scene05_HeaterCooler.GetGameplayState world = Quit then game.SetGameState Title world
         World.endScreen world
 
         // handle Alt+F4 when not in editor

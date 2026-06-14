@@ -3,8 +3,7 @@ open System.Numerics
 open Prime
 open Nu
 
-[<AutoOpen>]
-module WaterContainerFacet =
+module [<AutoOpen>] WaterContainerFacet =
 
     type Entity with
         member this.GetWaterContent world : int = this.Get (nameof this.WaterContent) world
