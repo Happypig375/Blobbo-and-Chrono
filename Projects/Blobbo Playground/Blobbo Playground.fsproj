@@ -1,61 +1,18 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
-	<PropertyGroup>
-        <!-- .NET settings -->
-		<TargetFramework>net10.0</TargetFramework>
-        <OutputType>Exe</OutputType>
-        <TargetPlatformIdentifier>$([MSBuild]::GetTargetPlatformIdentifier($(TargetFramework)))</TargetPlatformIdentifier> <!-- convenience property -->
-        <ServerGarbageCollection Condition="'$(TargetPlatformIdentifier)' != 'ios'">True</ServerGarbageCollection>
-        <TieredPGO>True</TieredPGO>
-        <DisableFastUpToDateCheck>True</DisableFastUpToDateCheck>
+    <PropertyGroup>
+        <TargetFramework>net10.0</TargetFramework>
+    </PropertyGroup>
 
-        <!-- Project file local properties -->
-        <BuildingMacOS>false</BuildingMacOS>
-        <BuildingMacOS Condition="'$(TargetPlatformIdentifier)' == '' And ('$(RuntimeIdentifier)'=='' And $([System.OperatingSystem]::IsMacOS()) Or $(RuntimeIdentifier.StartsWith('osx')))">true</BuildingMacOS>
-		<BlockCompression>BcCompression</BlockCompression>
-		<BlockCompression Condition="&#xD;&#xA;	        '$(TargetPlatformIdentifier)' == '' And ('$(RuntimeIdentifier)'=='' And $([System.OperatingSystem]::IsMacOS()) Or $(RuntimeIdentifier.StartsWith('osx'))) Or&#xD;&#xA;			'$(TargetPlatformIdentifier)'=='ios' Or '$(TargetPlatformIdentifier)'=='android'">AstcCompression</BlockCompression>
-
-        <!-- F# compiler settings -->
-        <WarnOn>FS1182</WarnOn>
-        <NoWarn>FS0009;FS0052;FS1178;FS3391;FS3536;FS3560</NoWarn>
-        <Tailcalls>False</Tailcalls>
-        <WarningLevel>5</WarningLevel>
-        <WarningsAsErrors>FS0026;FS0049;FS3239;$(WarningsAsErrors)</WarningsAsErrors>
-	</PropertyGroup>
-
-    <!-- Build Nu.Pipe only once even for multi-project builds -->
-    <Target Name="BuildNuPipe" BeforeTargets="BeforeBuild">
-        <MSBuild Projects="../../Nu/Nu.Pipe/Nu.Pipe.fsproj" RemoveProperties="TargetFramework;RuntimeIdentifier;SelfContained" Targets="Restore;Build" />
-    </Target>
-    <!-- Run Nu.Pipe -->
-    <Target Name="NuPipe" BeforeTargets="ResizetizeCollectItems;AssignTargetPaths" DependsOnTargets="BuildNuPipe">
-        <Copy SourceFiles="AssetGraph.nuag" DestinationFolder="refinement-out" />
-        <Copy SourceFiles="Overlayer.nuol" DestinationFolder="refinement-out" />
-        <!-- iOS and Android: call NuPipe via BeforeTargets="ResizetizeCollectItems" -->
-		<!-- Desktop: call NuPipe via BeforeTargets="AssignTargetPaths" -->
-        <MSBuild Projects="../../Nu/Nu.Pipe/Nu.Pipe.fsproj" RemoveProperties="TargetFramework;RuntimeIdentifier;SelfContained" Properties="NoBuild=true;RunWorkingDirectory=$(MSBuildProjectDirectory);RunArguments=&quot;$(MSBuildProjectDirectory)/&quot; &quot;$(MSBuildProjectDirectory)/refinement-out/&quot; &quot;$(MSBuildProjectDirectory)/refinement/&quot; &quot;$(BlockCompression)&quot; &quot;False&quot;" Targets="Run" />
-        <ItemGroup>
-            <!-- AssetPack and DeliveryType are for Android: https://learn.microsoft.com/en-us/dotnet/maui/android/asset-packs?view=net-maui-10.0#asset-packs-in-net-maui-apps -->
-            <!-- We do not pack assets into the main app bundle nor use install-time asset packs as they are not extracted to the file system! Nu loads various files outside of any asset system, and efficient memory-mapped files are necessary for some games. -->
-            <!-- We use fast-follow asset packs here which allow up to 512MB. If you need assets up to 2GB, use on-demand asset packs instead. Both types of asset packs are extracted to the file system. -->
-            <MauiAsset Include="refinement-out/**/*.*" AssetPack="gameassets" DeliveryType="FastFollow" />
-        </ItemGroup>
-        <!-- For desktop, just copy assets to output directory. -->
-        <Copy Condition="'$(TargetPlatformIdentifier)' == ''" SourceFiles="@(MauiAsset)" DestinationFolder="$(MSBuildProjectDirectory)/bin/$(Configuration)/$(TargetFramework)/%(RecursiveDir)" OverwriteReadOnlyFiles="true" SkipUnchangedFiles="true" />
-    </Target>
-    <Target Name="CleanNuPipe" AfterTargets="Clean">
-        <RemoveDir Directories="refinement" />
-        <RemoveDir Directories="refinement-out" />
-        <RemoveDir Directories="$(OutDir)/Assets" />
-    </Target>
+    <Import Project="../../Nu/Nu.targets" />
 
 	<ItemGroup>
 		<None Include="Assets/*" />
-		<Compile Include="CSharpMath.Nu.fs" />
 		<None Include="Assets/*/*" />
 		<None Include="AssetGraph.nuag" />
 		<Compile Include="Assets.fs" />
 		<Compile Include="Simulants.fs" />
+		<Compile Include="CSharpMath.Nu.fs" />
 		<Compile Include="Rewindable.fs" />
 		<Compile Include="MathObject.fs" />
 		<Compile Include="WaterContainerFacet.fs" />
@@ -76,52 +33,6 @@
 	<ItemGroup>
 		<PackageReference Include="CSharpMath.Rendering" Version="1.0.0-pre.1" />
 		<PackageReference Include="CSharpMath.Evaluation" Version="1.0.0-pre.1" />
-		<Reference Include="AssimpNet">
-			<HintPath>..\..\Nu\Nu.Dependencies\AssimpNet\netstandard2.1\AssimpNet.dll</HintPath>
-		</Reference>
-        <Reference Include="BulletSharpPInvoke">
-            <HintPath>..\..\Nu\Nu.Dependencies\BulletSharpPInvoke\netstandard2.1\BulletSharp.dll</HintPath>
-        </Reference>
-		<Reference Include="OpenGL.Net">
-			<HintPath>..\..\Nu\Nu.Dependencies\OpenGL.NET\lib\netcoreapp2.2\OpenGL.Net.dll</HintPath>
-		</Reference>
-		<Reference Include="TiledSharp">
-			<HintPath>..\..\Nu\Nu.Dependencies\TiledSharp\lib\netstandard2.0\TiledSharp.dll</HintPath>
-		</Reference>
 	</ItemGroup>
 
-	<ItemGroup>
-		<ProjectReference Include="..\..\Nu\Nu\Nu.fsproj" />
-		<ProjectReference Include="..\..\Nu\Nu.Math\Nu.Math.csproj" />
-		<ProjectReference Include="..\..\Nu\Nu.Spine\Nu.Spine.csproj" />
-	</ItemGroup>
-
-    <!-- Use macOS Vulkan SDK for MoltenVK and KosmicKrisp on iOS and macOS -->
-    <PropertyGroup>
-        <!-- Override the macOS Vulkan SDK path here -->
-        <MacOSVulkanSdk></MacOSVulkanSdk>
-    </PropertyGroup>
-    <Target Name="CopyMacOSVulkanSdk" BeforeTargets="AssignTargetPaths" Condition="$(BuildingMacOS) Or '$(TargetPlatformIdentifier)'=='ios'">
-        <Exec Condition="'$(MacOSVulkanSdk)' == '' And $([System.OperatingSystem]::IsMacOS())" Command="&#xD;&#xA;            if [ -x ~/.bash_profile ]&#xD;&#xA;            then source ~/.bash_profile&#xD;&#xA;            fi&#xD;&#xA;            if [ &quot;$VULKAN_SDK&quot; == &quot;&quot; ] # Try to read VULKAN_SDK from bash_profile first&#xD;&#xA;            then VULKAN_SDK=`ls -d ~/VulkanSDK/* | grep -E &quot;[^/]+/[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$&quot; | sort -V -r | head -n 1` # By default, the Vulkan SDK for macOS is installed in ~/VulkanSDK with versioned subdirectories&#xD;&#xA;            fi&#xD;&#xA;            echo &quot;$VULKAN_SDK&quot;" ConsoleToMsBuild="true">
-            <Output TaskParameter="ConsoleOutput" PropertyName="MacOSVulkanSdk" />
-        </Exec>
-        <Error Text="Please install the macOS Vulkan SDK. If installed to a non-default location, override the MacOSVulkanSdk property in this file." Condition="!$([System.IO.Directory]::Exists($(MacOSVulkanSdk)))" />
-        <Warning Text="iOS Simulator builds are not supported because it uses software rendering without support for Vulkan descriptor indexing." Condition="'$(TargetPlatformIdentifier)'=='ios' And $(RuntimeIdentifier.StartsWith('iossimulator'))" />
-        <ItemGroup>
-            <!-- For macOS builds, use the macOS Vulkan SDK's dylibs. Also, the magic of icd.json copying and path fixing enables KosmicKrisp :) -->
-            <MacOSVulkanSdkDylib Include="$(MacOSVulkanSdk)/macOS/lib/*.dylib" />
-            <MacOSVulkanSdkIcdJson Include="$(MacOSVulkanSdk)/macOS/share/**/*_icd.json" />
-            <!-- For iOS device builds, use the macOS Vulkan SDK's libshaderc and Vulkan loader. -->
-            <NativeReference Condition="'$(TargetPlatformIdentifier)'=='ios' And !$(RuntimeIdentifier.StartsWith('iossimulator'))" Include="$(MacOSVulkanSdk)/iOS/lib/libshaderc_combined.a" Kind="Static" />
-            <NativeReference Condition="'$(TargetPlatformIdentifier)'=='ios' And !$(RuntimeIdentifier.StartsWith('iossimulator'))" Include="$(MacOSVulkanSdk)/iOS/lib/*.xcframework" Kind="Framework" />
-        </ItemGroup>
-        <Error Condition="'$(TargetPlatformIdentifier)'!='ios' And '@(MacOSVulkanSdkDylib)'==''" Text="No macOS Vulkan SDK dylibs were found at '$(MacOSVulkanSdk)/macOS/lib/*.dylib'. Ensure MacOSVulkanSdk points to a valid Vulkan SDK installation." />
-        <!-- Create symbolic links for macOS Vulkan SDK dylibs -->
-        <Exec Condition="'$(TargetPlatformIdentifier)'!='ios'" Command="mkdir -p &quot;$(OutDir)%(MacOSVulkanSdkDylib.RecursiveDir)&quot; &amp;&amp; ln -sfn &quot;%(MacOSVulkanSdkDylib.Identity)&quot; &quot;$(OutDir)%(MacOSVulkanSdkDylib.RecursiveDir)%(MacOSVulkanSdkDylib.Filename)%(MacOSVulkanSdkDylib.Extension)&quot;" />
-        <Copy Condition="'$(TargetPlatformIdentifier)'!='ios'" SourceFiles="@(MacOSVulkanSdkIcdJson)" DestinationFiles="@(MacOSVulkanSdkIcdJson->'$(OutDir)%(RecursiveDir)%(Filename)%(Extension)')" SkipUnchangedFiles="true" />
-        <ItemGroup>
-            <OutIcdJsonFile Include="$(OutDir)/vulkan/icd.d/*_icd.json" />
-        </ItemGroup>
-        <WriteLinesToFile Condition="'$(TargetPlatformIdentifier)'!='ios'" File="%(OutIcdJsonFile.Identity)" Lines="$([System.IO.File]::ReadAllText('%(OutIcdJsonFile.Identity)').Replace('../../../lib/','../../'))" Overwrite="true" />
-    </Target>
 </Project>

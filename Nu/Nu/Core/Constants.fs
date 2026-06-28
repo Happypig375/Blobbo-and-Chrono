@@ -14,13 +14,6 @@ open SDL
 open Prime
 open Nu
 
-module Vulkan =
-
-    let [<Literal>] MaxFramesInFlight = 2
-    
-    // disabled by default for compatability with ios simulator
-    let [<Literal>] DescriptorIndexingEnabled = false
-
 [<RequireQualifiedAccess>]
 module Runtime =
 
@@ -56,6 +49,12 @@ module OpenGL =
     let [<Uniform>] GlslVersionPragma = "#version " + string VersionMajor + string VersionMinor + "0" + " core"
     let [<Literal>] TextureImageUnitsRequired = 32
     let [<Uniform>] mutable HlDebug = match ConfigurationManager.AppSettings["HlDebug"] with null -> false | value -> scvalue value
+
+[<RequireQualifiedAccess>]
+module Vulkan =
+
+    let [<Uniform>] MoltenVk = OperatingSystem.IsIOS () || match ConfigurationManager.AppSettings.["MoltenVk"] with null -> false | value -> scvalue value
+    let [<Literal>] DescriptorSetCountDefault = 32
 
 [<RequireQualifiedAccess>]
 module ImGui =
@@ -135,6 +134,14 @@ module Engine =
               (* Entity Properties *)
               "Facets"
               "Surnames"
+              "RotationMatrix"
+              "Angles"
+              "AnglesLocal"
+              "Degrees"
+              "DegreesLocal"
+              "AffineMatrix"
+              "PerimeterUnscaled"
+              "Perimeter"
               "PerimeterCenter"
               "PerimeterBottom"
               "PerimeterBottomLeft"
@@ -145,14 +152,6 @@ module Engine =
               "PerimeterBottomLeftLocal"
               "PerimeterMinLocal"
               "PerimeterMaxLocal"
-              "RotationMatrix"
-              "Angles"
-              "AnglesLocal"
-              "Degrees"
-              "DegreesLocal"
-              "AffineMatrix"
-              "PerimeterUnscaled"
-              "Perimeter"
               "Bounds"
               "Imperative"
               "PresenceOverride"
@@ -208,7 +207,10 @@ module Render =
     let [<Literal>] TexturePriorityDefault = 0.5f // higher priority than (supposed) default, but not maximum. this value is arrived at through experimenting with a Windows NVidia driver.
     let [<Uniform>] mutable TextureAnisotropyMax = match ConfigurationManager.AppSettings["TextureAnisotropyMax"] with null -> 16.0f | value -> scvalue value
     let [<Uniform>] mutable TextureMinimalMipmapIndex = match ConfigurationManager.AppSettings["TextureMinimalMipmapIndex"] with null -> 2 | value -> scvalue value
-    let [<Uniform>] mutable TextureBlockCompression = match ConfigurationManager.AppSettings["TextureBlockCompression"] with null -> BcCompression | value -> scvalue value
+    let [<Uniform>] mutable TextureBlockCompression =
+        match ConfigurationManager.AppSettings["TextureBlockCompression"] with
+        | null -> if OperatingSystem.IsMacOS () || OperatingSystem.IsAndroid () || OperatingSystem.IsIOS() then AstcCompression else BcCompression
+        | value -> scvalue value
     let [<Literal>] SpriteBatchSize = 192 // NOTE: remember to update SPRITE_BATCH_SIZE in shaders when changing this!
     let [<Literal>] SpriteBorderTexelScalar = 0.001f
     let [<Literal>] SpriteMessagesPrealloc = 256
@@ -357,18 +359,7 @@ module Render =
     let [<Literal>] Body3dSegmentRenderMagnitudeMax = 48.0f
     let [<Literal>] Body3dSegmentRenderDistanceMax = 40.0f
     let [<Literal>] Body3dRenderDistanceMax = 32.0f
-
-    // descriptor related maxes for Vulkan, just grouped here for now
-    // TODO: DJL: properly integrate and make mutable as appropriate.
-    // TODO: DJL: need stupidly low 3D values for now to test on limited hardware.
-    let [<Literal>] ImGuiTextureMax = 1024
-    let [<Literal>] LightMapsMax = 8 // NOTE: DJL: applications that set this below LightMapsMaxDeferred should cap the latter to avoid descriptor waste.
-    let [<Literal>] GeometryRenderPassMax = LightMapsMax * 6 + 1 // all light map faces plus top level
-    let [<Literal>] SpritesMax = 8192
-    let [<Literal>] SpriteBatchesMax = 8192
-    let [<Literal>] ContoursMax = 8192
-    let [<Literal>] DeferredStaticDrawsMax = 64
-    let [<Literal>] ForwardStaticDrawsMax = 64
+    let [<Uniform>] mutable SkipRendering3d = false
 
 [<RequireQualifiedAccess>]
 module Audio =
