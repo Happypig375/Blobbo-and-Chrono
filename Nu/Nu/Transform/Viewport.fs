@@ -253,8 +253,14 @@ type [<StructuralEquality; NoComparison>] Viewport =
         Viewport.make Constants.Render.NearPlaneDistanceOmnipresent Constants.Render.FarPlaneDistanceOmnipresent inner bounds outer
 
     static member makeWindow1 (windowSize : Vector2i) =
-        let boundsSize = Globals.Render.DisplayVirtualResolution * Globals.Render.DisplayScalar
-        let boundsMin = Vector2i ((windowSize.X - boundsSize.X) / 2, (windowSize.Y - boundsSize.Y) / 2)
+        Viewport.makeWindowViewed Globals.Render.DisplayVirtualResolution.V2 windowSize
+
+    static member makeWindowViewed (eyeViewed : Vector2) (windowSize : Vector2i) =
+        let ds = Globals.Render.DisplayScalar
+        let boundsSizeX = min (int (ceil eyeViewed.X) * ds) windowSize.X
+        let boundsSizeY = min (int (ceil (eyeViewed.Y * single ds))) windowSize.Y
+        let boundsSize = v2i boundsSizeX boundsSizeY
+        let boundsMin = (windowSize - boundsSize) / 2
         let bounds = box2i boundsMin boundsSize
         Viewport.makeWindow bounds bounds windowSize // presume inner = bounds
 
