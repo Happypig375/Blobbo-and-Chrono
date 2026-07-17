@@ -1131,8 +1131,7 @@ module WorldModule2 =
             let oldWindowSize = world.WindowViewport.Outer.Size
             let windowSize = World.getWindowSizeOtherwiseViewportSize world
             let virtualSize = Globals.Render.DisplayVirtualResolution
-            let marginScalar = Constants.Engine.EyeMarginMaxScalar
-            let virtualSizeWithMargin = virtualSize.V2 * (v2Dup 1.0f + marginScalar)
+            let virtualSizeWithMargin = virtualSize.V2 * (v2Dup 1.0f + 2.0f * Constants.Engine.EyeMarginMaxScalar)
             let virtualSizeWithMargin = (v2 (ceil virtualSizeWithMargin.X) (ceil virtualSizeWithMargin.Y)).V2i
             let oldDisplayScalar = max 1 (min (oldWindowSize.X / virtualSize.X) (oldWindowSize.Y / virtualSize.Y))
             let oldMinPixelSize = virtualSize * oldDisplayScalar
@@ -1165,8 +1164,7 @@ module WorldModule2 =
             Globals.Render.DisplayScalar <- max 1 (min xScalar yScalar)
 
             // compute eye2d viewed size based on actual window size vs display virtual resolution
-            let eyeSize = World.getEye2dSize world
-            let eyeViewable = eyeSize + eyeSize * Constants.Engine.EyeMarginMaxScalar
+            let eyeViewable = world.Eye2dViewable
             let eyeViewed =
                 v2 (min eyeViewable.X (single windowSize''.X / single Globals.Render.DisplayScalar))
                    (min eyeViewable.Y (single windowSize''.Y / single Globals.Render.DisplayScalar))
