@@ -10,6 +10,7 @@
         <None Include="Assets\*" />
         <None Include="Assets\*\*" />
 		<Compile Include="Assets.fs" />
+		<Compile Include="Architecture.fs" />
 		<Compile Include="Simulants.fs" />
 		<Compile Include="Gameplay.fs" />
 		<Compile Include="BlobboAndChrono.fs" />

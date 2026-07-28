@@ -1,10 +1,11 @@
 #version 450 core
 
 const float GAMMA = 2.2;
+const float ALBEDO_ALPHA_MIN = 0.3;
 const float SAA_VARIANCE = 0.1; // TODO: consider exposing as lighting config property.
 const float SAA_THRESHOLD = 0.1; // TODO: consider exposing as lighting config property.
 
-struct Eye
+struct EyeStruct
 {
     vec3 center;
     mat4 view;
@@ -14,7 +15,7 @@ struct Eye
     mat4 viewProjection;
 };
 
-layout(set = 0, binding = 0) buffer readonly EyeBlock { Eye eye; };
+layout(set = 0, binding = 0) uniform EyeUniform { EyeStruct eye; };
 
 layout(set = 1, binding = 0) uniform texture2D albedoTexture;
 layout(set = 1, binding = 1) uniform texture2D roughnessTexture;
@@ -113,6 +114,7 @@ void main()
 
     // compute albedo
     vec4 albedoSample = texture(sampler2D(albedoTexture, filteredSampler), texCoords);
+    if (albedoSample.a < ALBEDO_ALPHA_MIN) discard;
     albedo = pow(albedoSample.rgb, vec3(GAMMA)) * albedoOut.rgb;
 
     // compute normal and ignore local height maps
@@ -155,7 +157,11 @@ void main()
         else scatterPlus.rgb = scatter.rgb;
         scatterPlus.a = scatterType;
     }
-    else scatterPlus = vec4(0.0);
+    else
+    {
+        subdermalPlus = vec4(0.0);
+        scatterPlus = vec4(0.0);
+    }
 
     // compute clear coat properties
     float clearCoat = texture(sampler2D(clearCoatTexture, filteredSampler), texCoords).r * clearCoatPlusOut.r;

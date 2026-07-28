@@ -13,11 +13,15 @@ open Prime
 module NativePtr =
 
     /// A pre-allocated binary blob.
-    /// NOTE: DJL: this ought to be more secure but function inlining does not allow.
+    /// NOTE: this ought to be less accessible but function inlining doesn't permit.
     type Blob =
         { mutable Offset : int
           Size : int
           VoidPtr : voidptr }
+
+    /// Tests whether the given native ptr is not null.
+    let notNullPtr ptr =
+        not (NativePtr.isNullPtr ptr)
 
     /// Convert a managed pointer to a typed native pointer.
     let asPointer<'a when 'a : unmanaged> (managedPtr : byref<'a>) : nativeptr<'a> =

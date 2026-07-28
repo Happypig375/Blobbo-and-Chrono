@@ -255,10 +255,10 @@ type BlobboDispatcher () =
                 commands[i] <- LineTo points[i]
             commands[points.Length] <- CloseContour
             let tessellation =
-                ContourTessellation.make
-                    commands
+                Contour.make
                     (ContourFill.ofColorWinding Color.Aqua ContourWinding.NonZero)
                     ContourStroke.none
+                    commands
                     size
             let mutable transform = blobbo.GetTransform world
             transform.Rotation <- Quaternion.Identity
@@ -266,4 +266,4 @@ type BlobboDispatcher () =
             World.renderContour
                 { Transform = transform
                   ClipOpt = ValueNone
-                  Tessellation = tessellation } world
+                  Contour = tessellation } world

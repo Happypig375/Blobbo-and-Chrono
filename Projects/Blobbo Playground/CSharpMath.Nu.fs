@@ -23,7 +23,7 @@ type NuCanvas (width, height, strokeThickness) =
             let scaleY = sqrt (this.Transform.M21 * this.Transform.M21 + this.Transform.M22 * this.Transform.M22)
             _scale <- v2 (scaleX * width) (scaleY * height)
     member _.CurrentScale = _scale
-    member val Tessellations = List<ContourTessellation * Matrix3x2> () with get
+    member val Tessellations = List<Contour * Matrix3x2> () with get
     member val CurrentColor = Nullable<Drawing.Color> () with get, set
     member val DefaultColor = Drawing.Color.Black with get, set
     member val CurrentStyle = CSharpMath.Rendering.FrontEnd.PaintStyle.Fill with get, set
@@ -37,33 +37,33 @@ type NuCanvas (width, height, strokeThickness) =
         member this.CurrentStyle with get () = this.CurrentStyle and set value = this.CurrentStyle <- value
         member this.DrawLine (x1, y1, x2, y2, lineThickness) =
             this.Tessellations.Add
-                (ContourTessellation.make
+                (Contour.make
+                    ContourFill.none
+                    (ContourStroke.ofColorThickness (this.CurrentColor ?^ this.DefaultColor |> toNuColor) lineThickness)
                     [| MoveTo (v2 x1 y1)
                        LineTo (v2 x2 y2) |]
-                    ContourFill.none
-                    (ContourStroke.antiAliased (this.CurrentColor ?^ this.DefaultColor |> toNuColor) lineThickness)
                     this.CurrentScale, this.Transform)
         member this.FillRect (x, y, width, height) =
             this.Tessellations.Add
-                (ContourTessellation.make
+                (Contour.make
+                    (ContourFill.ofColor (this.CurrentColor ?^ this.DefaultColor |> toNuColor))
+                    ContourStroke.none
                     [| MoveTo (v2 x y)
                        LineTo (v2 (x + width) y)
                        LineTo (v2 (x + width) (y + height))
                        LineTo (v2 x (y + height))
                        CloseContour |]
-                    (ContourFill.ofColor (this.CurrentColor ?^ this.DefaultColor |> toNuColor))
-                    ContourStroke.none
                     this.CurrentScale, this.Transform)
         member this.StrokeRect (x, y, width, height) =
             this.Tessellations.Add
-                (ContourTessellation.make
+                (Contour.make
+                    ContourFill.none
+                    (ContourStroke.ofColorThickness (this.CurrentColor ?^ this.DefaultColor |> toNuColor) strokeThickness)
                     [| MoveTo (v2 x y)
                        LineTo (v2 (x + width) y)
                        LineTo (v2 (x + width) (y + height))
                        LineTo (v2 x (y + height))
                        CloseContour |]
-                    ContourFill.none
-                    (ContourStroke.antiAliased (this.CurrentColor ?^ this.DefaultColor |> toNuColor) strokeThickness)
                     this.CurrentScale, this.Transform)
         member this.Save () = transformStack.Push this.Transform
         member this.Restore () = this.Transform <- transformStack.Pop ()
@@ -84,10 +84,10 @@ and NuPath (owner : NuCanvas, strokeThickness : single) =
     override this.Dispose () =
         let color = this.Foreground ?^ owner.CurrentColor ?^ owner.DefaultColor |> toNuColor
         owner.Tessellations.Add
-            (ContourTessellation.make
-                this.ContourCommands
+            (Contour.make
                 (ContourFill.ofColor (if owner.CurrentStyle = CSharpMath.Rendering.FrontEnd.PaintStyle.Fill then color else Color.Zero))
-                (ContourStroke.antiAliased (if owner.CurrentStyle = CSharpMath.Rendering.FrontEnd.PaintStyle.Stroke then color else Color.Zero) strokeThickness)
+                (ContourStroke.ofColorThickness (if owner.CurrentStyle = CSharpMath.Rendering.FrontEnd.PaintStyle.Stroke then color else Color.Zero) strokeThickness)
+                this.ContourCommands
                 owner.CurrentScale, owner.Transform)
 
 type MathPainter () =
@@ -106,8 +106,8 @@ open CSharpMath.Editor
 open CSharpMath.Nu
 module [<AutoOpen>] MathFacetExtensions =
     type Entity with
-        member this.GetTessellations world : (ContourTessellation * Matrix3x2) List = this.Get (nameof this.Tessellations) world
-        member this.SetTessellations (value : (ContourTessellation * Matrix3x2) List) world = this.Set (nameof this.Tessellations) value world
+        member this.GetTessellations world : (Contour * Matrix3x2) List = this.Get (nameof this.Tessellations) world
+        member this.SetTessellations (value : (Contour * Matrix3x2) List) world = this.Set (nameof this.Tessellations) value world
         member this.Tessellations = lens (nameof this.Tessellations) this this.GetTessellations this.SetTessellations
         member this.GetLaTeX world : string = this.Get (nameof this.LaTeX) world
         member this.SetLaTeX (value : string) world = this.Set (nameof this.LaTeX) value world
@@ -212,4 +212,4 @@ type MathFacet () =
             World.renderContour
                 { Transform = t
                   ClipOpt = ValueNone
-                  Tessellation = tess } world
+                  Contour = tess } world

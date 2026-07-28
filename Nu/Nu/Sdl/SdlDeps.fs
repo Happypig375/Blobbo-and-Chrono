@@ -7,12 +7,20 @@
 namespace Nu
 open System
 open System.Collections.Generic
+open System.IO
 open System.Numerics
 open System.Reflection
 open System.Runtime.InteropServices
 open FSharp.NativeInterop
 open SDL
 open Prime
+
+/// SDL orientation.
+type SdlOrientation =
+    | LandscapeLeft
+    | LandscapeRight
+    | Portrait
+    | PortraitUpsideDown
 
 /// Describes the initial configuration of a window created via SDL.
 type SdlWindowConfig =
@@ -31,14 +39,6 @@ type SdlWindowConfig =
           WindowX = int SDL3.SDL_WINDOWPOS_UNDEFINED
           WindowY = int SDL3.SDL_WINDOWPOS_UNDEFINED
           WindowFlags = SDL_WindowFlags.SDL_WINDOW_RESIZABLE ||| SDL_WindowFlags.SDL_WINDOW_VULKAN ||| SDL_WindowFlags.SDL_WINDOW_HIGH_PIXEL_DENSITY ||| noNotificationBar }
-
-/// SDL orientation.
-/// See https://wiki.libsdl.org/SDL3/SDL_HINT_ORIENTATIONS
-type SdlOrientation =
-    | LandscapeLeft
-    | LandscapeRight
-    | Portrait
-    | PortraitUpsideDown
 
 /// Describes the general configuration of SDL.
 type [<ReferenceEquality>] SdlConfig =
@@ -164,29 +164,87 @@ module SdlDeps =
         | Some window ->
 
             // get a snapshot of whether screen was full
-            let mutable width, height = 0, 0
-            SDL3.SDL_GetWindowSize (window, &&width, &&height) |> ignore<SDLBool>
+            let mutable (windowWidth, windowHeight) = (0, 0)
+            SDL3.SDL_GetWindowSizeInPixels (window, &&windowWidth, &&windowHeight) |> ignore<SDLBool>
             let displayMode = getDisplayModeInternal window
-            let wasFullScreen = width = displayMode.w || height = displayMode.h
+            let wasFullScreen = windowWidth = displayMode.w || windowHeight = displayMode.h
 
             // change full screen status via flags
             SDL3.SDL_SetWindowFullscreen (window, fullScreen) |> ignore<SDLBool>
 
             // when changing from full screen, set window to windowed size and make sure its title bar is visible
             if wasFullScreen && not fullScreen then
-                let windowSizeWindowed = Constants.Render.DisplayVirtualResolution * 2
+                let pixelDensity = SDL3.SDL_GetWindowPixelDensity window
+                let sizeWindowed = Constants.Render.DisplayVirtualResolution * 2
                 SDL3.SDL_RestoreWindow window |> ignore<SDLBool>
-                SDL3.SDL_SetWindowSize (window, windowSizeWindowed.X, windowSizeWindowed.Y) |> ignore<SDLBool>
-                SDL3.SDL_SetWindowPosition (window, 100, 100) |> ignore<SDLBool>
+                SDL3.SDL_SetWindowSize (window, int (single sizeWindowed.X / pixelDensity), int (single sizeWindowed.Y / pixelDensity)) |> ignore
+                SDL3.SDL_SetWindowPosition (window, 100, 100) |> ignore<SDLBool> // NOTE: pretty arbitrary numbers here...
 
         | None -> ()
         sdlDeps
 
-    /// An empty SdlDeps.
-    let empty =
-        { WindowOpt = None
-          Config = SdlConfig.defaultConfig
-          Destroy = id }
+    /// Attempt to show a desktop pre-splash screen on the given window from embedded SVG and color resources. This
+    /// renders the pre-splash immediately using SDL's software surface API, before Vulkan takes over. The pre-splash
+    /// render will be overwritten when Vulkan presents its first swapchain image.
+    let private tryRenderPreSplash (window : SDL_Window nativeptr) =
+
+        // attempt to utilize pre-splash graphics from manifest resource
+        let assemblyOpt = Assembly.GetEntryAssembly () // is null on Android since the entry point is outside .NET
+        let svgStreamOpt = if notNull assemblyOpt then assemblyOpt.GetManifestResourceStream "PreSplash" else null
+        if notNull svgStreamOpt then
+
+            // attempt to copy svg to memory
+            use svgStream = svgStreamOpt
+            let nativeMemory = NativeMemory.Alloc (unativeint svgStream.Length)
+            try let nativeMemoryBytePtr = NativePtr.ofVoidPtr<byte> nativeMemory
+                use nativeStream = new UnmanagedMemoryStream (nativeMemoryBytePtr, svgStream.Length, svgStream.Length, FileAccess.Write)
+                svgStream.CopyTo nativeStream
+
+                // attempt to copy memory to window surface with optional scaling
+                let mutable (windowWidth, windowHeight) = (0, 0)
+                SDL3.SDL_GetWindowSizeInPixels (window, &&windowWidth, &&windowHeight) |> ignore<SDLBool>
+                let svgStream = SDL3.SDL_IOFromConstMem (NativePtr.toNativeInt nativeMemoryBytePtr, unativeint svgStream.Length)
+                let surfacePtrOpt =
+                    try if SDL3_image.IMG_isSVG svgStream |> SDLBool.op_Implicit
+                        then SDL3_image.IMG_LoadSizedSVG_IO (svgStream, windowWidth, windowHeight) // maintains aspect ratio automatically
+                        else
+                            let rasterImage = SDL3_image.IMG_Load_IO (svgStream, true) // manually maintain aspect ratio for non-SVG images
+                            try let rasterSurface = NativePtr.toByRef rasterImage
+                                let (scaleX, scaleY) = (double windowWidth / double rasterSurface.w, double windowHeight / double rasterSurface.h)
+                                let scale = min scaleX scaleY
+                                let (newW, newH) = (int (double rasterSurface.w * scale), int (double rasterSurface.h * scale))
+                                let scaledImage = SDL3.SDL_ScaleSurface (rasterImage, newW, newH, SDL_ScaleMode.SDL_SCALEMODE_LINEAR)
+                                scaledImage
+                            finally SDL3.SDL_DestroySurface rasterImage
+                    finally SDL3.SDL_CloseIO svgStream |> ignore<SDLBool>
+
+                // attempt to populate window background with pre-splash graphics
+                try if NativePtr.notNullPtr surfacePtrOpt then
+
+                        // attempt to fill window background with pre-splash color
+                        let windowSurfacePtr = SDL3.SDL_GetWindowSurface window
+                        let colorStreamOpt = assemblyOpt.GetManifestResourceStream "PreSplashColor"
+                        if notNull colorStreamOpt then
+                            use colorReader = new StreamReader (colorStreamOpt)
+                            let colorStr = colorReader.ReadToEnd ()
+                            let colorDrawing = Drawing.ColorTranslator.FromHtml colorStr // NOTE: this works fine starting on .NET Core 3.0.
+                            let color = SDL3.SDL_MapSurfaceRGBA (windowSurfacePtr, byte colorDrawing.R, byte colorDrawing.G, byte colorDrawing.B, 255uy)
+                            SDL3.SDL_FillSurfaceRect (windowSurfacePtr, NativePtr.nullPtr, color) |> ignore<SDLBool>
+
+                        // display splash screen centered on window
+                        let svgSurface = NativePtr.toByRef surfacePtrOpt
+                        let mutable dstRect = SDL_Rect (x = (windowWidth - svgSurface.w) / 2, y = (windowHeight - svgSurface.h) / 2, w = svgSurface.w, h = svgSurface.h)
+                        SDL3.SDL_BlitSurface (surfacePtrOpt, NativePtr.nullPtr, windowSurfacePtr, &&dstRect) |> ignore<SDLBool>
+                        SDL3.SDL_UpdateWindowSurface window |> ignore<SDLBool>
+
+                    // log issue
+                    else Log.warn ("Failed to load splash SVG from embedded resource: " + SDL3.SDL_GetError ())
+
+                // clean-up
+                finally SDL3.SDL_DestroySurface surfacePtrOpt
+
+            // clean-up
+            finally NativeMemory.Free nativeMemory
 
     /// Attempt to make an SdlDeps instance.
     let tryMake (sdlConfig : SdlConfig) (accompanied : bool) (windowSize : Vector2i) =
@@ -216,13 +274,13 @@ module SdlDeps =
                 (fun () ->
 
                     // init sdl callback for app backgrounding on mobile devices
-                    // NOTE: DJL: this happens before SDL window creation to ensure no backgrounding events are missed.
+                    // NOTE: this happens before SDL window creation to ensure no backgrounding events are missed.
                     SDL3.SDL_SetEventFilter (Vulkan.Hl.backgroundingCallback (), 0n) // TODO: P0: pass this in as a parameter to reduce critical coupling.
                     
                     // attempt to create window
                     let windowConfig = sdlConfig.WindowConfig
                     let windowOpt = SDL3.SDL_CreateWindow (windowConfig.WindowTitle, windowSize.X, windowSize.Y, windowConfig.WindowFlags)
-                    if not (NativePtr.isNullPtr windowOpt) then
+                    if NativePtr.notNullPtr windowOpt then
 
                         // set window position
                         let window = windowOpt
@@ -236,6 +294,9 @@ module SdlDeps =
                         let mutable displayMode = getDisplayModeInternal window
                         if (windowSize.X = displayMode.w || windowSize.Y = displayMode.h) && not accompanied then
                             SDL3.SDL_SetWindowFullscreen (window, true) |> ignore<SDLBool>
+
+                        // attempt to show splash screen (software surface; will be overwritten by Vulkan)
+                        tryRenderPreSplash window
 
                     // fin
                     windowOpt)
@@ -257,6 +318,12 @@ module SdlDeps =
                              ".")
                         GamepadState.init ()
                         Right { WindowOpt = Some window; Config = sdlConfig; Destroy = destroy }
+
+    /// An empty SdlDeps.
+    let empty =
+        { WindowOpt = None
+          Config = SdlConfig.defaultConfig
+          Destroy = id }
 
 /// The dependencies needed to initialize SDL.
 type SdlDeps = SdlDeps.SdlDeps

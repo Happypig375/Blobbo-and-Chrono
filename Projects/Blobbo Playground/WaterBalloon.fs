@@ -342,10 +342,10 @@ type WaterBalloonDispatcher () =
                 commands[i] <- LineTo points[i]
             commands[points.Length] <- CloseContour
             let tessellation =
-                ContourTessellation.make
-                    commands
+                Contour.make
                     (ContourFill.ofColorWinding Color.Red ContourWinding.NonZero)
                     ContourStroke.none
+                    commands
                     size
             let mutable transform = waterBalloon.GetTransform world
             transform.Rotation <- Quaternion.Identity
@@ -353,4 +353,4 @@ type WaterBalloonDispatcher () =
             World.renderContour
                 { Transform = transform
                   ClipOpt = ValueNone
-                  Tessellation = tessellation } world
+                  Contour = tessellation } world

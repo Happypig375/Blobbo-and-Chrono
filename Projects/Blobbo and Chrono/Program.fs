@@ -2,6 +2,7 @@
 open System
 open System.IO
 open Nu
+open SDL
 module Program =
 
     // this the entry point for your Nu application
@@ -14,7 +15,10 @@ module Program =
         Nu.init ()
 
         // this specifies the window configuration used to display the game
-        let sdlWindowConfig = { SdlWindowConfig.defaultConfig with WindowTitle = "Blobbo and Chrono" }
+        let sdlWindowConfig =
+            { SdlWindowConfig.defaultConfig with
+                WindowTitle = "Blobbo and Chrono"
+                WindowFlags = SdlWindowConfig.defaultConfig.WindowFlags ||| SDL_WindowFlags.SDL_WINDOW_TRANSPARENT ||| SDL_WindowFlags.SDL_WINDOW_ALWAYS_ON_TOP }
 
         // this specifies the configuration of the game engine's use of SDL
         let sdlConfig = { SdlConfig.defaultConfig with WindowConfig = sdlWindowConfig }
@@ -23,4 +27,9 @@ module Program =
         let worldConfig = { WorldConfig.defaultConfig with SdlConfig = sdlConfig }
 
         // this runs the engine with the given config and plugin, starting the game
-        World.run (Some ignore) worldConfig (BlobboAndChronoPlugin ())
+        let composition = CompositionRoot ()
+        composition.Start ()
+        try
+            World.run ignore worldConfig (BlobboAndChronoPlugin ())
+        finally
+            composition.Stop ()

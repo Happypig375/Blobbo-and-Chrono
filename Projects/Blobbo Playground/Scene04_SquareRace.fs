@@ -8,8 +8,8 @@ open BlobboPlayground
 [<AutoOpen>]
 module SquareExtensions =
     type Entity with
-        member this.GetEyeSocketTessellation world : ContourTessellation = this.Get (nameof Entity.EyeSocketTessellation) world
-        member this.SetEyeSocketTessellation (value : ContourTessellation) world = this.Set (nameof Entity.EyeSocketTessellation) value world
+        member this.GetEyeSocketTessellation world : Contour = this.Get (nameof Entity.EyeSocketTessellation) world
+        member this.SetEyeSocketTessellation (value : Contour) world = this.Set (nameof Entity.EyeSocketTessellation) value world
         member this.EyeSocketTessellation = lens (nameof Entity.EyeSocketTessellation) this this.GetEyeSocketTessellation this.SetEyeSocketTessellation
 
 type SquareDispatcher () =
@@ -23,7 +23,9 @@ type SquareDispatcher () =
     
     static let updateEyeSocketTessellation (entity : Entity) world =
         let eyeSocketTessellation =
-            ContourTessellation.make
+            Contour.make
+                (ContourFill.ofColor Color.White)
+                (ContourStroke.ofColorThickness Color.Black 1f)
                 (seq {
                     for direction in eyeDirections do
                         MoveTo (v2 (single direction * eyeSocketLeftX) eyeSocketTopY)
@@ -31,8 +33,6 @@ type SquareDispatcher () =
                         LineTo (v2 (single direction * eyeSocketRightX) eyeSocketBottomY)
                         LineTo (v2 (single direction * eyeSocketLeftX) eyeSocketBottomY)
                         CloseContour })
-                (ContourFill.ofColor Color.White)
-                (ContourStroke.antiAliased Color.Black 1f)
                 (entity.GetSize world * entity.GetScale world).V2
         entity.SetEyeSocketTessellation eyeSocketTessellation world
         Cascade
@@ -45,7 +45,9 @@ type SquareDispatcher () =
             else v2Zero
         let clamp value minValue maxValue = value |> max minValue |> min maxValue
         let eyeOffset = v2 (eyeDirection.X * 0.12f) (eyeDirection.Y * 0.18f)
-        ContourTessellation.make
+        Contour.make
+            (ContourFill.ofColor Color.Black)
+            (ContourStroke.none)
             (seq {
               for direction in eyeDirections do
                   let socketX1 = single direction * eyeSocketLeftX
@@ -66,8 +68,6 @@ type SquareDispatcher () =
                   LineTo (v2 (center.X + halfExtent) (center.Y + halfExtent))
                   LineTo (v2 (center.X - halfExtent) (center.Y + halfExtent))
                   CloseContour })
-            (ContourFill.ofColor Color.Black)
-            (ContourStroke.none)
             (entity.GetSize world * entity.GetScale world).V2
 
     static let updateBasicParticleSeed (entity : Entity) world =
@@ -116,7 +116,7 @@ type SquareDispatcher () =
          define Entity.ParticleLifeTimeMaxOpt (GameTime.ofSeconds 1.0)
          define Entity.ParticleRate (match Constants.GameTime.DesiredFrameRate with StaticFrameRate _ -> 1.0f | DynamicFrameRate _ -> 60.0f)
          define Entity.ParticleMax 60
-         nonPersistent Entity.EyeSocketTessellation ContourTessellation.empty]
+         nonPersistent Entity.EyeSocketTessellation Contour.empty]
 
     override this.Register (entity, world) =
         for propertyName in
@@ -140,12 +140,12 @@ type SquareDispatcher () =
         World.renderContour
             { Transform = transform
               ClipOpt = clipOpt
-              Tessellation = entity.GetEyeSocketTessellation world } world
+              Contour = entity.GetEyeSocketTessellation world } world
         transform.Elevation <- Single.BitIncrement transform.Elevation
         World.renderContour
             { Transform = transform
               ClipOpt = clipOpt
-              Tessellation = getEyeTessellation entity world } world
+              Contour = getEyeTessellation entity world } world
 
 // this is the dispatcher that defines the behavior of the screen where gameplay takes place.
 type Scene04_SquareRaceDispatcher () =

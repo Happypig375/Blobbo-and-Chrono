@@ -1254,6 +1254,12 @@ module Matrix4x4 =
             if not (Matrix4x4.Invert (this, &result)) then failwith "Failed to invert matrix."
             result
 
+        /// The vulkan-flipped value of a matrix.
+        member inline this.Flipped =
+            let mutable result = this
+            result.M22 <- -result.M22 // vulkan clip space has an inverted Y axis compared to the projection matrix produced by CreatePerspectiveFieldOfView
+            result
+
         /// The transposed value of a matrix.
         member inline this.Transposed =
             Matrix4x4.Transpose this
@@ -1718,7 +1724,6 @@ module Math =
         else b % a = 0
 
     /// Compute the size of the stride.
-    /// TODO: DJL: perhaps calculating this stuff manually is a bad idea?
     let Stride (alignment, size) =
         if size = 0 then size // just to prevent division by 0; size should be > 0
         elif alignment = 0 then size
@@ -1813,6 +1818,12 @@ type LightType =
         | SpotLight _ -> 1
         | DirectionalLight _ -> 2
         | CascadedLight -> 3
+
+    /// Whether the shadows for this light render to a cube map.
+    member this.ShadowsUseCubeMap =
+        match this with
+        | PointLight -> true
+        | SpotLight _ | DirectionalLight _ | CascadedLight -> false
 
     /// Check that the light should shadow interior surfaces with the given shadowIndexInfoOpt information.
     static member shouldShadowInterior lightType =
