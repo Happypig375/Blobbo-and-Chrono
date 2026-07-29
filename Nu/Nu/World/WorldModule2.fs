@@ -2153,7 +2153,6 @@ module WorldModule2 =
                                                                         world.Eye3dFieldOfView
                                                                         world.Eye2dCenter
                                                                         world.Eye2dViewed
-                                                                        (World.getWindowSize world)
                                                                         world.GeometryViewport
                                                                         world.WindowViewport
                                                                         windowProperties
