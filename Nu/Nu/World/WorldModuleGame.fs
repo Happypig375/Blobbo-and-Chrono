@@ -38,6 +38,13 @@ module WorldModuleGame =
             ignore<Game> game
             world.WorldState <- { world.WorldState with GameState = gameState }
 
+        static member internal synchronizeViewports windowSize displayScalar (world : World) =
+            let eyeViewedPrevious = world.GameState.Eye2dViewed
+            World.synchronizeViewportState windowSize displayScalar world
+            let eyeViewed = world.GameState.Eye2dViewed
+            if eyeViewedPrevious <> eyeViewed then
+                World.publishGameChange (nameof world.GameState.Eye2dViewed) eyeViewedPrevious eyeViewed Game.Handle world
+
         static member internal getGameXtension game world =
             let gameState = World.getGameState game world
             gameState.Xtension
@@ -208,6 +215,8 @@ module WorldModuleGame =
             let previous = gameState.Eye2dSize
             if previous <> value then
                 World.setGameState { gameState with Eye2dSize = value } game world
+                let windowSize = World.getWindowSizeOtherwiseViewportSize world
+                World.synchronizeViewports windowSize world.WindowViewport.DisplayScalar world
                 World.publishGameChange (nameof gameState.Eye2dSize) previous value game world
                 true
             else false
@@ -223,22 +232,9 @@ module WorldModuleGame =
         static member internal getGameEye2dViewed game world =
             (World.getGameState game world).Eye2dViewed
 
-        static member internal setGameEye2dViewed value game world =
-            let gameState = World.getGameState game world
-            let previous = gameState.Eye2dViewed
-            if previous <> value then
-                World.setGameState { gameState with Eye2dViewed = value } game world
-                World.publishGameChange (nameof gameState.Eye2dViewed) previous value game world
-                true
-            else false
-
         /// Get the current 2d eye viewed size.
         static member getEye2dViewed world =
             World.getGameEye2dViewed Game.Handle world
-
-        /// Set the current 2d eye viewed size.
-        static member setEye2dViewed value world =
-            World.setGameEye2dViewed value Game.Handle world |> ignore<bool>
 
         /// Get the current 2d eye bounds.
         static member getEye2dBounds world =
@@ -383,7 +379,7 @@ module WorldModuleGame =
                 true
             else false
 
-        static member internal getGameEye3dAspectRatio game world =
+        static member internal getGameEye3dAspectRatio game (world : World) =
             ignore<Game> game
             ignore<World> world
             single Globals.Render.DisplayVirtualResolution.X /

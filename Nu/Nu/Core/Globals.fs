@@ -17,7 +17,7 @@ module Render =
     let mutable DisplayVirtualResolution : Vector2i = match ConfigurationManager.AppSettings["DisplayVirtualResolution"] with null -> Vector2i (640, 360) | value -> scvalue value
 
     /// The global mutable display scalar. This may be changed by the engine at run-time.
-    let mutable DisplayScalar = match ConfigurationManager.AppSettings["DisplayScalar"] with null -> 2 | value -> scvalue value
+    let mutable DisplayScalar = max 1 (match ConfigurationManager.AppSettings["DisplayScalar"] with null -> 2 | value -> scvalue value)
 
     /// The global mutable shadow scalar. This may be changed by the engine at run-time.
     let mutable ShadowScalar = match ConfigurationManager.AppSettings["ShadowScalar"] with null -> 4 | value -> scvalue value

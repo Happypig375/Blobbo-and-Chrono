@@ -256,9 +256,9 @@ type [<StructuralEquality; NoComparison>] Viewport =
         Viewport.makeWindowViewed Globals.Render.DisplayVirtualResolution.V2 windowSize
 
     static member makeWindowViewed (eyeViewed : Vector2) (windowSize : Vector2i) =
-        let ds = Globals.Render.DisplayScalar
-        let boundsSizeX = min (int (ceil eyeViewed.X) * ds) windowSize.X
-        let boundsSizeY = min (int (ceil (eyeViewed.Y * single ds))) windowSize.Y
+        let displayScalar = Globals.Render.DisplayScalar
+        let boundsSizeX = min (int (ceil (eyeViewed.X * single displayScalar))) windowSize.X
+        let boundsSizeY = min (int (ceil (eyeViewed.Y * single displayScalar))) windowSize.Y
         let boundsSize = v2i boundsSizeX boundsSizeY
         let boundsMin = (windowSize - boundsSize) / 2
         let bounds = box2i boundsMin boundsSize
