@@ -2233,6 +2233,8 @@ and [<NoEquality; NoComparison>] World =
         box2 (eyeCenter - eyeViewable * 0.5f) eyeViewable
 
     /// Get the margin of the 2D eye, viewed beyond Eye2dSize on each side, for the current window.
+    /// Add or subtract X to anchor an entity to the right or left edge of the window.
+    /// Add or subtract Y to anchor an entity to the top or bottom edge of the window.
     member this.Eye2dMargin =
         (this.Eye2dViewed - this.Eye2dSize) * 0.5f
 
