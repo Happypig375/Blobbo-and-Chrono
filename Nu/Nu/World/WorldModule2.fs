@@ -1148,12 +1148,12 @@ module WorldModule2 =
                     if previousDisplayScalar >= 1
                     then virtualSizeWithMargin * previousDisplayScalar
                     else virtualSize
-            else windowSize
+                else windowSize
             if windowSize <> windowSize' then
                 World.trySetWindowSize windowSize' world
 
                 // if the size we specified wasn't used (limited by full screen size), go to full screen
-                let windowSize = World.getWindowSize world
+                let windowSize = World.getWindowSizeOtherwiseViewportSize world
                 if windowSize <> windowSize' then
                     World.trySetWindowFullScreen true world
 

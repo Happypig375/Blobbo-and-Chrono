@@ -7,7 +7,6 @@
 namespace Nu.Globals
 open System
 open System.Configuration
-open System.Numerics
 open Prime
 
 /// Global mutable rendering values. Change tracking must be done manually by dependant code.
