@@ -70,13 +70,13 @@ module WorldTests =
             Globals.Render.DisplayVirtualResolution <- previousResolution
             Globals.Render.DisplayScalar <- previousScalar
 
-    let [<Test; NonParallelizable>] ``Display virtual resolution clamps undersized display scalar.`` () =
+    let [<Test; NonParallelizable>] ``Display virtual resolution remains supported without an SDL display.`` () =
         let previousResolution = Globals.Render.DisplayVirtualResolution
         let previousScalar = Globals.Render.DisplayScalar
         try
             let world = makeStubWorld ()
             World.setDisplayVirtualResolution (System.Numerics.Vector2i (2000, 1200)) world
-            Assert.That (Globals.Render.DisplayScalar, Is.GreaterThanOrEqualTo 1)
+            Assert.Equal (System.Numerics.Vector2i (2000, 1200), World.getDisplayVirtualResolution ())
         finally
             Globals.Render.DisplayVirtualResolution <- previousResolution
             Globals.Render.DisplayScalar <- previousScalar

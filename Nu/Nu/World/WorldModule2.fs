@@ -877,6 +877,13 @@ module WorldModule2 =
         static member setDisplayVirtualResolution (resolution : Vector2i) (world : World) =
             if resolution.X <= 0 || resolution.Y <= 0 then
                 invalidArg (nameof resolution) "Display virtual resolution dimensions must be positive."
+            match World.tryGetDisplaySize world with
+            | Some displaySize when resolution.X > displaySize.X || resolution.Y > displaySize.Y ->
+                invalidArg
+                    (nameof resolution)
+                    ("Display virtual resolution must fit within the current desktop resolution of " +
+                     string displaySize.X + "x" + string displaySize.Y + ".")
+            | _ -> ()
             let resolutionPrevious = Globals.Render.DisplayVirtualResolution
             let displayScalarPrevious = Globals.Render.DisplayScalar
             let worldStatePrevious = world.WorldState
@@ -884,7 +891,7 @@ module WorldModule2 =
             let windowFullScreenPrevious = World.tryGetWindowFullScreen world
             try
                 Globals.Render.DisplayVirtualResolution <- resolution
-                World.processWindowResized world
+                World.processWindowResize world
             with exn ->
                 Globals.Render.DisplayVirtualResolution <- resolutionPrevious
                 Globals.Render.DisplayScalar <- displayScalarPrevious
