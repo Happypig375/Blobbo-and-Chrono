@@ -549,9 +549,9 @@ module WorldModule =
                     (max gameState.Eye2dSize.Y (min eyeViewable.Y (single windowSize.Y / single displayScalar)))
             let windowViewport = Viewport.makeWindowViewed eyeViewed windowSize
             let geometryViewport = Viewport.makeGeometry windowViewport.Bounds.Size
-            let viewportInterior = Viewport.makeInterior ()
-            let viewportExterior = Viewport.makeExterior ()
-            let viewportImposter = Viewport.makeImposter ()
+            let viewportInterior = Viewport.makeInteriorViewed geometryViewport.Bounds.Size
+            let viewportExterior = Viewport.makeExteriorViewed geometryViewport.Bounds.Size
+            let viewportImposter = Viewport.makeImposterViewed geometryViewport.Bounds.Size
             let gameState =
                 { gameState with
                     Eye2dViewed = eyeViewed

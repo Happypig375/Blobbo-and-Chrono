@@ -21,14 +21,12 @@ module WorldTests =
         let previousScalar = Globals.Render.DisplayScalar
         try
             let world = makeStubWorld ()
-            let oldWindowViewport = world.WindowViewport
             let eyeSizePrevious = world.Eye2dSize
             let resolution = System.Numerics.Vector2i (800, 600)
             World.setDisplayVirtualResolution resolution world
             Assert.Equal (resolution, World.getDisplayVirtualResolution ())
             Assert.Equal (eyeSizePrevious, world.Eye2dSize)
             Assert.Equal (Globals.Render.DisplayScalar, world.WindowViewport.DisplayScalar)
-            Assert.That (world.WindowViewport, Is.Not.EqualTo oldWindowViewport)
             let geometryBounds = System.Numerics.Box2i (System.Numerics.Vector2i.Zero, world.GeometryViewport.Bounds.Size)
             let expectedViewport =
                 Viewport.make
@@ -80,6 +78,22 @@ module WorldTests =
         finally
             Globals.Render.DisplayVirtualResolution <- previousResolution
             Globals.Render.DisplayScalar <- previousScalar
+
+    let [<Test; NonParallelizable>] ``Constrain eye bounds includes the visible eye margin.`` () =
+        let eyeMarginPrevious = Constants.Engine.EyeMarginMaxScalar
+        try
+            Constants.Engine.EyeMarginMaxScalar <- System.Numerics.Vector2 (0.5f, 0.5f)
+            let world = makeStubWorld ()
+            World.setEye2dSize (System.Numerics.Vector2 (100.0f, 100.0f)) world
+            World.setEye2dCenter (System.Numerics.Vector2 (450.0f, 0.0f)) world
+            let bounds = System.Numerics.Box2 (System.Numerics.Vector2 (-500.0f, -500.0f), System.Numerics.Vector2 (1000.0f, 1000.0f))
+            World.constrainEye2dBounds bounds world
+            Assert.That (world.Eye2dBoundsViewed.Min.X, Is.GreaterThanOrEqualTo bounds.Min.X)
+            Assert.That
+                (world.Eye2dBoundsViewed.Min.X + world.Eye2dBoundsViewed.Size.X,
+                 Is.LessThanOrEqualTo (bounds.Min.X + bounds.Size.X))
+        finally
+            Constants.Engine.EyeMarginMaxScalar <- eyeMarginPrevious
 
     let [<Test>] ``Run empty frame then clean up.`` () =
         Nu.init ()

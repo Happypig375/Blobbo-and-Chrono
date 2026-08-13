@@ -243,8 +243,8 @@ module WorldModuleGame =
             box2 (eyeCenter - eyeSize * 0.5f) eyeSize
 
         /// Constrain the eye to the given 2d bounds.
-        static member constrainEye2dBounds (bounds : Box2) world =
-            let mutable eyeBounds = World.getEye2dBounds world
+        static member constrainEye2dBounds (bounds : Box2) (world : World) =
+            let mutable eyeBounds = world.Eye2dBoundsViewed
             eyeBounds.Min <-
                 v2
                     (if eyeBounds.Min.X < bounds.Min.X then bounds.Min.X
@@ -306,9 +306,10 @@ module WorldModuleGame =
             let gameState = World.getGameState game world
             let previous = gameState.Eye3dCenter
             if previous <> value then
-                let viewportInterior = Viewport.makeInterior ()
-                let viewportExterior = Viewport.makeExterior ()
-                let viewportImposter = Viewport.makeImposter ()
+                let resolution = world.GeometryViewport.Bounds.Size
+                let viewportInterior = Viewport.makeInteriorViewed resolution
+                let viewportExterior = Viewport.makeExteriorViewed resolution
+                let viewportImposter = Viewport.makeImposterViewed resolution
                 let gameState =
                     { gameState with
                         Eye3dCenter = value
@@ -335,9 +336,10 @@ module WorldModuleGame =
             let gameState = World.getGameState game world
             let previous = gameState.Eye3dRotation
             if previous <> value then
-                let viewportInterior = Viewport.makeInterior ()
-                let viewportExterior = Viewport.makeExterior ()
-                let viewportImposter = Viewport.makeImposter ()
+                let resolution = world.GeometryViewport.Bounds.Size
+                let viewportInterior = Viewport.makeInteriorViewed resolution
+                let viewportExterior = Viewport.makeExteriorViewed resolution
+                let viewportImposter = Viewport.makeImposterViewed resolution
                 let gameState =
                     { gameState with
                         Eye3dRotation = value
@@ -365,9 +367,10 @@ module WorldModuleGame =
             let gameState = World.getGameState game world
             let previous = gameState.Eye3dFieldOfView
             if previous <> value then
-                let viewportInterior = Viewport.makeInterior ()
-                let viewportExterior = Viewport.makeExterior ()
-                let viewportImposter = Viewport.makeImposter ()
+                let resolution = world.GeometryViewport.Bounds.Size
+                let viewportInterior = Viewport.makeInteriorViewed resolution
+                let viewportExterior = Viewport.makeExteriorViewed resolution
+                let viewportImposter = Viewport.makeImposterViewed resolution
                 let gameState =
                     { gameState with
                         Eye3dFieldOfView = value
@@ -381,9 +384,7 @@ module WorldModuleGame =
 
         static member internal getGameEye3dAspectRatio game (world : World) =
             ignore<Game> game
-            ignore<World> world
-            single Globals.Render.DisplayVirtualResolution.X /
-            single Globals.Render.DisplayVirtualResolution.Y
+            world.GeometryViewport.AspectRatio
 
         /// Get the current 3d eye field of view.
         static member getEye3dFieldOfView world =
