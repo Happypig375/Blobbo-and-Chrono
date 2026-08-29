@@ -1,5 +1,8 @@
 # Repository-wide instructions for GitHub Copilot
 
+Read `AGENTS.md` at the repository root before making changes. It is the tool-neutral, authoritative
+source for repository workflow, verification, and AI-assisted production policy.
+
 ## Coding Standard
 Read `Standard.md` at the repository root for the complete coding standard.
 Always create F# code files instead of other languages unless you are extending an existing C# project.
@@ -13,11 +16,14 @@ Always create F# code files instead of other languages unless you are extending 
 
 ## Build Commands
 ```bash
+# Build Blobbo and Chrono
+dotnet build "Projects/Blobbo and Chrono/Blobbo and Chrono.fsproj"
+
 # Build game projects and world editor
 dotnet build Nu/Nu.Gaia/Nu.Gaia.fsproj -f net10.0
 
 # Build solution
-dotnet build Nu.sln
+dotnet build Nu.slnx
 ```
 
 ## Architecture
@@ -30,5 +36,5 @@ dotnet build Nu.sln
 - ImSim property operators
   `.=` Set once (static), reapply on code reload
   `|=` Set once (initialize-once), NO reapply on code reload
-  `@=` Set every frame (dynamic binding) 
+  `@=` Set every frame (dynamic binding)
 - Custom skills in `.github/skills/` document engine-specific patterns. Always update this file as well as any skill document if they are out of date, missing important patterns, need clarification, can be simplified, etc.
