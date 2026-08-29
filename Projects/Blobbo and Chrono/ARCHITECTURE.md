@@ -1,5 +1,7 @@
 # Blobbo and Chrono architecture
 
+> **Status:** This document describes the currently implemented browser/audio integration shell. It does not define the product roadmap. Read `PLAN.md` first for the current game design, milestone order, target feature-timeline boundary, and compliance gates. Update this document as milestones replace prototype assumptions.
+
 Nu remains the host for the window, render loop, and lifecycle. `CompositionRoot` is a
 runnable integration shell started and stopped by `Program`; gameplay installs a shared
 instance, pumps browser audio without blocking, and renders latest snapshot status.
