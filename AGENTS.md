@@ -12,6 +12,7 @@ Before changing code or assets:
 - For work under `Projects/Blobbo and Chrono/`, read
   `Projects/Blobbo and Chrono/ARCHITECTURE.md` first and keep it current when architecture changes.
 - Prefer the narrowest relevant build or test first, followed by broader verification when practical.
+- Keep upstream PR diffs minimal. Only add newlines at the end of C-style files due to the tradition of C compilers not adding newlines on header inclusion.
 
 Create F# source files by default. Use another language only when extending an existing project in
 that language, such as `Nu.Math` or `Nu.Spine` in C#.
