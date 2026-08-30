@@ -529,13 +529,11 @@ type [<ReferenceEquality>] Box2dNetPhysicsEngine =
 
     static member private toPhysicsPolygonDiameter value =
         let value = Box2dNetPhysicsEngine.toPhysics value
-        let linearSlop = 0.005f // Box2D default in meters; the package's scaled constant is now internal.
-        max (linearSlop * 2f) value
+        max (Constants.Physics.Collision2dLinearSlop * 2f) value
 
     static member private toPhysicsPolygonRadius value =
         let value = Box2dNetPhysicsEngine.toPhysics value
-        let linearSlop = 0.005f // Box2D default in meters; the package's scaled constant is now internal.
-        max linearSlop value
+        max Constants.Physics.Collision2dLinearSlop value
 
     static member private quatToRot (q : Quaternion) =
 
@@ -1308,38 +1306,9 @@ type [<ReferenceEquality>] Box2dNetPhysicsEngine =
         | (true, body) -> B2Bodies.b2Body_SetLinearVelocity (body, Box2dNetPhysicsEngine.toPhysicsV2 setBodyLinearVelocityMessage.LinearVelocity) // NOTE: wakes body for non-zero velocity.
         | (false, _) -> ()
 
-    static member private setBodyLinearDamping (setBodyLinearDampingMessage : SetBodyLinearDampingMessage) physicsEngine =
-        match physicsEngine.Bodies.TryGetValue setBodyLinearDampingMessage.BodyId with
-        | (true, body) -> B2Bodies.b2Body_SetLinearDamping (body, setBodyLinearDampingMessage.LinearDamping)
-        | (false, _) -> ()
-
     static member private setBodyAngularVelocity (setBodyAngularVelocityMessage : SetBodyAngularVelocityMessage) physicsEngine =
         match physicsEngine.Bodies.TryGetValue setBodyAngularVelocityMessage.BodyId with
         | (true, body) -> B2Bodies.b2Body_SetAngularVelocity (body, setBodyAngularVelocityMessage.AngularVelocity.Z) // NOTE: wakes body for non-zero velocity.
-        | (false, _) -> ()
-
-    static member private setBodyAngularDamping (setBodyAngularDampingMessage : SetBodyAngularDampingMessage) physicsEngine =
-        match physicsEngine.Bodies.TryGetValue setBodyAngularDampingMessage.BodyId with
-        | (true, body) -> B2Bodies.b2Body_SetAngularDamping (body, setBodyAngularDampingMessage.AngularDamping)
-        | (false, _) -> ()
-
-    static member private setBodyShape (setBodyShapeMessage : SetBodyShapeMessage) physicsEngine =
-        match physicsEngine.Bodies.TryGetValue setBodyShapeMessage.BodyId with
-        | (true, body) ->
-            match setBodyShapeMessage.BodyShape with
-            | SphereShape sphereShape ->
-                let shapeCount = B2Bodies.b2Body_GetShapeCount body
-                if shapeCount > 0 then
-                    let shapes = Array.zeroCreate shapeCount
-                    B2Bodies.b2Body_GetShapes (body, shapes.AsSpan (), shapeCount) |> ignore<int>
-                    let shape = shapes[0]
-                    let mutable circle = B2Shapes.b2Shape_GetCircle shape
-                    let transform = Option.defaultValue Affine.Identity sphereShape.TransformOpt
-                    circle.center <- Box2dNetPhysicsEngine.toPhysicsV2 transform.Translation
-                    circle.radius <- Box2dNetPhysicsEngine.toPhysics (sphereShape.Radius * transform.Scale.X)
-                    B2Shapes.b2Shape_SetCircle (shape, &circle)
-                    B2Bodies.b2Body_SetAwake (body, true)
-            | _ -> ()
         | (false, _) -> ()
 
     static member private setBodyJointMotorEnabled (setBodyJointMotorEnabledMessage : SetBodyJointMotorEnabledMessage) physicsEngine =
@@ -1374,16 +1343,6 @@ type [<ReferenceEquality>] Box2dNetPhysicsEngine =
                 B2RevoluteJoints.b2RevoluteJoint_SetTargetAngle (joint, setBodyJointTargetAngleMessage.TargetAngle)
             | _ -> ()
             B2Joints.b2Joint_WakeBodies joint
-        | (false, _) -> ()
-
-    static member private setBodyJointDistance (setBodyJointDistanceMessage : SetBodyJointDistanceMessage) physicsEngine =
-        match physicsEngine.Joints.TryGetValue setBodyJointDistanceMessage.BodyJointId with
-        | (true, joint) ->
-            match B2Joints.b2Joint_GetType joint with
-            | B2JointType.b2_distanceJoint ->
-                B2DistanceJoints.b2DistanceJoint_SetLength (joint, Box2dNetPhysicsEngine.toPhysics setBodyJointDistanceMessage.Distance)
-                B2Joints.b2Joint_WakeBodies joint
-            | _ -> ()
         | (false, _) -> ()
 
     static member private applyBodyLinearImpulse (applyBodyLinearImpulseMessage : ApplyBodyLinearImpulseMessage) physicsEngine =
@@ -1601,10 +1560,7 @@ type [<ReferenceEquality>] Box2dNetPhysicsEngine =
         | SetBodyCenterMessage setBodyCenterMessage -> Box2dNetPhysicsEngine.setBodyCenter setBodyCenterMessage physicsEngine
         | SetBodyRotationMessage setBodyRotationMessage -> Box2dNetPhysicsEngine.setBodyRotation setBodyRotationMessage physicsEngine
         | SetBodyLinearVelocityMessage setBodyLinearVelocityMessage -> Box2dNetPhysicsEngine.setBodyLinearVelocity setBodyLinearVelocityMessage physicsEngine
-        | SetBodyLinearDampingMessage setBodyLinearDampingMessage -> Box2dNetPhysicsEngine.setBodyLinearDamping setBodyLinearDampingMessage physicsEngine
         | SetBodyAngularVelocityMessage setBodyAngularVelocityMessage -> Box2dNetPhysicsEngine.setBodyAngularVelocity setBodyAngularVelocityMessage physicsEngine
-        | SetBodyAngularDampingMessage setBodyAngularDampingMessage -> Box2dNetPhysicsEngine.setBodyAngularDamping setBodyAngularDampingMessage physicsEngine
-        | SetBodyShapeMessage setBodyShapeMessage -> Box2dNetPhysicsEngine.setBodyShape setBodyShapeMessage physicsEngine
         | SetBodyVehicleForwardInputMessage _ -> () // no vehicle controller support
         | SetBodyVehicleRightInputMessage _ -> () // no vehicle controller support
         | SetBodyVehicleBrakeInputMessage _ -> () // no vehicle controller support
@@ -1612,7 +1568,6 @@ type [<ReferenceEquality>] Box2dNetPhysicsEngine =
         | SetBodyJointMotorEnabledMessage setBodyJointMotorEnabledMessage -> Box2dNetPhysicsEngine.setBodyJointMotorEnabled setBodyJointMotorEnabledMessage physicsEngine
         | SetBodyJointMotorSpeedMessage setBodyJointMotorSpeedMessage -> Box2dNetPhysicsEngine.setBodyJointMotorSpeed setBodyJointMotorSpeedMessage physicsEngine
         | SetBodyJointTargetAngleMessage setBodyJointTargetAngleMessage -> Box2dNetPhysicsEngine.setBodyJointTargetAngle setBodyJointTargetAngleMessage physicsEngine
-        | SetBodyJointDistanceMessage setBodyJointDistanceMessage -> Box2dNetPhysicsEngine.setBodyJointDistance setBodyJointDistanceMessage physicsEngine
         | ApplyBodyLinearImpulseMessage applyBodyLinearImpulseMessage -> Box2dNetPhysicsEngine.applyBodyLinearImpulse applyBodyLinearImpulseMessage physicsEngine
         | ApplyBodyAngularImpulseMessage applyBodyAngularImpulseMessage -> Box2dNetPhysicsEngine.applyBodyAngularImpulse applyBodyAngularImpulseMessage physicsEngine
         | ApplyBodyForceMessage applyBodyForceMessage -> Box2dNetPhysicsEngine.applyBodyForce applyBodyForceMessage physicsEngine
@@ -2213,6 +2168,7 @@ type B2WorldIdDebuggerDisplay (impl) =
     member this.UserData with get () = B2Worlds.b2World_GetUserData impl and set value = B2Worlds.b2World_SetUserData (impl, value)
 
 type B2BodyIdDebuggerDisplay (impl) =
+    member this.AABB = B2Bodies.b2Body_ComputeAABB impl
     member this.AngularDamping with get () = B2Bodies.b2Body_GetAngularDamping impl and set value = B2Bodies.b2Body_SetAngularDamping (impl, value)
     member this.AngularVelocity with get () = B2Bodies.b2Body_GetAngularVelocity impl and set value = B2Bodies.b2Body_SetAngularVelocity (impl, value)
     member this.ContactCapacity = B2Bodies.b2Body_GetContactCapacity impl
@@ -2224,11 +2180,6 @@ type B2BodyIdDebuggerDisplay (impl) =
     member this.IsAwake with get () = B2Bodies.b2Body_IsAwake impl and set value = B2Bodies.b2Body_SetAwake (impl, value)
     member this.IsBullet with get () = B2Bodies.b2Body_IsBullet impl and set value = B2Bodies.b2Body_SetBullet (impl, value)
     member this.IsEnabled with get () = B2Bodies.b2Body_IsEnabled impl and set value = if value then B2Bodies.b2Body_Enable impl else B2Bodies.b2Body_Disable impl
-    member this.IsFixedRotation
-        with get () = (B2Bodies.b2Body_GetMotionLocks impl).angularZ
-        and set value =
-            let motionLocks = B2Bodies.b2Body_GetMotionLocks impl
-            B2Bodies.b2Body_SetMotionLocks (impl, B2MotionLocks (motionLocks.linearX, motionLocks.linearY, value))
     member this.IsSleepEnabled with get () = B2Bodies.b2Body_IsSleepEnabled impl and set value = B2Bodies.b2Body_EnableSleep (impl, value)
     member this.IsValid = B2Worlds.b2Body_IsValid impl
     member this.Joints =
@@ -2252,6 +2203,7 @@ type B2BodyIdDebuggerDisplay (impl) =
             massData.mass <- value
             B2Bodies.b2Body_SetMassData (impl, massData)
     member this.MassData with get () = B2Bodies.b2Body_GetMassData impl and set value = B2Bodies.b2Body_SetMassData (impl, value)
+    member this.MotionLocks with get () = B2Bodies.b2Body_GetMotionLocks impl and set value = B2Bodies.b2Body_SetMotionLocks (impl, value)
     member this.Name with get () = B2Bodies.b2Body_GetName impl and set value = B2Bodies.b2Body_SetName (impl, value)
     member this.Position with get () = B2Bodies.b2Body_GetPosition impl and set value = B2Bodies.b2Body_SetTransform (impl, value, B2Bodies.b2Body_GetRotation impl)
     member this.Rotation with get () = B2Bodies.b2Body_GetRotation impl and set value = B2Bodies.b2Body_SetTransform (impl, B2Bodies.b2Body_GetPosition impl, value)
@@ -2306,15 +2258,16 @@ type B2ShapeIdDebuggerDisplay (impl) =
         with get () = if B2Shapes.b2Shape_GetType impl = B2ShapeType.b2_segmentShape then B2Shapes.b2Shape_GetSegment impl else failwith "Not a segment"
         and set value = let mutable value = value in B2Shapes.b2Shape_SetSegment (impl, &value)
     member this.SensorCapacity = B2Shapes.b2Shape_GetSensorCapacity impl
-    member this.SensorOverlaps =
+    member this.SensorData =
         let capacity = B2Shapes.b2Shape_GetSensorCapacity impl
-        let overlaps = Array.zeroCreate capacity
-        overlaps[0 .. B2Shapes.b2Shape_GetSensorData (impl, overlaps.AsSpan (), capacity) - 1]
+        let sensorData = Array.zeroCreate capacity
+        sensorData[0 .. B2Shapes.b2Shape_GetSensorData (impl, sensorData.AsSpan (), capacity) - 1]
     member this.SurfaceMaterial
         with get () = B2Shapes.b2Shape_GetSurfaceMaterial impl
         and set (value : B2SurfaceMaterial) = let mutable value = value in B2Shapes.b2Shape_SetSurfaceMaterial (impl, &value)
     member this.Type = B2Shapes.b2Shape_GetType impl
     member this.UserData with get () = B2Shapes.b2Shape_GetUserData impl and set value = B2Shapes.b2Shape_SetUserData (impl, value)
+    member this.UserMaterial with get () = B2Shapes.b2Shape_GetUserMaterial impl and set value = B2Shapes.b2Shape_SetUserMaterial (impl, value)
     member this.World = B2Shapes.b2Shape_GetWorld impl
 
 type B2ChainIdDebuggerDisplay (impl) =
@@ -2339,6 +2292,8 @@ type B2JointIdDebuggerDisplay (impl) =
     member this.ConstraintForce = B2Joints.b2Joint_GetConstraintForce impl
     member this.ConstraintTorque = B2Joints.b2Joint_GetConstraintTorque impl
     member this.ConstraintTuning with get () = B2Joints.b2Joint_GetConstraintTuning impl and set (hertz, dampingRatio) = B2Joints.b2Joint_SetConstraintTuning (impl, hertz, dampingRatio)
+    member this.ForceThreshold with get () = B2Joints.b2Joint_GetForceThreshold impl and set value = B2Joints.b2Joint_SetForceThreshold (impl, value)
+    member this.IsValid = B2Worlds.b2Joint_IsValid impl
     member this.LinearSeparation = B2Joints.b2Joint_GetLinearSeparation impl
     member this.LocalFrameA
         with get () = B2Joints.b2Joint_GetLocalFrameA impl
@@ -2346,6 +2301,7 @@ type B2JointIdDebuggerDisplay (impl) =
     member this.LocalFrameB
         with get () = B2Joints.b2Joint_GetLocalFrameB impl
         and set (value : B2Transform) = let mutable value = value in B2Joints.b2Joint_SetLocalFrameB (impl, &value)
+    member this.TorqueThreshold with get () = B2Joints.b2Joint_GetTorqueThreshold impl and set value = B2Joints.b2Joint_SetTorqueThreshold (impl, value)
     member this.Type = B2Joints.b2Joint_GetType impl
     member this.UserData with get () = B2Joints.b2Joint_GetUserData impl and set value = B2Joints.b2Joint_SetUserData (impl, value)
     member this.World = B2Joints.b2Joint_GetWorld impl
