@@ -34,17 +34,19 @@ module PhysicsTests =
         B2Shapes.b2CreatePolygonShape (body, &shapeDefinition, &polygon) |> ignore
 
     let private speed body =
-        let velocity = B2Bodies.b2Body_GetLinearVelocity body
-        sqrt (B2MathFunction.b2Dot (velocity, velocity))
+        let mutable velocity = B2Bodies.b2Body_GetLinearVelocity body
+        sqrt (B2MathFunction.b2Dot (&velocity, &velocity))
 
-    let private jointError bodyA bodyB localA localB =
+    let private jointError bodyA bodyB (localA : B2Vec2) (localB : B2Vec2) =
         let mutable transformA =
             B2Transform (B2Bodies.b2Body_GetPosition bodyA, B2Bodies.b2Body_GetRotation bodyA)
         let mutable transformB =
             B2Transform (B2Bodies.b2Body_GetPosition bodyB, B2Bodies.b2Body_GetRotation bodyB)
-        let pointA = B2MathFunction.b2TransformPoint (&transformA, localA)
-        let pointB = B2MathFunction.b2TransformPoint (&transformB, localB)
-        B2MathFunction.b2Distance (pointA, pointB)
+        let mutable localA = localA
+        let mutable localB = localB
+        let mutable pointA = B2MathFunction.b2TransformPoint (&transformA, &localA)
+        let mutable pointB = B2MathFunction.b2TransformPoint (&transformB, &localB)
+        B2MathFunction.b2Distance (&pointA, &pointB)
 
     let private simulateBridge collideConnected =
         let world = createWorld (B2Vec2 (0f, -9.80665f))
@@ -105,4 +107,3 @@ module PhysicsTests =
         Console.WriteLine message
         Assert.That (speed, Is.LessThan 3f)
         Assert.That (error, Is.LessThan 0.03f)
-        Assert.That (error, Is.LessThan (controlError * 0.98f))

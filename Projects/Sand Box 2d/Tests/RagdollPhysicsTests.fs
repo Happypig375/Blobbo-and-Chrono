@@ -44,11 +44,11 @@ module RagdollPhysicsTests =
         B2Shapes.b2CreateCapsuleShape (body, &shapeDefinition, &capsule) |> ignore
 
     let private kineticEnergy body =
-        let velocity = B2Bodies.b2Body_GetLinearVelocity body
+        let mutable velocity = B2Bodies.b2Body_GetLinearVelocity body
         let angularVelocity = B2Bodies.b2Body_GetAngularVelocity body
         let mass = B2Bodies.b2Body_GetMass body
         let inertia = B2Bodies.b2Body_GetRotationalInertia body
-        0.5f * mass * B2MathFunction.b2Dot (velocity, velocity) +
+        0.5f * mass * B2MathFunction.b2Dot (&velocity, &velocity) +
         0.5f * inertia * angularVelocity * angularVelocity
 
     let private runFixture useProductionJoint =
@@ -67,8 +67,8 @@ module RagdollPhysicsTests =
             let anchor =
                 Sandbox2dGeometry.limbJointAnchor spawnCenter armCenter armIncrement
                 |> toPhysics
-            let localA = B2Bodies.b2Body_GetLocalPoint (torso, anchor)
-            let localB = B2Bodies.b2Body_GetLocalPoint (arm, anchor)
+            let mutable localA = B2Bodies.b2Body_GetLocalPoint (torso, anchor)
+            let mutable localB = B2Bodies.b2Body_GetLocalPoint (arm, anchor)
             if useProductionJoint then
                 let mutable jointDefinition = B2Joints.b2DefaultRevoluteJointDef ()
                 jointDefinition.``base``.bodyIdA <- torso
@@ -100,20 +100,20 @@ module RagdollPhysicsTests =
                     B2Transform (B2Bodies.b2Body_GetPosition torso, B2Bodies.b2Body_GetRotation torso)
                 let mutable armTransform =
                     B2Transform (B2Bodies.b2Body_GetPosition arm, B2Bodies.b2Body_GetRotation arm)
-                let torsoAnchor =
-                    B2MathFunction.b2TransformPoint (&torsoTransform, localA)
-                let armAnchor =
-                    B2MathFunction.b2TransformPoint (&armTransform, localB)
-                peakAnchorError <- max peakAnchorError (B2MathFunction.b2Distance (torsoAnchor, armAnchor))
+                let mutable torsoAnchor =
+                    B2MathFunction.b2TransformPoint (&torsoTransform, &localA)
+                let mutable armAnchor =
+                    B2MathFunction.b2TransformPoint (&armTransform, &localB)
+                peakAnchorError <- max peakAnchorError (B2MathFunction.b2Distance (&torsoAnchor, &armAnchor))
             let mutable torsoTransform =
                 B2Transform (B2Bodies.b2Body_GetPosition torso, B2Bodies.b2Body_GetRotation torso)
             let mutable armTransform =
                 B2Transform (B2Bodies.b2Body_GetPosition arm, B2Bodies.b2Body_GetRotation arm)
-            let torsoAnchor =
-                B2MathFunction.b2TransformPoint (&torsoTransform, localA)
-            let armAnchor =
-                B2MathFunction.b2TransformPoint (&armTransform, localB)
-            let finalAnchorError = B2MathFunction.b2Distance (torsoAnchor, armAnchor)
+            let mutable torsoAnchor =
+                B2MathFunction.b2TransformPoint (&torsoTransform, &localA)
+            let mutable armAnchor =
+                B2MathFunction.b2TransformPoint (&armTransform, &localB)
+            let finalAnchorError = B2MathFunction.b2Distance (&torsoAnchor, &armAnchor)
             Console.WriteLine
                 ($"ragdoll fixture production={useProductionJoint} initialEnergy={initialEnergy} " +
                  $"peakEnergy={peakEnergy} peakAnchorError={peakAnchorError} " +
@@ -142,6 +142,6 @@ module RagdollPhysicsTests =
             ($"ragdoll production peak energy={production.PeakEnergy}; " +
              $"old control peak energy={oldControl.PeakEnergy}")
         Assert.That (production.PeakEnergy, Is.LessThanOrEqualTo (production.InitialEnergy * 1.001f))
-        Assert.That (production.PeakAnchorError, Is.LessThanOrEqualTo B2Constants.B2_LINEAR_SLOP)
+        Assert.That (production.PeakAnchorError, Is.LessThanOrEqualTo 0.005f) // Box2D's default linear slop in meters; the constant is now internal.
         Assert.That (oldControl.PeakEnergy, Is.GreaterThan (oldControl.InitialEnergy * 10f))
         Assert.That (production.PeakEnergy, Is.LessThan (oldControl.PeakEnergy * 0.1f))
