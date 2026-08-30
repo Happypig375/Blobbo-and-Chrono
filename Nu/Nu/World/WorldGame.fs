@@ -22,9 +22,6 @@ module WorldGameModule =
         member this.ModelGeneric<'a> () = lens Constants.Engine.ModelPropertyName this this.GetModelGeneric<'a> this.SetModelGeneric<'a>
         member this.GetSelectedScreenOpt world = World.getGameSelectedScreenOpt this world
         member this.SelectedScreenOpt = lensReadOnly (nameof this.SelectedScreenOpt) this this.GetSelectedScreenOpt
-        member this.GetDesiredScreen world = World.getGameDesiredScreen this world
-        member this.SetDesiredScreen value world = World.setGameDesiredScreen value this world |> ignore<bool>
-        member this.DesiredScreen = lens (nameof this.DesiredScreen) this this.GetDesiredScreen this.SetDesiredScreen
         member this.GetScreenTransitionDestinationOpt world = World.getGameScreenTransitionDestinationOpt this world
         member this.SetScreenTransitionDestinationOpt value world = World.setGameScreenTransitionDestinationOpt value this world |> ignore<bool>
         member this.ScreenTransitionDestinationOpt = lens (nameof this.ScreenTransitionDestinationOpt) this this.GetScreenTransitionDestinationOpt this.SetScreenTransitionDestinationOpt
@@ -57,7 +54,7 @@ module WorldGameModule =
         member this.UpdateEvent = Events.UpdateEvent --> Game.Handle
         member this.PostUpdateEvent = Events.PostUpdateEvent --> Game.Handle
         member this.PostSelectEvent = Events.PostSelectEvent --> Game.Handle
-        member this.TimeUpdateEvent = Events.TimeUpdateEvent --> Game.Handle
+        member this.TimeAdvanceEvent = Events.TimeAdvanceEvent --> Game.Handle
         member this.KeyedValueChangeEvent key = Events.KeyedValueChangeEvent key --> Game.Handle
         member this.MouseMoveEvent = Events.MouseMoveEvent --> Game.Handle
         member this.MouseDragEvent = Events.MouseDragEvent --> Game.Handle
@@ -278,6 +275,8 @@ module WorldGameModule =
             // set the game's state in the world
             let game = Game name
             World.setGameState gameState game world
+            let windowSize = World.getWindowSizeOtherwiseViewportSize world
+            World.synchronizeViewports windowSize world.WindowViewport.DisplayScalar world
 
             // read the game's screens
             World.readScreens gameDescriptor.ScreenDescriptors world |> ignore<Screen list>

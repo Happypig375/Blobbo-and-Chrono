@@ -24,10 +24,11 @@ type SpriteFragStruct =
 [<RequireQualifiedAccess>]
 module SpriteSingleton =
 
+    /// The size of a vertex in the sprite singleton pipeline.
     let VertexSize = sizeof<single> * 2
     
     /// Create a sprite singleton pipeline.
-    let createSpriteSingletonPipeline (context : VulkanContext) =
+    let createSpriteSingletonPipeline resolveTextureFormat (context : VulkanContext) =
 
         // create sprite uniform buffers
         let spriteVertUniform = VulkanBuffer.create Uniform sizeof<SpriteVertStruct> context
@@ -47,7 +48,7 @@ module SpriteSingleton =
                     [|Pipeline.descriptor 0 SampledImage FragmentStage 1|]
                   Pipeline.descriptorSet<Sampler>
                     [|Pipeline.descriptor 0 Sampler FragmentStage 1|]|]
-                [||] [|context.SwapFormat|] None
+                [||] [|resolveTextureFormat|] None
                 [|spriteVertUniform; spriteFragUniform|]
 
         // fin
@@ -96,6 +97,7 @@ module SpriteSingleton =
          texture : Texture,
          sampler : Sampler,
          viewport : Viewport,
+         resolveTexture : Texture,
          spriteVertUniform : VulkanBuffer,
          spriteFragUniform : VulkanBuffer,
          pipeline : Pipeline,
@@ -111,9 +113,7 @@ module SpriteSingleton =
             let minClip = Vector4.Transform(Vector4 (clip.Min.X, clip.Max.Y, 0.0f, 1.0f), viewProjection).V2
             let minNdc = minClip * single viewport.DisplayScalar
             let minScissor = (minNdc + v2One) * 0.5f * viewport.Inner.Size.V2
-            let sizeClip = Vector4.Transform(Vector4 (clip.Size, 0.0f, 1.0f), viewProjection).V2
-            let sizeNdc = sizeClip * single viewport.DisplayScalar
-            let sizeScissor = sizeNdc * 0.5f * viewport.Inner.Size.V2
+            let sizeScissor = clip.Size * single viewport.DisplayScalar
             let offset = v2i viewport.Inner.Min.X (viewport.Outer.Max.Y - viewport.Inner.Max.Y)
             scissor <-
                 VkRect2D
@@ -125,7 +125,7 @@ module SpriteSingleton =
         | ValueNone -> ()
         if Hl.validateRect scissor then
 
-            // only draw if required vkPipeline exists
+            // only draw when required vkPipeline exists
             match Pipeline.tryGetVkPipeline VulkanTransparent true pipeline with
             | Some vkPipeline ->
 
@@ -186,8 +186,9 @@ module SpriteSingleton =
                     Pipeline.writeDescriptorSampler 0 0 sampler vkSet
                     
                 // set up render
-                let mutable renderingInfo = Hl.makeRenderingInfo [|context.SwapchainImageView|] None renderArea None
-                DeviceApi.vkCmdBeginRendering (context.RenderCommandBuffer, &&renderingInfo)
+                Hl.withRenderingInfo [|resolveTexture.ImageView|] None renderArea LoadAttachments $ fun renderingInfo ->
+                    let mutable renderingInfo = renderingInfo
+                    DeviceApi.vkCmdBeginRendering (context.RenderCommandBuffer, &&renderingInfo)
                 DeviceApi.vkCmdSetViewport (context.RenderCommandBuffer, 0u, 1u, &&vkViewport)
                 DeviceApi.vkCmdSetScissor (context.RenderCommandBuffer, 0u, 1u, &&scissor)
                 

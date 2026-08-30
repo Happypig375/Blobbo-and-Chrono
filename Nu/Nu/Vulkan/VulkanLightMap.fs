@@ -12,6 +12,7 @@ open Vortice.Vulkan
 open Prime
 open Nu
 
+/// Represents the environment filter data for a shader.
 [<Struct; StructLayout (LayoutKind.Explicit)>]
 type EnvironmentFilterStruct =
     [<FieldOffset(0)>] val mutable roughness : single
@@ -196,7 +197,7 @@ module LightMap =
         let projectionInverse = projection.Inverted
         let viewProjection = view * projection
 
-        // only draw if required vkPipeline exists
+        // only draw when required vkPipeline exists
         match Pipeline.tryGetVkPipeline VulkanUnblended false pipeline.Pipeline with
         | Some vkPipeline ->
 
@@ -225,8 +226,9 @@ module LightMap =
             let commandBuffer = getCommandBuffer ()
             let mutable renderArea = VkRect2D (0, 0, uint resolution, uint resolution)
             let mutable vkViewport = Hl.makeViewport false renderArea
-            let mutable renderingInfo = Hl.makeRenderingInfo [|colorAttachment|] None renderArea None
-            DeviceApi.vkCmdBeginRendering (commandBuffer, &&renderingInfo)
+            Hl.withRenderingInfo [|colorAttachment|] None renderArea DontCareAttachments $ fun renderingInfo ->
+                let mutable renderingInfo = renderingInfo
+                DeviceApi.vkCmdBeginRendering (commandBuffer, &&renderingInfo)
             DeviceApi.vkCmdSetViewport (commandBuffer, 0u, 1u, &&vkViewport)
             DeviceApi.vkCmdSetScissor (commandBuffer, 0u, 1u, &&renderArea)
 

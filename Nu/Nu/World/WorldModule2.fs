@@ -45,17 +45,14 @@ module internal WorldModuleInternal2 =
 module WorldModule2 =
 
     type World with
-
-        /// Set whether the world state is advancing.
-        static member setAdvancing advancing (world : World) =
-            if world.ContextImSim.Names.Length = 0 then
-                World.defer (World.mapAmbientState (AmbientState.setAdvancing advancing)) Nu.Game.Handle world
-            else
-
-                // HACK: in order to avoid unintentional interaction with the ImSim hack that clears and restores
-                // advancement state ImSim contexts, we schedule the advancement change outside of the normal workflow.
-                let time = if WorldModuleInternal.EndFrameProcessingStarted && world.Advancing then GameTime.epsilon else GameTime.zero
-                World.addTasklet Nu.Game.Handle { ScheduledTime = time; ScheduledOp = World.mapAmbientState (AmbientState.setAdvancing advancing) } world
+    
+        /// Set whether world time is advancing (not halted).
+        static member setTimeAdvancing advancing (world : World) =
+            World.mapAmbientState (AmbientState.setTimeAdvancing advancing) world
+    
+        /// Set whether world time is halted (not advancing).
+        static member setTimeHalted halted (world : World) =
+            World.mapAmbientState (AmbientState.setTimeAdvancing (not halted)) world
 
         /// Select the given screen without transitioning, even if another transition is taking place.
         static member internal selectScreenOpt transitionStateAndScreenOpt world =
@@ -182,9 +179,9 @@ module WorldModule2 =
                         World.setScreenTransitionStatePlus (IdlingState world.GameTime) selectedScreen world
                         World.publishPlus () selectedScreen.IncomingFinishEvent eventTrace selectedScreen false false world
 
-        static member private updateScreenIdling transitionTime (selectedScreen : Screen) (world : World) =
+        static member internal updateScreenIdling transitionTime (selectedScreen : Screen) (world : World) =
             if world.Alive then
-                if world.Accompanied && world.Halted && not world.AdvancementCleared then // special case to play song when halted in editor
+                if world.Accompanied && world.TimeHalted && not world.TimeAdvancementCleared then // special case to play song when time halted in editor
                     match (selectedScreen.GetIncoming world).SongOpt with
                     | Some playSong ->
                         match World.getSongOpt world with
@@ -197,41 +194,11 @@ module WorldModule2 =
                     // special case it here to pay attention to desired screen when it is a non-slide screen (IE, not
                     // executing a series of slides). Additionally, to keep this hack's implementation self-contained,
                     // we use a special case to quick cut when halted in the editor.
-                    match World.getDesiredScreen world with
-                    | Desire desiredScreen when desiredScreen <> selectedScreen && (desiredScreen.GetSlideOpt world).IsNone ->
-                        World.defer (fun world ->
-                            let transitionTime = world.GameTime
-                            World.selectScreen (IdlingState transitionTime) desiredScreen world
-                            World.updateScreenIdling transitionTime desiredScreen world)
-                            desiredScreen
-                            world
-                    | DesireNone ->
-                        World.selectScreenOpt None world
-                    | _ ->
-                        if World.updateScreenIdling3 transitionTime slide selectedScreen world then
-                            let transitionTime = world.GameTime
-                            World.setScreenTransitionStatePlus (OutgoingState transitionTime) selectedScreen world
-                            World.updateScreenOutgoing transitionTime selectedScreen world
-                | None ->
-                    match World.getDesiredScreen world with
-                    | Desire desiredScreen ->
-                        if desiredScreen <> selectedScreen then
-                            if world.Accompanied && world.Halted && not world.AdvancementCleared then // special case to quick cut when halted in the editor.
-                                World.defer (fun world ->
-                                    let transitionTime = world.GameTime
-                                    World.selectScreen (IdlingState transitionTime) desiredScreen world
-                                    World.updateScreenIdling transitionTime desiredScreen world)
-                                    desiredScreen
-                                    world
-                            else
-                                let transitionTime = world.GameTime
-                                World.setScreenTransitionStatePlus (OutgoingState transitionTime) selectedScreen world
-                                World.updateScreenOutgoing transitionTime selectedScreen world
-                    | DesireNone ->
+                    if World.updateScreenIdling3 transitionTime slide selectedScreen world then
                         let transitionTime = world.GameTime
                         World.setScreenTransitionStatePlus (OutgoingState transitionTime) selectedScreen world
                         World.updateScreenOutgoing transitionTime selectedScreen world
-                    | DesireIgnore -> ()
+                | None -> ()
 
         static member private updateScreenOutgoing transitionTime (selectedScreen : Screen) (world : World) =
             if transitionTime = world.GameTime then
@@ -245,11 +212,7 @@ module WorldModule2 =
                         | None ->
                             match World.getScreenTransitionDestinationOpt world with
                             | Some destination -> Some destination
-                            | None ->
-                                match World.getDesiredScreen world with
-                                | Desire destination -> Some destination
-                                | DesireNone -> None
-                                | DesireIgnore -> None
+                            | None -> None
                     match destinationOpt with
                     | Some destination ->
                         match (incoming.SongOpt, (destination.GetIncoming world).SongOpt) with
@@ -278,26 +241,14 @@ module WorldModule2 =
                             | None ->
                                 match World.getScreenTransitionDestinationOpt world with
                                 | Some destination -> Some destination
-                                | None ->
-                                    match World.getDesiredScreen world with
-                                    | Desire destination -> Some destination
-                                    | DesireNone -> None
-                                    | DesireIgnore -> None
+                                | None -> None
                         match destinationOpt with
                         | Some destination ->
                             if destination <> selectedScreen then
                                 let transitionTime = world.GameTime
                                 World.selectScreen (IncomingState transitionTime) destination world
                                 World.updateScreenIncoming transitionTime destination world
-                        | None ->
-                            World.selectScreenOpt None world
-                            match World.getDesiredScreen world with // handle the possibility that screen deselect event changed destination
-                            | Desire destination ->
-                                let transitionTime = world.GameTime
-                                World.selectScreen (IncomingState transitionTime) destination world
-                                World.updateScreenIncoming transitionTime destination world
-                            | DesireNone -> ()
-                            | DesireIgnore -> ()
+                        | None -> World.selectScreenOpt None world
 
         static member private updateScreenTransition world =
             match World.getSelectedScreenOpt world with
@@ -306,11 +257,7 @@ module WorldModule2 =
                 | IncomingState transitionTime -> World.updateScreenIncoming transitionTime selectedScreen world
                 | IdlingState transitionTime -> World.updateScreenIdling transitionTime selectedScreen world
                 | OutgoingState transitionTime -> World.updateScreenOutgoing transitionTime selectedScreen world
-            | None ->
-                match World.getDesiredScreen world with
-                | Desire desiredScreen -> World.transitionScreen desiredScreen world
-                | DesireNone -> ()
-                | DesireIgnore -> ()
+            | None -> ()
 
         static member private updateScreenRequestedSong world =
             match World.getSelectedScreenOpt world with
@@ -364,7 +311,7 @@ module WorldModule2 =
         static member transitionScreen destination world =
             World.tryTransitionScreen destination world |> ignore<bool>
 
-        static member internal beginScreenPlus10<'d, 'r when 'd :> ScreenDispatcher> (zero : 'r) init transitionScreen setScreenSlide name select behavior groupFilePathOpt (args : Screen ArgImSim seq) (world : World) : SelectionEventData FQueue * 'r =
+        static member internal beginScreenPlus10<'d, 'r when 'd :> ScreenDispatcher> (zero : 'r) init name select behavior groupFilePathOpt (args : Screen ArgImSim seq) (world : World) : SelectionEventData FQueue * 'r =
             Address.assertIdentifierName name
             if world.ContextImSim.Names.Length <> 1 then raise (InvalidOperationException "ImSim screen declared outside of valid ImSim context (must be called in a Game context).")
             let screenAddress = Address.makeFromArray (Array.add name world.ContextImSim.Names)
@@ -416,24 +363,24 @@ module WorldModule2 =
                     | DynamicArg -> true) && screen.GetExists world then
                     screen.TrySetProperty arg.ArgLens.Name { PropertyType = arg.ArgLens.Type; PropertyValue = arg.ArgValue } world |> ignore
             if reinitializing && screen.GetExists world then
-                World.applyScreenBehavior setScreenSlide behavior screen world
+                World.applyScreenBehavior World.setScreenSlide behavior screen world
             if screenCreation && screen.GetExists world then
                 WorldModuleInternal.tryProcessScreen true screen world
             if screen.GetExists world && select && not (Option.contains screen (World.getSelectedScreenOpt world)) then
-                if world.Accompanied && world.Halted && not world.AdvancementCleared then // special case to quick cut when halted in the editor.
+                if world.Accompanied && world.TimeHalted && not world.TimeAdvancementCleared then // special case to quick cut when time halted in the editor
                     World.defer (fun world ->
                         let transitionTime = world.GameTime
                         World.selectScreen (IdlingState transitionTime) screen world
                         World.updateScreenIdling transitionTime screen world)
                         screen
                         world
-                else transitionScreen screen world
+                else World.transitionScreen screen world
             let (screenResult, userResult) = (World.getSimulantJournal screen.ScreenAddress world).Result :?> SelectionEventData FQueue * 'r
             World.mapSimulantJournal (fun simulantJournal -> { simulantJournal with Result = (FQueue.empty<SelectionEventData>, zero) }) screen.ScreenAddress world
             (screenResult, userResult)
 
-        static member inline private beginScreen8<'d when 'd :> ScreenDispatcher> transitionScreen setScreenSlide name select behavior groupFilePathOpt args world : SelectionEventData FQueue =
-            World.beginScreenPlus10<'d, unit> () (fun _ _ _ -> ()) transitionScreen setScreenSlide name select behavior groupFilePathOpt args world |> fst
+        static member inline private beginScreen8<'d when 'd :> ScreenDispatcher> name select behavior groupFilePathOpt args world : SelectionEventData FQueue =
+            World.beginScreenPlus10<'d, unit> () (fun _ _ _ -> ()) name select behavior groupFilePathOpt args world |> fst
 
         /// End the ImSim declaration of a screen.
         static member endScreen (world : World) =
@@ -444,48 +391,48 @@ module WorldModule2 =
         /// Begin the ImSim declaration of a screen with the given arguments using a child group read from the given file path.
         /// Note that changing the screen behavior and file path over time has no effect as only the first moment is used.
         static member beginScreenWithGroupFromFilePlus<'d, 'r when 'd :> ScreenDispatcher> (zero : 'r) init name select behavior groupFilePath args world =
-            World.beginScreenPlus10<'d, 'r> zero init World.transitionScreen World.setScreenSlide name select behavior (Some groupFilePath) args world
+            World.beginScreenPlus10<'d, 'r> zero init name select behavior (Some groupFilePath) args world
 
         /// Begin the ImSim declaration of a screen with the given arguments using a child group read from the given file path.
         /// Note that changing the screen behavior and file path over time has no effect as only the first moment is used.
         static member beginScreenWithGroupFromFile<'d when 'd :> ScreenDispatcher> name select behavior groupFilePath args world =
-            World.beginScreen8<'d> World.transitionScreen World.setScreenSlide name select behavior (Some groupFilePath) args world
+            World.beginScreen8<'d> name select behavior (Some groupFilePath) args world
 
         /// Begin the ImSim declaration of a screen with the given arguments.
         /// Note that changing the screen behavior over time has no effect as only the first moment is used.
         static member beginScreenPlus<'d, 'r when 'd :> ScreenDispatcher> zero init name select behavior args world =
-            World.beginScreenPlus10<'d, 'r> zero init World.transitionScreen World.setScreenSlide name select behavior None args world
+            World.beginScreenPlus10<'d, 'r> zero init name select behavior None args world
 
         /// Begin the ImSim declaration of a screen with the given arguments.
         /// Note that changing the screen behavior over time has no effect as only the first moment is used.
         static member beginScreen<'d when 'd :> ScreenDispatcher> name select behavior args world =
-            World.beginScreen8<'d> World.transitionScreen World.setScreenSlide name select behavior None args world
+            World.beginScreen8<'d> name select behavior None args world
 
         /// ImSim declare a screen with the given arguments using a child group read from the given file path.
         /// Note that changing the screen behavior and file path over time has no effect as only the first moment is used.
         static member doScreenWithGroupFromFilePlus<'d, 'r when 'd :> ScreenDispatcher> (zero : 'r) init name select behavior groupFilePath args world =
-            let (result, userResult) = World.beginScreenPlus10<'d, 'r> zero init World.transitionScreen World.setScreenSlide name select behavior (Some groupFilePath) args world
+            let (result, userResult) = World.beginScreenPlus10<'d, 'r> zero init name select behavior (Some groupFilePath) args world
             World.endScreen world
             (result, userResult)
 
         /// ImSim declare a screen with the given arguments using a child group read from the given file path.
         /// Note that changing the screen behavior and file path over time has no effect as only the first moment is used.
         static member doScreenWithGroupFromFile<'d when 'd :> ScreenDispatcher> name select behavior groupFilePath args world =
-            let result = World.beginScreen8<'d> World.transitionScreen World.setScreenSlide name select behavior (Some groupFilePath) args world
+            let result = World.beginScreen8<'d> name select behavior (Some groupFilePath) args world
             World.endScreen world
             result
 
         /// ImSim declare a screen with the given arguments.
         /// Note that changing the screen behavior over time has no effect as only the first moment is used.
         static member doScreenPlus<'d, 'r when 'd :> ScreenDispatcher> zero init name select behavior args world =
-            let (result, userResult) = World.beginScreenPlus10<'d, 'r> zero init World.transitionScreen World.setScreenSlide name select behavior None args world
+            let (result, userResult) = World.beginScreenPlus10<'d, 'r> zero init name select behavior None args world
             World.endScreen world
             (result, userResult)
 
         /// ImSim declare a screen with the given arguments.
         /// Note that changing the screen behavior over time has no effect as only the first moment is used.
         static member doScreen<'d when 'd :> ScreenDispatcher> name select behavior args world =
-            let result = World.beginScreen8<'d> World.transitionScreen World.setScreenSlide name select behavior None args world
+            let result = World.beginScreen8<'d> name select behavior None args world
             World.endScreen world
             result
 
@@ -507,7 +454,7 @@ module WorldModule2 =
             World.createEntity<StaticSpriteDispatcher> None DefaultOverlay (Some slideSprite.Surnames) slideGroup world |> ignore<Entity>
             World.setEntityProtection ManualProtection slideSprite world |> ignore<bool>
             slideSprite.SetPersistent false world
-            slideSprite.SetSize world.Eye2dSize.V3 world
+            slideSprite.SetSize world.Eye2dViewable.V3 world
             slideSprite.SetAbsolute true world
             match slideDescriptor.SlideImageOpt with
             | Some slideImage ->
@@ -903,11 +850,43 @@ module WorldModule2 =
             for entity in entities do
                 World.unregisterEntityPhysics entity world
 
-        static member private synchronizeViewports world =
-            let windowSize = World.getWindowSizeOtherwiseViewportSize world
-            let windowViewport = Viewport.makeWindow1 windowSize
-            World.setWindowViewport windowViewport world
-            World.setGeometryViewport (Viewport.makeGeometry windowViewport.Bounds.Size) world
+        /// Get the display's virtual resolution used for rendering and viewport sizing.
+        static member getDisplayVirtualResolution () =
+            Globals.Render.DisplayVirtualResolution
+
+        /// Set the display's virtual resolution and synchronously resynchronize window state and viewports.
+        static member setDisplayVirtualResolution (resolution : Vector2i) (world : World) =
+            if resolution.X <= 0 || resolution.Y <= 0 then
+                invalidArg (nameof resolution) "Display virtual resolution dimensions must be positive."
+            match World.tryGetDisplaySize world with
+            | Some displaySize when resolution.X > displaySize.X || resolution.Y > displaySize.Y ->
+                invalidArg
+                    (nameof resolution)
+                    ("Display virtual resolution must fit within the current desktop resolution of " +
+                     string displaySize.X + "x" + string displaySize.Y + ".")
+            | _ -> ()
+            let resolutionPrevious = Globals.Render.DisplayVirtualResolution
+            let displayScalarPrevious = Globals.Render.DisplayScalar
+            let worldStatePrevious = world.WorldState
+            let windowSizePrevious = World.tryGetWindowSize world
+            let windowFullScreenPrevious = World.tryGetWindowFullScreen world
+            try
+                Globals.Render.DisplayVirtualResolution <- resolution
+                World.processWindowResize world
+            with exn ->
+                Globals.Render.DisplayVirtualResolution <- resolutionPrevious
+                Globals.Render.DisplayScalar <- displayScalarPrevious
+                world.WorldState <- worldStatePrevious
+                try
+                    match windowFullScreenPrevious with
+                    | Some fullScreen -> World.trySetWindowFullScreen fullScreen world |> ignore
+                    | None -> ()
+                    if windowFullScreenPrevious <> Some true then
+                        match windowSizePrevious with
+                        | Some windowSize -> World.trySetWindowSize windowSize world |> ignore
+                        | None -> ()
+                with _ -> ()
+                reraise ()
 
         /// Try to reload the overlayer currently in use by the world.
         static member tryReloadOverlayer inputDirectory outputDirectory world =
@@ -1002,7 +981,8 @@ module WorldModule2 =
             World.switchAmbientState world
 
             // synchronize viewports in case they get out of sync, such as during an undo operation
-            World.synchronizeViewports world
+            let windowSize = World.getWindowSizeOtherwiseViewportSize world
+            World.synchronizeViewports windowSize world.WindowViewport.DisplayScalar world
 
             // rebuild spatial trees
             Octree.clear world.Octree
@@ -1019,7 +999,7 @@ module WorldModule2 =
             | None -> ()
 
         static member private processCoroutines (world : World) =
-            if world.Advancing then
+            if world.TimeAdvancing then
                 let coroutines = World.getCoroutines world
                 let coroutinesRemaining =
                     OMap.fold (fun coroutines id (scheduledTime, pred, coroutine) ->
@@ -1127,40 +1107,81 @@ module WorldModule2 =
                 elif keyboardKey >= KeyboardKey.F1 && keyboardKey <= KeyboardKey.F12 then ImGuiKey.F1 + (keyboardKey - KeyboardKey.F1 |> LanguagePrimitives.EnumToValue |> LanguagePrimitives.EnumOfValue) |> List.singleton
                 else []
 
-        static member internal processWindowResized (world : World) =
+        static member private processWindowResizePositive (windowSize : Vector2i) (world : World) =
 
-            // ensure window size is a factor of display virtual resolution, going to full screen otherwise
+            // validate and normalize display configuration
+            let virtualSize = Globals.Render.DisplayVirtualResolution
+            if virtualSize.X <= 0 || virtualSize.Y <= 0 then
+                invalidArg (nameof Globals.Render.DisplayVirtualResolution) "Display virtual resolution must be positive."
+            let eyeMarginMaxScalar = Vector2.Max (v2Zero, Constants.Engine.EyeMarginMaxScalar)
+            let virtualSizeWithMargin =
+                virtualSize.V2 * (v2Dup 1.0f + 2.0f * eyeMarginMaxScalar)
+            let oldDisplayScalar = max 1 world.WindowViewport.DisplayScalar
+            let minSize scalar = virtualSize * scalar
+            let maxSize scalar =
+                v2i
+                    (int (ceil (virtualSizeWithMargin.X * single scalar)))
+                    (int (ceil (virtualSizeWithMargin.Y * single scalar)))
+            let clampSize (minimum : Vector2i) (maximum : Vector2i) (size : Vector2i) =
+                v2i
+                    (max minimum.X (min maximum.X size.X))
+                    (max minimum.Y (min maximum.Y size.Y))
+            let selectDisplayScalarAndSize (windowSize : Vector2i) =
+                let oldMinimum = minSize oldDisplayScalar
+                let oldMaximum = maxSize oldDisplayScalar
+                let below = windowSize.X < oldMinimum.X || windowSize.Y < oldMinimum.Y
+                let above = windowSize.X > oldMaximum.X || windowSize.Y > oldMaximum.Y
+                let maximumRatio =
+                    max
+                        (int (ceil (single windowSize.X / single virtualSize.X)))
+                        (int (ceil (single windowSize.Y / single virtualSize.Y)))
+                let maximumScalar = max (oldDisplayScalar + 1) (maximumRatio + 1)
+                let minimumCandidate, maximumCandidate =
+                    if above && not below then oldDisplayScalar + 1, maximumScalar
+                    elif below && not above then 1, oldDisplayScalar
+                    else 1, maximumScalar
+                seq {
+                    for scalar in minimumCandidate .. maximumCandidate do
+                        let candidateSize = clampSize (minSize scalar) (maxSize scalar) windowSize
+                        let dx = int64 candidateSize.X - int64 windowSize.X
+                        let dy = int64 candidateSize.Y - int64 windowSize.Y
+                        let distanceSquared = dx * dx + dy * dy
+                        yield struct (distanceSquared, abs (scalar - oldDisplayScalar), scalar, candidateSize) }
+                |> Seq.min
+                |> fun struct (_, _, scalar, size) -> scalar, size
+            let _, snappedSize = selectDisplayScalarAndSize windowSize
+            if snappedSize <> windowSize then
+                World.trySetWindowSize snappedSize world
+                let actualWindowSize = World.getWindowSizeOtherwiseViewportSize world
+                if actualWindowSize.X < snappedSize.X || actualWindowSize.Y < snappedSize.Y then
+                    World.trySetWindowFullScreen true world
             let windowSize = World.getWindowSizeOtherwiseViewportSize world
-            let windowScalar =
-                max (single windowSize.X / single Constants.Render.DisplayVirtualResolution.X |> ceil |> int |> max 1)
-                    (single windowSize.Y / single Constants.Render.DisplayVirtualResolution.Y |> ceil |> int |> max 1)
-            let windowSize' = windowScalar * Constants.Render.DisplayVirtualResolution
-            World.trySetWindowSize windowSize' world
-            let windowSize'' = World.getWindowSizeOtherwiseViewportSize world
-            if windowSize''.X < windowSize'.X || windowSize''.Y < windowSize'.Y then
-                World.trySetWindowFullScreen true world
+            let displayScalar, _ = selectDisplayScalarAndSize windowSize
+            World.synchronizeViewports windowSize displayScalar world
 
-            // synchronize display virtual scalar
-            let windowSize'' = World.getWindowSizeOtherwiseViewportSize world
-            let xScalar = windowSize''.X / Constants.Render.DisplayVirtualResolution.X
-            let yScalar = windowSize''.Y / Constants.Render.DisplayVirtualResolution.Y
-            Globals.Render.DisplayScalar <- min xScalar yScalar
-
-            // synchronize view ports
-            World.synchronizeViewports world
+        static member internal processWindowResize (world : World) =
+            let windowSize = World.getWindowSizeOtherwiseViewportSize world
+            if windowSize.X > 0 && windowSize.Y > 0 then
+                World.processWindowResizePositive windowSize world
 
         static member internal processInput2 (evt : SDL_Event) (world : World) =
             match evt.Type with
             | SDL_EventType.SDL_EVENT_QUIT ->
                 let eventTrace = EventTrace.debug "World" "processInput2" "ExitRequest" EventTrace.empty
                 World.publishPlus () Nu.Game.Handle.ExitRequestEvent eventTrace Nu.Game.Handle true true world
-            | SDL_EventType.SDL_EVENT_WINDOW_RESIZED | SDL_EventType.SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED ->
-                World.processWindowResized world
+            | SDL_EventType.SDL_EVENT_WINDOW_RESIZED
+            | SDL_EventType.SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED
+            | SDL_EventType.SDL_EVENT_WINDOW_DISPLAY_SCALE_CHANGED
+            | SDL_EventType.SDL_EVENT_WINDOW_ENTER_FULLSCREEN
+            | SDL_EventType.SDL_EVENT_WINDOW_LEAVE_FULLSCREEN ->
+                World.processWindowResize world
             | SDL_EventType.SDL_EVENT_MOUSE_MOTION ->
                 let io = ImGui.GetIO ()
                 let pixelDensity = World.tryGetWindowPixelDensity world |> Option.defaultValue 1.0f
-                io.AddMousePosEvent (evt.button.x * pixelDensity, evt.button.y * pixelDensity) // scale by pixel density because SDL IO comes in from unscale window coords
-                let mousePosition = v2 (single evt.button.x) (single evt.button.y)
+                let mousePosition =
+                    v2 evt.motion.x evt.motion.y * pixelDensity -
+                    world.WindowViewport.Bounds.Min.V2
+                io.AddMousePosEvent (mousePosition.X, mousePosition.Y)
                 if World.isMouseButtonDown MouseLeft world then
                     let eventTrace = EventTrace.debug "World" "processInput2" "MouseDrag" EventTrace.empty
                     World.publishPlus { MouseMoveData.Position = mousePosition } Nu.Game.Handle.MouseDragEvent eventTrace Nu.Game.Handle true true world
@@ -1439,21 +1460,21 @@ module WorldModule2 =
             // gather simulants
             world.Timers.PreUpdateGatherTimer.Restart ()
             let game = Nu.Game.Handle
-            let advancing = world.Advancing
+            let timeAdvancing = world.TimeAdvancing
             let screenOpt = World.getSelectedScreenOpt world
             let groups = match screenOpt with Some screen -> World.getGroups screen world | None -> Seq.empty
             world.Timers.PreUpdateGatherTimer.Stop ()
 
             // pre-update game
             world.Timers.PreUpdateGameTimer.Restart ()
-            if advancing then World.preUpdateGame game world
+            if timeAdvancing then World.preUpdateGame game world
             world.Timers.PreUpdateGameTimer.Stop ()
 
             // pre-update screen if any
             world.Timers.PreUpdateScreensTimer.Restart ()
             match screenOpt with
             | Some screen ->
-                if advancing && screen.GetExists world then
+                if timeAdvancing && screen.GetExists world then
                     World.preUpdateScreen screen world
             | None -> ()
             world.Timers.PreUpdateScreensTimer.Stop ()
@@ -1461,7 +1482,7 @@ module WorldModule2 =
             // pre-update groups
             world.Timers.PreUpdateGroupsTimer.Restart ()
             for group in groups do
-                if advancing && group.GetExists world then
+                if timeAdvancing && group.GetExists world then
                     World.preUpdateGroup group world
             world.Timers.PreUpdateGroupsTimer.Stop ()
 
@@ -1473,7 +1494,7 @@ module WorldModule2 =
                 // gather simulants
                 world.Timers.UpdateGatherTimer.Restart ()
                 let game = Nu.Game.Handle
-                let advancing = world.Advancing
+                let timeAdvancing = world.TimeAdvancing
                 let screens = World.getScreens world
                 let selectedScreenOpt = World.getSelectedScreenOpt world
                 let groups = World.getGroups1 world
@@ -1484,21 +1505,21 @@ module WorldModule2 =
                 // update game
                 world.Timers.UpdateGameTimer.Restart ()
                 World.tryProcessGame false game world
-                if advancing then World.updateGame game world
+                if timeAdvancing then World.updateGame game world
                 world.Timers.UpdateGameTimer.Stop ()
 
                 // process screens
                 world.Timers.UpdateScreensTimer.Restart ()
                 for screen in screens do
                     if screen.GetExists world then World.tryProcessScreen false screen world
-                    if advancing && screen.GetExists world && Option.contains screen selectedScreenOpt then World.updateScreen screen world
+                    if timeAdvancing && screen.GetExists world && Option.contains screen selectedScreenOpt then World.updateScreen screen world
                 world.Timers.UpdateScreensTimer.Stop ()
 
                 // update groups
                 world.Timers.UpdateGroupsTimer.Restart ()
                 for group in groups do
                     if group.GetExists world then World.tryProcessGroup false group world
-                    if advancing && Option.contains group.Screen selectedScreenOpt && group.GetExists world then World.updateGroup group world
+                    if timeAdvancing && Option.contains group.Screen selectedScreenOpt && group.GetExists world then World.updateGroup group world
                 world.Timers.UpdateGroupsTimer.Stop ()
 
                 // update entities
@@ -1506,12 +1527,12 @@ module WorldModule2 =
                 for element in WorldModuleInternal2.HashSet3dNormalCached do
                     if element.Entry.GetExists world then
                         World.tryProcessEntity false element.Entry world
-                    if element.Entry.GetExists world && (advancing && not (element.Entry.GetStatic world) || element.Entry.GetAlwaysUpdate world) then
+                    if element.Entry.GetExists world && (timeAdvancing && not (element.Entry.GetStatic world) || element.Entry.GetAlwaysUpdate world) then
                         World.updateEntity element.Entry world
                 for element in WorldModuleInternal2.HashSet2dNormalCached do
                     if element.Entry.GetExists world then
                         World.tryProcessEntity false element.Entry world
-                    if element.Entry.GetExists world && (advancing && not (element.Entry.GetStatic world) || element.Entry.GetAlwaysUpdate world) then
+                    if element.Entry.GetExists world && (timeAdvancing && not (element.Entry.GetStatic world) || element.Entry.GetAlwaysUpdate world) then
                         World.updateEntity element.Entry world
                 world.Timers.UpdateEntitiesTimer.Stop ()
 
@@ -1525,27 +1546,27 @@ module WorldModule2 =
             // gather simulants
             world.Timers.PostUpdateGatherTimer.Restart ()
             let game = Nu.Game.Handle
-            let advancing = world.Advancing
+            let timeAdvancing = world.TimeAdvancing
             let screenOpt = World.getSelectedScreenOpt world
             let groups = match screenOpt with Some screen -> World.getGroups screen world | None -> []
             world.Timers.PostUpdateGatherTimer.Stop ()
 
             // post-update game
             world.Timers.PostUpdateGameTimer.Restart ()
-            if advancing then World.postUpdateGame game world
+            if timeAdvancing then World.postUpdateGame game world
             world.Timers.PostUpdateGameTimer.Stop ()
 
             // post-update screen if any
             world.Timers.PostUpdateScreensTimer.Restart ()
             match screenOpt with
-            | Some screen -> if advancing && screen.GetExists world then World.postUpdateScreen screen world
+            | Some screen -> if timeAdvancing && screen.GetExists world then World.postUpdateScreen screen world
             | None -> ()
             world.Timers.PostUpdateScreensTimer.Stop ()
 
             // post-update groups
             world.Timers.PostUpdateGroupsTimer.Restart ()
             for group in groups do
-                if advancing && group.GetExists world then World.postUpdateGroup group world
+                if timeAdvancing && group.GetExists world then World.postUpdateGroup group world
             world.Timers.PostUpdateGroupsTimer.Stop ()
 
         static member private renderScreenTransition5 transitionTime (eyeSize : Vector2) renderPass transition (world : World) =
@@ -1589,8 +1610,8 @@ module WorldModule2 =
 
         static member private renderScreenTransition renderPass (screen : Screen) world =
             match screen.GetTransitionState world with
-            | IncomingState transitionTime -> World.renderScreenTransition5 transitionTime world.Eye2dSize renderPass (screen.GetIncoming world) world
-            | OutgoingState transitionTime -> World.renderScreenTransition5 transitionTime world.Eye2dSize renderPass (screen.GetOutgoing world) world
+            | IncomingState transitionTime -> World.renderScreenTransition5 transitionTime world.Eye2dViewed renderPass (screen.GetIncoming world) world
+            | OutgoingState transitionTime -> World.renderScreenTransition5 transitionTime world.Eye2dViewed renderPass (screen.GetOutgoing world) world
             | IdlingState _ -> ()
 
         static member private renderSimulantsInternal8
@@ -1641,7 +1662,7 @@ module WorldModule2 =
                         World.renderEntity renderPass element.Entry world
             world.Timers.RenderEntityMessagesTimer.Stop ()
 
-        static member private renderSimulantsInternal renderPass (world : World) =
+        static member private renderSimulantsInternal excludeGlobalLights renderPass (world : World) =
 
             // use a finally block to free cached values
             try
@@ -1660,6 +1681,8 @@ module WorldModule2 =
                     World.getElements3dInViewBox lightMapBounds WorldModuleInternal2.HashSet3dNormalCached world
                     for element in WorldModuleInternal2.HashSet3dNormalCached do
                         if not element.StaticInPlay then
+                            WorldModuleInternal2.HashSet3dNormalCached.Remove element |> ignore<bool>
+                        elif excludeGlobalLights && element.Light && (element.Entry.GetLightType world).IsGlobalLight then
                             WorldModuleInternal2.HashSet3dNormalCached.Remove element |> ignore<bool>
                 | ShadowPass (_, _, lightType, dynamicShadows, _, shadowFrustum) ->
                     let shadowInterior = LightType.shouldShadowInterior lightType
@@ -1698,10 +1721,11 @@ module WorldModule2 =
                     let lightProbesStale = Seq.filter (fun (lightProbe : Entity) -> lightProbe.GetProbeStale world) lightProbes
                     for lightProbe in lightProbesStale do
                         let id = lightProbe.GetId world
+                        let excludeGlobalLights = lightProbe.GetExcludeGlobalLights world
                         let bounds = lightProbe.GetProbeBounds world
                         let boundsPlus = bounds.ScaleUniform 4.0f // TODO: allow user to specify bounds scalar?
                         let renderPass = LightMapPass (id, boundsPlus)
-                        World.renderSimulantsInternal renderPass world
+                        World.renderSimulantsInternal excludeGlobalLights renderPass world
                         World.enqueueRenderMessage3d (RenderLightMap3d { LightProbeId = id; RenderPass = renderPass }) world
                         lightProbe.SetProbeStale false world
 
@@ -1724,19 +1748,19 @@ module WorldModule2 =
                                 | Omnipresent -> true
                             if shadowInView then
                                 let distanceSquared = eyeCenter.DistanceSquared (light.GetPosition world)
-                                struct (distanceSquared, struct (shadowFrustum, light))|]
+                                (distanceSquared :> IComparable, (shadowFrustum, light))|] // OPTIMIZATION: boxing here to avoid it downstream.
 
                 // sort shadow pass descriptors
                 let shadowPassDescriptors =
                     shadowPassDescriptorsSortable
-                    |> Array.sortBy fst'
-                    |> Array.map snd'
+                    |> Array.sortWith (fun (frustum, _) (frustum2, _) -> frustum.CompareTo frustum2)
+                    |> Array.map snd
 
                 // render simulant shadows
                 let mutable shadowTexturesCount = 0
                 let mutable shadowMapsCount = 0
                 let mutable shadowCascadesCount = 0
-                for struct (shadowFrustum, light : Entity) in shadowPassDescriptors do
+                for (shadowFrustum, light : Entity) in shadowPassDescriptors do
                     let lightType = light.GetLightType world
                     let dynamicShadows = light.GetDynamicShadows world
                     match lightType with
@@ -1768,14 +1792,14 @@ module WorldModule2 =
                                 let shadowView = Matrix4x4.CreateLookAt (shadowOrigin, shadowOrigin + eyeForward, eyeUp)
                                 let shadowViewProjection = shadowView * shadowProjection
                                 let shadowFrustum = Frustum shadowViewProjection
-                                World.renderSimulantsInternal (ShadowPass (lightId, Some (i, shadowView, shadowProjection), lightType, dynamicShadows, shadowRotation, shadowFrustum)) world
+                                World.renderSimulantsInternal false (ShadowPass (lightId, Some (i, shadowView, shadowProjection), lightType, dynamicShadows, shadowRotation, shadowFrustum)) world
 
                             // fin
                             shadowMapsCount <- inc shadowMapsCount
 
                     | SpotLight (_, _) ->
                         if shadowTexturesCount < Constants.Render.ShadowTexturesMax then
-                            World.renderSimulantsInternal (ShadowPass (light.GetId world, None, lightType, dynamicShadows, light.GetRotation world, shadowFrustum)) world
+                            World.renderSimulantsInternal false (ShadowPass (light.GetId world, None, lightType, dynamicShadows, light.GetRotation world, shadowFrustum)) world
                             shadowTexturesCount <- inc shadowTexturesCount
 
                     | DirectionalLight offsetForwardScalar ->
@@ -1794,7 +1818,7 @@ module WorldModule2 =
                             let cullFrustum = Frustum (cullView * cullProjection)
 
                             // render
-                            World.renderSimulantsInternal (ShadowPass (light.GetId world, None, lightType, dynamicShadows, light.GetRotation world, cullFrustum)) world
+                            World.renderSimulantsInternal false (ShadowPass (light.GetId world, None, lightType, dynamicShadows, light.GetRotation world, cullFrustum)) world
 
                             // fin
                             shadowTexturesCount <- inc shadowTexturesCount
@@ -1897,7 +1921,7 @@ module WorldModule2 =
                             shadowCascadesCount <- inc shadowCascadesCount
 
                 // render simulants normally
-                World.renderSimulantsInternal NormalPass world
+                World.renderSimulantsInternal false NormalPass world
 
             // free cached values
             finally
@@ -2106,6 +2130,13 @@ module WorldModule2 =
                                                                         | Some windowProperties -> windowProperties
                                                                         | None -> WindowProperties.empty
 
+                                                                    // ensure window viewport is sensible before
+                                                                    // rendering since SDL's window resize callback can
+                                                                    // come in a frame late
+                                                                    if  windowProperties.WidthPixels < world.WindowViewport.Bounds.Width ||
+                                                                        windowProperties.HeightPixels < world.WindowViewport.Bounds.Height then
+                                                                        World.processWindowResize world
+
                                                                     // process rendering (2/2)
                                                                     rendererProcess.SubmitMessages
                                                                         world.Eye3dFrustumInterior
@@ -2115,11 +2146,11 @@ module WorldModule2 =
                                                                         world.Eye3dRotation
                                                                         world.Eye3dFieldOfView
                                                                         world.Eye2dCenter
-                                                                        world.Eye2dSize
+                                                                        world.Eye2dViewed
                                                                         world.GeometryViewport
                                                                         world.WindowViewport
-                                                                        drawData
                                                                         windowProperties
+                                                                        drawData
 
                                                                     // post-process imgui frame
                                                                     World.imGuiPostProcess world
@@ -2130,18 +2161,18 @@ module WorldModule2 =
                                                                     | Some firstFrameCallback -> firstFrameCallback ()
                                                                     | None -> ()
 
-                                                                    // update time and recur
+                                                                    // process time and recur
                                                                     world.Timers.FrameTimer.Stop ()
                                                                     WorldModuleInternal.EndFrameProcessingStarted <- false
-                                                                    World.updateTime world
-                                                                    if world.Advancing then
-                                                                        World.publish () (Events.TimeUpdateEvent --> Game) Game world
+                                                                    World.processTime world
+                                                                    if world.TimeAdvancing then
+                                                                        World.publish () (Events.TimeAdvanceEvent --> Game) Game world
                                                                         match World.getSelectedScreenOpt world with
                                                                         | Some selectedScreen ->
-                                                                            World.publish () (Events.TimeUpdateEvent --> selectedScreen) selectedScreen world
+                                                                            World.publish () (Events.TimeAdvanceEvent --> selectedScreen) selectedScreen world
                                                                             for group in World.getGroups selectedScreen world do
                                                                                 if group.GetExists world then
-                                                                                    World.publish () (Events.TimeUpdateEvent --> group) group world
+                                                                                    World.publish () (Events.TimeAdvanceEvent --> group) group world
                                                                         | None -> ()
                                                                     World.runWithoutCleanUp runWhile preProcess perProcess postProcess imGuiProcess imGuiPostProcess None world
 
@@ -2169,14 +2200,14 @@ module EntityDispatcherModule =
             let context = world.ContextImSim
             World.scopeEntity entity [] world
             if zeroDelta then
-                let advancing = world.Advancing
-                let advancementCleared = world.AdvancementCleared
+                let timeAdvancing = world.TimeAdvancing
+                let timeAdvancementCleared = world.TimeAdvancementCleared
                 let updateDelta = world.UpdateDelta
                 let clockDelta = world.ClockDelta
                 let tickDelta = world.TickDelta
-                World.mapAmbientState AmbientState.clearAdvancement world
+                World.mapAmbientState AmbientState.clearTimeAdvancement world
                 this.Process (entity, world)
-                World.mapAmbientState (AmbientState.restoreAdvancement advancing advancementCleared updateDelta clockDelta tickDelta) world
+                World.mapAmbientState (AmbientState.restoreTimeAdvancement timeAdvancing timeAdvancementCleared updateDelta clockDelta tickDelta) world
             else this.Process (entity, world)
 #if DEBUG
             if world.ContextImSim <> entity.EntityAddress then
@@ -2199,7 +2230,7 @@ module EntityDispatcherModule =
             [define Entity.Size Constants.Engine.Entity2dSizeDefault]
 
     /// An ImSim 2d contour dispatcher.
-    type [<AbstractClass>] Contour2dDispatcher (physical, lightProbe, light) =
+    type [<AbstractClass>] Contour2dDispatcherImSim (physical, lightProbe, light) =
         inherit EntityDispatcherImSim (true, physical, lightProbe, light)
 
         static member Properties =
@@ -2241,7 +2272,7 @@ module EntityDispatcherModule =
 
     type World with
 
-        static member inline internal signalEntity<'model, 'message, 'command when 'message :> Message and 'command :> Command> (signal : Signal) (entity : Entity) world =
+        static member inline signalEntity<'model, 'message, 'command when 'message :> Message and 'command :> Command> (signal : Signal) (entity : Entity) world =
             match entity.GetDispatcher world with
             | :? EntityDispatcher<'model, 'message, 'command> as dispatcher ->
                 Signal.processSignal dispatcher.Message dispatcher.Command (entity.ModelGeneric<'model> ()) signal entity world
@@ -2577,14 +2608,14 @@ module GroupDispatcherModule =
             let context = world.ContextImSim
             World.scopeGroup group [] world
             if zeroDelta then
-                let advancing = world.Advancing
-                let advancementCleared = world.AdvancementCleared
+                let timeAdvancing = world.TimeAdvancing
+                let timeAdvancementCleared = world.TimeAdvancementCleared
                 let updateDelta = world.UpdateDelta
                 let clockDelta = world.ClockDelta
                 let tickDelta = world.TickDelta
-                World.mapAmbientState AmbientState.clearAdvancement world
+                World.mapAmbientState AmbientState.clearTimeAdvancement world
                 this.Process (group, world)
-                World.mapAmbientState (AmbientState.restoreAdvancement advancing advancementCleared updateDelta clockDelta tickDelta) world
+                World.mapAmbientState (AmbientState.restoreTimeAdvancement timeAdvancing timeAdvancementCleared updateDelta clockDelta tickDelta) world
             else this.Process (group, world)
 #if DEBUG
             if world.ContextImSim <> group.GroupAddress then
@@ -2601,7 +2632,7 @@ module GroupDispatcherModule =
 
     type World with
 
-        static member inline internal signalGroup<'model, 'message, 'command when 'message :> Message and 'command :> Command> signal (group : Group) world =
+        static member inline signalGroup<'model, 'message, 'command when 'message :> Message and 'command :> Command> signal (group : Group) world =
             match group.GetDispatcher world with
             | :? GroupDispatcher<'model, 'message, 'command> as dispatcher ->
                 Signal.processSignal dispatcher.Message dispatcher.Command (group.ModelGeneric<'model> ()) signal group world
@@ -2804,14 +2835,14 @@ module ScreenDispatcherModule =
             World.scopeScreen screen [] world
             let results = World.doSubscriptionToSelectionEvents ScreenDispatcherImSimTryProcessSubscriptionName screen world
             if zeroDelta then
-                let advancing = world.Advancing
-                let advancementCleared = world.AdvancementCleared
+                let timeAdvancing = world.TimeAdvancing
+                let timeAdvancementCleared = world.TimeAdvancementCleared
                 let updateDelta = world.UpdateDelta
                 let clockDelta = world.ClockDelta
                 let tickDelta = world.TickDelta
-                World.mapAmbientState AmbientState.clearAdvancement world
+                World.mapAmbientState AmbientState.clearTimeAdvancement world
                 this.Process (FQueue.ofSeq results, screen, world)
-                World.mapAmbientState (AmbientState.restoreAdvancement advancing advancementCleared updateDelta clockDelta tickDelta) world
+                World.mapAmbientState (AmbientState.restoreTimeAdvancement timeAdvancing timeAdvancementCleared updateDelta clockDelta tickDelta) world
             else this.Process (FQueue.ofSeq results, screen, world)
 #if DEBUG
             if world.ContextImSim <> screen.ScreenAddress then
@@ -2828,7 +2859,7 @@ module ScreenDispatcherModule =
 
     type World with
 
-        static member inline internal signalScreen<'model, 'message, 'command when 'message :> Message and 'command :> Command> signal (screen : Screen) world =
+        static member inline signalScreen<'model, 'message, 'command when 'message :> Message and 'command :> Command> signal (screen : Screen) world =
             match screen.GetDispatcher world with
             | :? ScreenDispatcher<'model, 'message, 'command> as dispatcher ->
                 Signal.processSignal dispatcher.Message dispatcher.Command (screen.ModelGeneric<'model> ()) signal screen world
@@ -2911,7 +2942,7 @@ module ScreenDispatcherModule =
             let model = this.GetModel screen world
             let definitions = this.Definitions (model, screen)
             let groups = this.Content (model, screen)
-            let content = Content.screen screen.Name Vanilla definitions groups
+            let content = Content.screen screen.Name false Vanilla definitions groups
             Content.synchronizeScreen initializing reinitializing contentOld content screen screen world
             World.setScreenContent content screen world
 
@@ -3028,14 +3059,14 @@ module GameDispatcherModule =
             let context = world.ContextImSim
             World.scopeGame [] world
             if zeroDelta then
-                let advancing = world.Advancing
-                let advancementCleared = world.AdvancementCleared
+                let timeAdvancing = world.TimeAdvancing
+                let timeAdvancementCleared = world.TimeAdvancementCleared
                 let updateDelta = world.UpdateDelta
                 let clockDelta = world.ClockDelta
                 let tickDelta = world.TickDelta
-                World.mapAmbientState AmbientState.clearAdvancement world
+                World.mapAmbientState AmbientState.clearTimeAdvancement world
                 this.Process (game, world)
-                World.mapAmbientState (AmbientState.restoreAdvancement advancing advancementCleared updateDelta clockDelta tickDelta) world
+                World.mapAmbientState (AmbientState.restoreTimeAdvancement timeAdvancing timeAdvancementCleared updateDelta clockDelta tickDelta) world
             else this.Process (game, world)
 #if DEBUG
             if world.ContextImSim <> game.GameAddress then
@@ -3052,7 +3083,7 @@ module GameDispatcherModule =
 
     type World with
 
-        static member inline internal signalGame<'model, 'message, 'command when 'message :> Message and 'command :> Command> signal (game : Game) world =
+        static member inline signalGame<'model, 'message, 'command when 'message :> Message and 'command :> Command> signal (game : Game) world =
             match game.GetDispatcher world with
             | :? GameDispatcher<'model, 'message, 'command> as dispatcher ->
                 Signal.processSignal dispatcher.Message dispatcher.Command (game.ModelGeneric<'model> ()) signal game world
@@ -3074,7 +3105,7 @@ module GameDispatcherModule =
             let definitions = this.Definitions (model, game)
             let screens = this.Content (model, game)
             let content = Content.game definitions screens
-            let initialScreenOpt = Content.synchronizeGame World.setScreenSlide initializing reinitializing contentOld content game game world
+            let initialScreenOpt = Content.synchronizeGame World.selectScreen World.updateScreenIdling World.transitionScreen World.setScreenSlide initializing reinitializing contentOld content game game world
             World.setGameContent content game world
             initialScreenOpt
 

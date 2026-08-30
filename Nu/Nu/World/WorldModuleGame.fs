@@ -38,6 +38,13 @@ module WorldModuleGame =
             ignore<Game> game
             world.WorldState <- { world.WorldState with GameState = gameState }
 
+        static member internal synchronizeViewports windowSize displayScalar (world : World) =
+            let eyeViewedPrevious = world.GameState.Eye2dViewed
+            World.synchronizeViewportState windowSize displayScalar world
+            let eyeViewed = world.GameState.Eye2dViewed
+            if eyeViewedPrevious <> eyeViewed then
+                World.publishGameChange (nameof world.GameState.Eye2dViewed) eyeViewedPrevious eyeViewed Game.Handle world
+
         static member internal getGameXtension game world =
             let gameState = World.getGameState game world
             gameState.Xtension
@@ -56,13 +63,6 @@ module WorldModuleGame =
                 let gameState = { gameState with Model = { DesignerType = value.DesignerType; DesignerValue = value.DesignerValue }}
                 World.setGameState gameState game world
                 gameState.Dispatcher.TrySynchronize (initializing, reinitializing, game, world)
-                if initializing then
-                    let content = World.getGameContent game world
-                    let desiredScreen =
-                        match Seq.tryHead content.ScreenContents with
-                        | Some screen -> Desire (game / screen.Key)
-                        | None -> DesireNone
-                    World.setGameDesiredScreen desiredScreen game world |> ignore<bool>
                 World.publishGameChange Constants.Engine.ModelPropertyName previous.DesignerValue value.DesignerValue game world
                 true
             else false
@@ -93,13 +93,6 @@ module WorldModuleGame =
                 let gameState = { gameState with Model = { DesignerType = typeof<'a>; DesignerValue = valueObj }}
                 World.setGameState gameState game world
                 gameState.Dispatcher.TrySynchronize (initializing, reinitializing, game, world)
-                if initializing then
-                    let content = World.getGameContent game world
-                    let desiredScreen =
-                        match Seq.tryHead content.ScreenContents with
-                        | Some screen -> Desire (game / screen.Key)
-                        | None -> DesireNone
-                    World.setGameDesiredScreen desiredScreen game world |> ignore<bool>
                 World.publishGameChange Constants.Engine.ModelPropertyName previous.DesignerValue value game world
                 true
             else false
@@ -174,26 +167,6 @@ module WorldModuleGame =
         static member setSelectedScreen value world =
             World.setGameSelectedScreen value Game.Handle world |> ignore<bool>
 
-        static member internal getGameDesiredScreen game world =
-            (World.getGameState game world).DesiredScreen
-
-        static member internal setGameDesiredScreen value game world : bool =
-            let gameState = World.getGameState game world
-            let previous = gameState.DesiredScreen
-            if value <> previous then
-                World.setGameState { gameState with DesiredScreen = value } game world
-                World.publishGameChange (nameof gameState.DesiredScreen) previous value game world
-                true
-            else false
-
-        /// Get the desired screen, if applicable.
-        static member getDesiredScreen world =
-            World.getGameDesiredScreen Game.Handle world
-
-        /// Set the desired screen, if applicable.
-        static member setDesiredScreen value world =
-            World.setGameDesiredScreen value Game.Handle world |> ignore<bool>
-
         static member internal getGameScreenTransitionDestinationOpt game world =
             (World.getGameState game world).ScreenTransitionDestinationOpt
 
@@ -242,6 +215,8 @@ module WorldModuleGame =
             let previous = gameState.Eye2dSize
             if previous <> value then
                 World.setGameState { gameState with Eye2dSize = value } game world
+                let windowSize = World.getWindowSizeOtherwiseViewportSize world
+                World.synchronizeViewports windowSize world.WindowViewport.DisplayScalar world
                 World.publishGameChange (nameof gameState.Eye2dSize) previous value game world
                 true
             else false
@@ -254,6 +229,13 @@ module WorldModuleGame =
         static member setEye2dSize value world =
             World.setGameEye2dSize value Game.Handle world |> ignore<bool>
 
+        static member internal getGameEye2dViewed game world =
+            (World.getGameState game world).Eye2dViewed
+
+        /// Get the current 2d eye viewed size.
+        static member getEye2dViewed world =
+            World.getGameEye2dViewed Game.Handle world
+
         /// Get the current 2d eye bounds.
         static member getEye2dBounds world =
             let eyeCenter = World.getGameEye2dCenter Game.Handle world
@@ -261,8 +243,8 @@ module WorldModuleGame =
             box2 (eyeCenter - eyeSize * 0.5f) eyeSize
 
         /// Constrain the eye to the given 2d bounds.
-        static member constrainEye2dBounds (bounds : Box2) world =
-            let mutable eyeBounds = World.getEye2dBounds world
+        static member constrainEye2dBounds (bounds : Box2) (world : World) =
+            let mutable eyeBounds = world.Eye2dBoundsViewed
             eyeBounds.Min <-
                 v2
                     (if eyeBounds.Min.X < bounds.Min.X then bounds.Min.X
@@ -277,23 +259,25 @@ module WorldModuleGame =
         /// Get the bounds of the 2d eye's sight irrespective of its position.
         static member getViewBounds2dAbsolute world =
             let gameState = World.getGameState Game.Handle world
-            box2
-                (v2 (gameState.Eye2dSize.X * -0.5f) (gameState.Eye2dSize.Y * -0.5f))
-                (v2 gameState.Eye2dSize.X gameState.Eye2dSize.Y)
+            box2 (gameState.Eye2dViewed * -0.5f) gameState.Eye2dViewed
 
         /// Get the bounds of the 2d eye's sight relative to its position.
         static member getViewBounds2dRelative world =
             let gameState = World.getGameState Game.Handle world
-            let min = v2 (gameState.Eye2dCenter.X - gameState.Eye2dSize.X * 0.5f) (gameState.Eye2dCenter.Y - gameState.Eye2dSize.Y * 0.5f)
-            box2 min gameState.Eye2dSize
+            let eyeViewed = gameState.Eye2dViewed
+            box2 (gameState.Eye2dCenter - eyeViewed * 0.5f) eyeViewed
 
         /// Get the bounds of the 2d play zone irrespective of eye center.
         static member getPlayBounds2dAbsolute world =
-            World.getViewBounds2dAbsolute world
+            let gameState = World.getGameState Game.Handle world
+            let eyeViewable = gameState.Eye2dSize + gameState.Eye2dSize * 2.0f * Constants.Engine.EyeMarginMaxScalar
+            box2 (eyeViewable * -0.5f) eyeViewable
 
         /// Get the bounds of the 2d play zone relative to eye center.
         static member getPlayBounds2dRelative world =
-            World.getViewBounds2dRelative world
+            let gameState = World.getGameState Game.Handle world
+            let eyeViewable = gameState.Eye2dSize + gameState.Eye2dSize * 2.0f * Constants.Engine.EyeMarginMaxScalar
+            box2 (gameState.Eye2dCenter - eyeViewable * 0.5f) eyeViewable
 
         /// Check that the given bounds is within the 2d eye's sight irrespective of eye center.
         static member boundsInView2dAbsolute (bounds : Box2) world =
@@ -322,9 +306,10 @@ module WorldModuleGame =
             let gameState = World.getGameState game world
             let previous = gameState.Eye3dCenter
             if previous <> value then
-                let viewportInterior = Viewport.makeInterior ()
-                let viewportExterior = Viewport.makeExterior ()
-                let viewportImposter = Viewport.makeImposter ()
+                let resolution = world.GeometryViewport.Bounds.Size
+                let viewportInterior = Viewport.makeInteriorViewed resolution
+                let viewportExterior = Viewport.makeExteriorViewed resolution
+                let viewportImposter = Viewport.makeImposterViewed resolution
                 let gameState =
                     { gameState with
                         Eye3dCenter = value
@@ -351,9 +336,10 @@ module WorldModuleGame =
             let gameState = World.getGameState game world
             let previous = gameState.Eye3dRotation
             if previous <> value then
-                let viewportInterior = Viewport.makeInterior ()
-                let viewportExterior = Viewport.makeExterior ()
-                let viewportImposter = Viewport.makeImposter ()
+                let resolution = world.GeometryViewport.Bounds.Size
+                let viewportInterior = Viewport.makeInteriorViewed resolution
+                let viewportExterior = Viewport.makeExteriorViewed resolution
+                let viewportImposter = Viewport.makeImposterViewed resolution
                 let gameState =
                     { gameState with
                         Eye3dRotation = value
@@ -381,9 +367,10 @@ module WorldModuleGame =
             let gameState = World.getGameState game world
             let previous = gameState.Eye3dFieldOfView
             if previous <> value then
-                let viewportInterior = Viewport.makeInterior ()
-                let viewportExterior = Viewport.makeExterior ()
-                let viewportImposter = Viewport.makeImposter ()
+                let resolution = world.GeometryViewport.Bounds.Size
+                let viewportInterior = Viewport.makeInteriorViewed resolution
+                let viewportExterior = Viewport.makeExteriorViewed resolution
+                let viewportImposter = Viewport.makeImposterViewed resolution
                 let gameState =
                     { gameState with
                         Eye3dFieldOfView = value
@@ -395,11 +382,9 @@ module WorldModuleGame =
                 true
             else false
 
-        static member internal getGameEye3dAspectRatio game world =
+        static member internal getGameEye3dAspectRatio game (world : World) =
             ignore<Game> game
-            ignore<World> world
-            single Constants.Render.DisplayVirtualResolution.X /
-            single Constants.Render.DisplayVirtualResolution.Y
+            world.GeometryViewport.AspectRatio
 
         /// Get the current 3d eye field of view.
         static member getEye3dFieldOfView world =
@@ -815,7 +800,6 @@ module WorldModuleGame =
                 [("Dispatcher", fun game world -> { PropertyType = typeof<GameDispatcher>; PropertyValue = World.getGameDispatcher game world })
                  ("Model", fun game world -> let designerProperty = World.getGameModelProperty game world in { PropertyType = designerProperty.DesignerType; PropertyValue = designerProperty.DesignerValue })
                  ("SelectedScreenOpt", fun game world -> { PropertyType = typeof<Screen option>; PropertyValue = World.getGameSelectedScreenOpt game world })
-                 ("DesiredScreen", fun game world -> { PropertyType = typeof<DesiredScreen>; PropertyValue = World.getGameDesiredScreen game world })
                  ("ScreenTransitionDestinationOpt", fun game world -> { PropertyType = typeof<Screen option>; PropertyValue = World.getGameScreenTransitionDestinationOpt game world })
                  ("Eye2dCenter", fun game world -> { PropertyType = typeof<Vector2>; PropertyValue = World.getGameEye2dCenter game world })
                  ("Eye2dSize", fun game world -> { PropertyType = typeof<Vector2>; PropertyValue = World.getGameEye2dSize game world })
@@ -832,7 +816,6 @@ module WorldModuleGame =
         let gameSetters =
             dictPlus StringComparer.Ordinal
                 [("Model", fun property game world -> World.setGameModelProperty false false { DesignerType = property.PropertyType; DesignerValue = property.PropertyValue } game world)
-                 ("DesiredScreen", fun property game world -> World.setGameDesiredScreen (property.PropertyValue :?> DesiredScreen) game world)
                  ("ScreenTransitionDestinationOpt", fun property game world -> World.setGameScreenTransitionDestinationOpt (property.PropertyValue :?> Screen option) game world)
                  ("Eye2dCenter", fun property game world -> World.setGameEye2dCenter (property.PropertyValue :?> Vector2) game world)
                  ("Eye2dSize", fun property game world -> World.setGameEye2dSize (property.PropertyValue :?> Vector2) game world)

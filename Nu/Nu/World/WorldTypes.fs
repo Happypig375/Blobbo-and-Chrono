@@ -254,12 +254,6 @@ and RequestedSong =
     | RequestNone
     | RequestIgnore
 
-/// Specifies the desired screen, if any, or whether to ignore screen desire functionality altogether.
-and DesiredScreen =
-    | Desire of Screen
-    | DesireNone
-    | DesireIgnore
-
 /// Describes the behavior of a screen.
 and ScreenBehavior =
     | Vanilla
@@ -893,7 +887,8 @@ and [<ReferenceEquality>] GameContent =
 and [<ReferenceEquality>] ScreenContent =
     { ScreenDispatcherName : string
       ScreenName : string
-      ScreenBehavior : ScreenBehavior
+      Select : bool
+      Behavior : ScreenBehavior
       GroupFilePathOpt : string option
       mutable SimulantCachedOpt : Simulant
       mutable EventSignalContentsOpt : OrderedDictionary<obj Address * obj, uint64> // OPTIMIZATION: lazily created.
@@ -905,7 +900,8 @@ and [<ReferenceEquality>] ScreenContent =
     static member empty =
         { ScreenDispatcherName = nameof ScreenDispatcher
           ScreenName = nameof Screen
-          ScreenBehavior = Vanilla
+          Select = false
+          Behavior = Vanilla
           GroupFilePathOpt = None
           SimulantCachedOpt = Unchecked.defaultof<_>
           EventSignalContentsOpt = null
@@ -1008,10 +1004,10 @@ and [<ReferenceEquality; CLIMutable>] GameState =
       mutable Model : DesignerProperty // mutable to allow inserting fallback model on code reload
       Content : GameContent
       SelectedScreenOpt : Screen option
-      DesiredScreen : DesiredScreen
       ScreenTransitionDestinationOpt : Screen option
       Eye2dCenter : Vector2
       Eye2dSize : Vector2
+      Eye2dViewed : Vector2
       Eye3dCenter : Vector3
       Eye3dRotation : Quaternion
       Eye3dFieldOfView : single
@@ -1062,10 +1058,10 @@ and [<ReferenceEquality; CLIMutable>] GameState =
           Model = { DesignerType = typeof<unit>; DesignerValue = () }
           Content = WorldTypes.EmptyGameContent :?> GameContent
           SelectedScreenOpt = None
-          DesiredScreen = DesireIgnore
           ScreenTransitionDestinationOpt = None
           Eye2dCenter = v2Zero
-          Eye2dSize = Constants.Render.DisplayVirtualResolution.V2
+          Eye2dSize = Globals.Render.DisplayVirtualResolution.V2
+          Eye2dViewed = Globals.Render.DisplayVirtualResolution.V2
           Eye3dCenter = eye3dCenter
           Eye3dRotation = eye3dRotation
           Eye3dFieldOfView = eye3dFieldOfView
@@ -2040,20 +2036,20 @@ and [<NoEquality; NoComparison>] World =
     member this.Unaccompanied =
         not this.AmbientState.Accompanied
 
-    /// Check that the world is advancing (not halted).
-    member this.Advancing =
-        this.AmbientState.Advancing
+    /// Check that world time is advancing (not halted).
+    member this.TimeAdvancing =
+        this.AmbientState.TimeAdvancing
 
-    /// Check that the world is halted (not advancing).
-    member this.Halted =
-        not this.AmbientState.Advancing
+    /// Check that world time is halted (not advancing).
+    member this.TimeHalted =
+        not this.AmbientState.TimeAdvancing
+
+    member internal this.TimeAdvancementCleared =
+        this.AmbientState.TimeAdvancementCleared
 
     /// Check that the world's frame rate is being explicitly paced based on clock progression.
     member this.FramePacing =
         this.AmbientState.FramePacing
-
-    member internal this.AdvancementCleared =
-        this.AmbientState.AdvancementCleared
 
     /// Get the number of updates that have transpired between this and the previous frame.
     member this.UpdateDelta =
@@ -2193,10 +2189,6 @@ and [<NoEquality; NoComparison>] World =
     member this.SelectedScreenOpt =
         this.GameState.SelectedScreenOpt
 
-    /// Get the desired selected screen, if any.
-    member this.DesiredScreen =
-        this.GameState.DesiredScreen
-
     /// The viewport of the geometry buffer.
     member this.GeometryViewport =
         this.WorldExtension.GeometryViewport
@@ -2209,15 +2201,42 @@ and [<NoEquality; NoComparison>] World =
     member this.Eye2dCenter =
         this.GameState.Eye2dCenter
 
-    /// Get the size of the 2D eye.
+    /// Get the size of the 2D eye, viewable for all window dimensions.
     member this.Eye2dSize =
         this.GameState.Eye2dSize
 
-    /// Get the bounds of the 2D eye.
+    /// Get the viewed size of the 2D eye, for the current window.
+    member this.Eye2dViewed =
+        this.GameState.Eye2dViewed
+
+    /// Get the viewable size of the 2D eye, for any potential window dimension.
+    member this.Eye2dViewable =
+        let eyeSize = this.Eye2dSize
+        eyeSize + eyeSize * 2.0f * Constants.Engine.EyeMarginMaxScalar
+
+    /// Get the bounds of the 2D eye, viewable for all window dimensions.
     member this.Eye2dBounds =
         let eyeCenter = this.Eye2dCenter
         let eyeSize = this.Eye2dSize
         box2 (eyeCenter - eyeSize * 0.5f) eyeSize
+
+    /// Get the viewed bounds of the 2D eye, for the current window.
+    member this.Eye2dBoundsViewed =
+        let eyeCenter = this.Eye2dCenter
+        let eyeViewed = this.GameState.Eye2dViewed
+        box2 (eyeCenter - eyeViewed * 0.5f) eyeViewed
+
+    /// Get the viewable bounds of the 2D eye, for any potential window dimension.
+    member this.Eye2dBoundsViewable =
+        let eyeCenter = this.Eye2dCenter
+        let eyeViewable = this.Eye2dViewable
+        box2 (eyeCenter - eyeViewable * 0.5f) eyeViewable
+
+    /// Get the margin of the 2D eye, viewed beyond Eye2dSize on each side, for the current window.
+    /// Add or subtract X to anchor an entity to the right or left edge of the window.
+    /// Add or subtract Y to anchor an entity to the top or bottom edge of the window.
+    member this.Eye2dMargin =
+        (this.Eye2dViewed - this.Eye2dSize) * 0.5f
 
     /// Get the center of the 3D eye.
     member this.Eye3dCenter =
@@ -2322,23 +2341,23 @@ and [<AbstractClass>] NuPlugin () =
                 | (false, _) -> circles.Add (struct (color, radius), List [center])
             override _.EyeBounds = eyeBounds }
 
-    /// A call-back at the beginning of each frame.
+    /// A callback at the beginning of each frame.
     abstract PreProcess : world : World -> unit
     default this.PreProcess _ = ()
 
-    /// A call-back during each frame.
+    /// A callback during each frame.
     abstract PerProcess : world : World -> unit
     default this.PerProcess _ = ()
 
-    /// A call-back at the end of each frame.
+    /// A callback at the end of each frame.
     abstract PostProcess : world : World -> unit
     default this.PostProcess _ = ()
 
-    /// A call-back for imgui processing.
+    /// A callback for imgui processing.
     abstract ImGuiProcess : world : World -> unit
     default this.ImGuiProcess _ = ()
 
-    /// A call-back for imgui post-processing.
+    /// A callback for imgui post-processing.
     abstract ImGuiPostProcess : world : World -> unit
     default this.ImGuiPostProcess _ = ()
 

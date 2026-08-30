@@ -154,14 +154,14 @@ module WorldModule =
 
         static member internal mapAmbientState mapper (world : World) =
             world.WorldState <- { world.WorldState with AmbientState = mapper world.AmbientState }
+            
+        /// Check that world time is advancing (not halted).
+        static member getTimeAdvancing (world : World) =
+            world.TimeAdvancing
 
-        /// Check that the update rate is non-zero.
-        static member getAdvancing (world : World) =
-            world.Advancing
-
-        /// Check that the update rate is zero.
-        static member getHalted (world : World) =
-            world.Halted
+        /// Check that world time is halted (not advancing).
+        static member getTimeHalted (world : World) =
+            world.TimeHalted
 
         /// Set whether the world's frame rate is being explicitly paced based on clock progression.
         static member setFramePacing clockPacing (world : World) =
@@ -191,8 +191,8 @@ module WorldModule =
         static member getAlive (world : World) =
             AmbientState.getAlive world.AmbientState
 
-        static member internal updateTime world =
-            World.mapAmbientState AmbientState.updateTime world
+        static member internal processTime world =
+            World.mapAmbientState AmbientState.processTime world
 
         /// Get the number of updates that have transpired between this and the previous frame.
         static member getUpdateDelta world =
@@ -433,19 +433,19 @@ module WorldModule =
                 let context = world.ContextImSim
                 if context.Names.Length > 0 then
                     let declared = world.DeclaredImSim
-                    let advancing = world.Advancing
-                    let advancementCleared = world.AdvancementCleared
+                    let timeAdvancing = world.TimeAdvancing
+                    let timeAdvancementCleared = world.TimeAdvancementCleared
                     let updateDelta = world.UpdateDelta
                     let clockDelta = world.ClockDelta
                     let tickDelta = world.TickDelta
                     fun (world : World) ->
                         let context' = world.ContextImSim
                         let declared' = world.DeclaredImSim
-                        World.mapAmbientState AmbientState.clearAdvancement world
+                        World.mapAmbientState AmbientState.clearTimeAdvancement world
                         World.setContextAndDeclared context declared world
                         operation world
                         World.setContextAndDeclared context' declared' world
-                        World.mapAmbientState (AmbientState.restoreAdvancement advancing advancementCleared updateDelta clockDelta tickDelta) world
+                        World.mapAmbientState (AmbientState.restoreTimeAdvancement timeAdvancing timeAdvancementCleared updateDelta clockDelta tickDelta) world
                 else operation
 
             // add tasklet
@@ -457,7 +457,7 @@ module WorldModule =
         /// When called in an ImSim Process context, will provide the ImSim simulant context and declared values from
         /// World that were active in that Process context as well as time and advancement state.
         static member defer operation (simulant : Simulant) (world : World) =
-            let time = if WorldModuleInternal.EndFrameProcessingStarted && world.Advancing then GameTime.epsilon else GameTime.zero
+            let time = if WorldModuleInternal.EndFrameProcessingStarted && world.TimeAdvancing then GameTime.epsilon else GameTime.zero
             World.schedule time operation simulant world
 
         /// Attempt to get the window flags.
@@ -479,6 +479,10 @@ module WorldModule =
         /// Attempt to check that the window is in a full screen state.
         static member tryGetWindowFullScreen (world : World) =
             AmbientState.tryGetWindowFullScreen world.AmbientState
+
+        /// Attempt to get the pixel size of the desktop occupied by the window.
+        static member internal tryGetDisplaySize (world : World) =
+            AmbientState.tryGetDisplaySize world.AmbientState
 
         /// Attempt to set the window's full screen state.
         static member trySetWindowFullScreen fullScreen world =
@@ -531,6 +535,45 @@ module WorldModule =
         static member setWindowViewport viewport (world : World) =
             let worldExtension = { world.WorldExtension with WindowViewport = viewport }
             world.WorldState <- { world.WorldState with WorldExtension = worldExtension }
+
+        /// Synchronize all viewport-derived state from the physical window size.
+        static member private synchronizeViewportStatePositive (windowSize : Vector2i) displayScalar (world : World) =
+            let displayScalar = max 1 displayScalar
+            Globals.Render.DisplayScalar <- displayScalar
+            let gameState = world.WorldState.GameState
+            let eyeMarginMaxScalar = Vector2.Max (v2Zero, Constants.Engine.EyeMarginMaxScalar)
+            let eyeViewable = gameState.Eye2dSize * (v2Dup 1.0f + 2.0f * eyeMarginMaxScalar)
+            let eyeViewed =
+                v2
+                    (max gameState.Eye2dSize.X (min eyeViewable.X (single windowSize.X / single displayScalar)))
+                    (max gameState.Eye2dSize.Y (min eyeViewable.Y (single windowSize.Y / single displayScalar)))
+            let windowViewport = Viewport.makeWindowViewed eyeViewed windowSize
+            let geometryViewport = Viewport.makeGeometry windowViewport.Bounds.Size
+            let viewportInterior = Viewport.makeInteriorViewed geometryViewport.Bounds.Size
+            let viewportExterior = Viewport.makeExteriorViewed geometryViewport.Bounds.Size
+            let viewportImposter = Viewport.makeImposterViewed geometryViewport.Bounds.Size
+            let gameState =
+                { gameState with
+                    Eye2dViewed = eyeViewed
+                    Eye3dFrustumInterior =
+                        Viewport.getFrustum gameState.Eye3dCenter gameState.Eye3dRotation gameState.Eye3dFieldOfView viewportInterior
+                    Eye3dFrustumExterior =
+                        Viewport.getFrustum gameState.Eye3dCenter gameState.Eye3dRotation gameState.Eye3dFieldOfView viewportExterior
+                    Eye3dFrustumImposter =
+                        Viewport.getFrustum gameState.Eye3dCenter gameState.Eye3dRotation gameState.Eye3dFieldOfView viewportImposter }
+            let worldExtension =
+                { world.WorldExtension with
+                    GeometryViewport = geometryViewport
+                    WindowViewport = windowViewport }
+            world.WorldState <-
+                { world.WorldState with
+                    GameState = gameState
+                    WorldExtension = worldExtension }
+
+        /// Synchronize all viewport-derived state when the window has a drawable extent.
+        static member internal synchronizeViewportState (windowSize : Vector2i) displayScalar (world : World) =
+            if windowSize.X > 0 && windowSize.Y > 0 then
+                World.synchronizeViewportStatePositive windowSize displayScalar world
 
         static member internal getSymbolics (world : World) =
             AmbientState.getSymbolics world.WorldState.AmbientState
@@ -947,7 +990,7 @@ module WorldModule =
             | (false, _)-> None
 
         static member internal makePhysicsEngine2dRenderContext segments circles (world : World) =
-            world.WorldExtension.Plugin.MakePhysicsEngine2dRenderContext segments circles world.Eye2dBounds
+            world.WorldExtension.Plugin.MakePhysicsEngine2dRenderContext segments circles world.Eye2dBoundsViewable
 
         static member internal preProcess (world : World) =
             world.WorldExtension.Plugin.PreProcess world
@@ -1092,14 +1135,14 @@ module WorldModule =
 
     type World with // Debugging
 
-        /// View the member properties of some SimulantState.
+        /// Provide the member properties of some SimulantState.
         static member internal getSimulantStateMemberProperties (state : SimulantState) =
             getType state
             |> (fun ty -> ty.GetProperties true)
             |> Array.map (fun (property : PropertyInfo) -> (property.Name, property.PropertyType, property.GetValue state))
             |> Array.toList
 
-        /// View the xtension properties of some SimulantState.
+        /// Provide the xtension properties of some SimulantState.
         static member internal getSimulantStateXtensionProperties (state : SimulantState) =
             state.GetXtension().Properties
             |> List.ofSeq
