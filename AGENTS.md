@@ -8,19 +8,23 @@ These instructions apply repository-wide. More specific instructions in a nested
 Before changing code or assets:
 
 - Read `Standard.md` and follow its F# correctness, consistency, simplicity, and testing rules.
-- Read `.github/copilot-instructions.md` for the repository map and Nu-specific commands.
 - Read `.github/skills/nu-quickstart/SKILL.md` before implementing unfamiliar Nu patterns.
 - For work under `Projects/Blobbo and Chrono/`, read
   `Projects/Blobbo and Chrono/ARCHITECTURE.md` first and keep it current when architecture changes.
 - Prefer the narrowest relevant build or test first, followed by broader verification when practical.
 
+Create F# source files by default. Use another language only when extending an existing project in
+that language, such as `Nu.Math` or `Nu.Spine` in C#.
+
 ## Repository map
 
-- Nu engine: `Nu/Nu/`
+- Nu engine: `Nu/Nu/` (`Nu.fsproj`)
+- Math support: `Nu/Nu.Math/` (`Nu.Math.csproj`, C#)
+- Spine support: `Nu/Nu.Spine/` (`Nu.Spine.csproj`, C#)
 - Nu engine tests: `Nu/Nu.Tests/`
-- World editor: `Nu/Nu.Gaia/`
+- World editor: `Nu/Nu.Gaia/` (loads game projects with code reload and builds them when Gaia builds)
 - Asset processor: `Nu/Nu.Pipe/`
-- Game projects: `Projects/`
+- Game projects: `Projects/` (each is a standalone `.fsproj`)
 - Blobbo and Chrono: `Projects/Blobbo and Chrono/`
 
 Useful commands:
@@ -29,11 +33,45 @@ Useful commands:
 dotnet tool restore
 dotnet build "Projects/Blobbo and Chrono/Blobbo and Chrono.fsproj"
 dotnet build Nu/Nu.Gaia/Nu.Gaia.fsproj -f net10.0
+dotnet run --project Nu/Nu.Gaia
 dotnet test Nu/Nu.Tests/Nu.Tests.fsproj
 dotnet build Nu.slnx
 ```
 
 Do not claim validation that was not run. Record environmental blockers precisely.
+
+## Nu references and engine conventions
+
+- Use the [upstream Nu wiki](https://github.com/bryanedds/Nu/wiki) for maintained usage guidance.
+  In particular, consult [Assets and the Asset Graph](https://github.com/bryanedds/Nu/wiki/Assets-and-the-Asset-Graph)
+  when changing asset discovery, packages, or `AssetGraph.nuag`.
+- Use [DeepWiki: Nu Game Engine](https://deepwiki.com/bryanedds/Nu) as the architecture and concepts
+  index. Fetch its latest content before answering questions about engine internals, architecture,
+  dispatchers, facets, or entities. For rendering-asset failures, start with
+  [Texture and Asset Loading](https://deepwiki.com/bryanedds/Nu/4.5-texture-and-asset-loading).
+- Treat the checked-out source, compiler, and tests as the final authority when published guidance and
+  the current revision differ.
+- Nu uses Box2D.NET for 2D physics and Jolt Physics for 3D physics. Treat Aether Physics as legacy and
+  avoid it for new work. Consult the [Box2D API reference](https://box2d.org/documentation/) when needed.
+- ImSim property operators have distinct lifetimes: `.=` sets once and reapplies after code reload;
+  `|=` initializes once without reapplying after code reload; `@=` binds dynamically every frame.
+- Keep relevant documents in `.github/skills/` current when an engine pattern changes or a recurring
+  correction reveals missing, confusing, or obsolete guidance.
+
+## Default asset propagation
+
+`Nu/Nu.Gaia/Assets/Default/` is the canonical default-asset source. After merging upstream engine
+changes that touch default assets or shaders, and before runtime validation of projects affected by
+such a merge, run the matching propagation script from the repository root:
+
+```bash
+PropagateDefaultAssets.Windows.bat
+./PropagateDefaultAssets.Linux.sh
+```
+
+Review and commit the resulting project asset changes; they are not disposable build output. Rebuild
+the relevant project after propagation, then launch it. A successful compile alone does not prove that
+runtime shader and asset requirements are present.
 
 ## AI-assisted production policy
 
