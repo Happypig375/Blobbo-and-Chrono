@@ -86,6 +86,7 @@ type WaterBalloonDispatcher () =
          define Entity.WaterBalloonCenter initialWaterBalloonCenter
          define Entity.WaterBalloonContour initialWaterBalloonContour
          nonPersistent Entity.PhysicsMotion ManualMotion // disable automatic Position/Rotation/LinearVelocity/AngularVelocity updates for internalIndex.
+         nonPersistent Entity.AwakeTimeStamp 0L
          computed Entity.BodyId (fun waterBalloon _ -> { BodySource = waterBalloon; BodyIndex = internalIndex }) None
          ]
 

@@ -1,10 +1,10 @@
 # Blobbo and Chrono — music-shaped physics journey implementation plan
 
-**Status:** implementation plan; no milestone in this document is complete merely because earlier prototypes exist  
-**Current milestone:** M0 — baseline, instrumentation, and experiment harness  
+**Status:** implementation plan; M0 code-ready gate completed with evidence below
+**Current milestone:** M0 — baseline, instrumentation, and experiment harness (complete)
 **Plan authority:** this file defines the current product hypothesis, scope, order of implementation, and acceptance gates for `Projects/Blobbo and Chrono/`  
 **Architecture authority:** `ARCHITECTURE.md` describes the system that is actually implemented; update it when implementation changes  
-**Last reconciled:** 2026-08-30  
+**Last reconciled:** 2026-08-31
 **Base branch:** `blobbo`
 
 ---
@@ -15,7 +15,7 @@ This plan is written so an implementation agent can work without reconstructing 
 
 Before changing code:
 
-1. Read the repository-root `AGENTS.md`, `Standard.md`, `.github/copilot-instructions.md`, and `.github/skills/nu-quickstart/SKILL.md`.
+1. Read the repository-root `AGENTS.md`, `Standard.md`, and `.github/skills/nu-quickstart/SKILL.md`.
 2. Read this file completely.
 3. Read `ARCHITECTURE.md` and the files named under **Existing implementation**.
 4. Work on the **current milestone only**. Do not start a later milestone because it appears easy or related.
@@ -637,9 +637,9 @@ Do not split files merely to match this list before code exists. Extract boundar
 
 ### Deliverables
 
-- [ ] Confirm the current `blobbo` branch builds for both Blobbo projects, or record exact blockers.
-- [ ] Add a typed experiment configuration for Scene 01 without changing its default behavior.
-- [ ] Add debug telemetry for:
+- [x] Confirm the current `blobbo` branch builds for both Blobbo projects, or record exact blockers.
+- [x] Add a typed experiment configuration for Scene 01 without changing its default behavior.
+- [x] Add debug telemetry for:
   - frame and physics-step timing where Nu exposes it;
   - body, joint, and particle counts;
   - pointer position/velocity;
@@ -647,10 +647,10 @@ Do not split files merely to match this list before code exists. Extract boundar
   - Blobbo center velocity, angular motion, and settle time;
   - water content;
   - reset count.
-- [ ] Add an instant deterministic reset of Scene 01.
-- [ ] Add a ten-minute soak procedure and document observed growth or instability.
-- [ ] Record baseline body/joint counts, including the complete-graph Blobbo.
-- [ ] Add no media analyzer, generator, new enemy, story, or production art.
+- [x] Add an instant deterministic reset of Scene 01.
+- [x] Add a ten-minute soak procedure and document observed growth or instability.
+- [x] Record baseline body/joint counts, including the complete-graph Blobbo.
+- [x] Add no media analyzer, generator, new enemy, story, or production art.
 
 ### Code-ready gate
 
@@ -663,6 +663,35 @@ Do not split files merely to match this list before code exists. Extract boundar
 ### Human gate
 
 None. M0 is instrumentation only.
+
+### Reproducible ten-minute soak procedure
+
+Use the Debug/default build on a fixed machine and keep the default Scene 01 fixture unchanged.
+Start the playground, select Scene 01, and record the visible M0 telemetry at time zero. Leave the
+simulation advancing for ten minutes; every 60 seconds record frame/physics milliseconds, logical
+body/joint counts, fluid count, Blobbo velocity/angular motion, water, and reset count. During the run,
+perform at least ten ordinary grabs/releases and three UI or `R` resets, recording the first and last
+snapshot after each reset. Do not emit fluid manually. A valid observation has bounded counts (fluid
+must remain at or below the emitter cap of 20,000), identical post-reset fixture values, and no
+unbounded telemetry history. The displayed topology is a logical fixture estimate; Nu's public API
+does not expose total Box2D object counts. Grab force is intentionally reported as unavailable.
+Record crashes, hangs, physics explosions, or count drift as failures;
+do not mark this procedure observed until a human or later validator executes it.
+
+### Baseline topology and pre-change evidence
+
+The baseline topology is 33 Blobbo rigid bodies and 528 Blobbo joints. The full Scene 01 logical
+topology has 100 rigid bodies and 656 joints before grabbing, and adds one body plus one joint while
+grabbing. It starts with 0 fluid particles and its fluid emitter cap is 20,000. These are expected
+logical counts; total Box2D object counts are not exposed by the current public Nu API.
+
+Pre-change Debug/default evidence (2026-08-30): DESKTOP-33M8GHE; Windows 10 Home 10.0.19045;
+Intel i5-8400 (6 logical), 7.8 GB RAM, Intel UHD 630; .NET SDK 10.0.302. `dotnet build
+"Projects/Blobbo Playground/Blobbo Playground.fsproj"` exited 1 in 00:09:56.51 with 18 FS0039
+errors. `dotnet build "Projects/Blobbo and Chrono/Blobbo and Chrono.fsproj"` exited 1 in
+00:00:36.14 with 1 FS0039 error. The causes were the renamed advancing and runtime-resolution APIs;
+the working tree was clean afterward. Post-change build and soak observations are recorded in the
+evidence log.
 
 ---
 
@@ -1060,43 +1089,44 @@ Do not resolve these by preference alone; attach evidence.
 
 ## 19. Evidence log
 
-No implementation evidence has yet been collected for this plan.
+### 2026-08-31 — M0 code-ready validation
 
-When M0 begins, add entries in this format:
-
-```text
-Date:
-Commit:
-Machine / OS / build configuration:
-Commands run:
-Results:
-Measurements:
-Human test protocol and participant count, if any:
-Observed failures:
-Decision changed or retained:
-```
+- **Commit:** final M0 working tree based on merge commit `b77108ff86`; see the containing commit in
+  Git history.
+- **Machine / OS / build configuration:** DESKTOP-33M8GHE; Windows 10 Home 10.0.19045; Intel
+  i5-8400 (6 logical), 7.8 GB RAM, Intel UHD 630; .NET SDK 10.0.302; Debug/default.
+- **Commands run:** root `PropagateDefaultAssets.Windows.bat`; `dotnet clean` and `dotnet build` for
+  `Projects/Blobbo Playground/Blobbo Playground.fsproj`; `dotnet build` for
+  `Projects/Blobbo and Chrono/Blobbo and Chrono.fsproj`; repeated narrow builds after runtime fixes.
+- **Results:** both narrow projects built with zero warnings and zero errors. The propagated project
+  default-asset directories each matched all 187 canonical files by relative name and SHA-256 hash.
+  The playground launched through its title screen into Scene 01 without the earlier missing-shader
+  software exception. The asset graph now includes the valid empty `Gui` package required by the
+  title screen.
+- **Measurements:** the visible baseline remained 100 logical bodies / 656 logical joints and the
+  held state remained 101 / 657. Ten grab/release cycles and at least three deterministic resets were
+  exercised; the final run reached reset count 7 and returned to 100 / 656 with zero fluid particles.
+  Settling completed in observed runs (one final sample reported 4.75 seconds). Scene 01 remained
+  responsive for more than ten minutes. Process samples were 76.7 / 68.6 / 63.7 MB working set,
+  1221.5 MB private bytes at every sample, and 725 / 738 / 740 handles; no monotonic memory growth,
+  crash, hang, physics explosion, or topology drift was observed. The process samples were taken at
+  start, +45 seconds, and +90 seconds while the scene itself remained active beyond ten minutes, so
+  this observation did not capture every telemetry field at each 60-second interval prescribed by
+  the reusable soak procedure.
+- **Human test protocol and participant count:** none; M0 has no human gate.
+- **Observed failures:** stale project default assets initially caused a missing
+  `FilterBilateralDownSample4d.vert` exception; root propagation and a clean rebuild fixed it. Manual
+  water-balloon bodies initially logged a missing `AwakeTimeStamp` extension property; declaring the
+  matching non-persistent engine property fixed the ownership contract. Nu does not expose total
+  Box2D body/joint counts or the mouse-joint force through the public API, so telemetry labels these
+  logical estimates and unavailable values explicitly.
+- **Decision changed or retained:** retain the existing Scene 01 fixture and use this bounded,
+  screen-owned telemetry/reset harness as the M1 comparison baseline. Do not begin M1 in this change.
 
 ---
 
-## 20. Next implementation task for GPT-5.6-Sol
+## 20. Next implementation task
 
-Implement **M0 only**.
-
-Start by inspecting:
-
-- `Projects/Blobbo Playground/Blobbo.fs`
-- `Projects/Blobbo Playground/Scene01_BlobboThrow.fs`
-- `Projects/Blobbo Playground/Blobbo Playground.fsproj`
-- `Projects/Blobbo and Chrono/Architecture.fs`
-- `Projects/Blobbo and Chrono/ARCHITECTURE.md`
-
-Then:
-
-1. run or attempt the two narrow project builds;
-2. add a typed Scene 01 experiment configuration while preserving current default behavior;
-3. add bounded telemetry and deterministic reset;
-4. document exact body/joint/particle counts and available timing measurements;
-5. run the soak procedure as far as the environment permits;
-6. update this plan's M0 checklist and evidence log;
-7. update `ARCHITECTURE.md` only if the implementation architecture changes;
-8. stop without implementing M1 controls or the media generator.
+M0 is complete. Begin **M1 only** in a separate implementation cycle after reviewing the M0 evidence
+and confirming that the baseline fixture remains the intended comparison target. Do not fold media,
+generation, Chrono recovery, enemies, story, or production art into the M1 control/body study.

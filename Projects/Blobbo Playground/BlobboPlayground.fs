@@ -44,7 +44,7 @@ type BlobboPlaygroundDispatcher () =
         let behavior = Dissolve (Constants.Dissolve.Default, None)
         World.beginScreen Simulants.Title.Name (game.GetGameState world = Title) behavior [] world |> ignore
         World.beginGroup "Gui" [] world
-        World.beginPanel "Panel" [Entity.Size .= Constants.Render.DisplayVirtualResolution.V3; Entity.Layout .= Grid (v2i 8 8, Some FlowRightward, true)] world
+        World.beginPanel "Panel" [Entity.Size .= (World.getDisplayVirtualResolution ()).V3; Entity.Layout .= Grid (v2i 8 8, Some FlowRightward, true)] world
         if World.doButton "Scene01_BlobboThrow" [Entity.Text .= "01"] world then game.SetGameState Scene01_BlobboThrow world
         if World.doButton "Scene02_BoxRewind" [Entity.Text .= "02"] world then game.SetGameState Scene02_BoxRewind world
         if World.doButton "Scene03_MathSimplify" [Entity.Text .= "03"] world then game.SetGameState Scene03_MathSimplify world

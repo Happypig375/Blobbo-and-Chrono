@@ -156,13 +156,13 @@ type Scene04_SquareRaceDispatcher () =
         [define Screen.GameplayState Quit]
 
     // here we define the behavior of our gameplay
-    override this.Process (selectionResults, screen, world) =
+    override this.Process (_, screen, world) =
 
         if screen.GetSelected world then
             World.beginGroup "Group" [] world
             // declare border
             World.doBlockBody2d "Border"
-                [Entity.Size .= Constants.Render.DisplayVirtualResolution.V3
+                [Entity.Size .= (World.getDisplayVirtualResolution ()).V3
                  Entity.BodyShape .= ContourShape
                      { Links =
                          [|v3 -0.5f 0.5f 0f

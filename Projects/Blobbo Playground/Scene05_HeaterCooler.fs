@@ -22,7 +22,7 @@ type Scene05_HeaterCoolerDispatcher () =
             
             // declare border
             World.doBlockBody2d "Border"
-                [Entity.Size .= Constants.Render.DisplayVirtualResolution.V3
+                [Entity.Size .= (World.getDisplayVirtualResolution ()).V3
                  Entity.BodyShape .= ContourShape
                      { Links =
                          [|v3 -0.5f 0.5f 0f
@@ -237,12 +237,12 @@ type Scene05_HeaterCoolerDispatcher () =
             // =================== Pause / Overlay / Revive ===================
             if screen.GetSelected world then
                 if World.isKeyboardKeyPressed KeyboardKey.Space world then
-                    World.setAdvancing (not world.Advancing) world
-                if world.Advancing then ()
+                    World.setTimeAdvancing (not world.TimeAdvancing) world
+                if world.TimeAdvancing then ()
                 else
                     World.doStaticSprite "Overlay" 
                         [Entity.Position .= v3 0f 0f 0.1f
-                         Entity.Size .= Constants.Render.DisplayVirtualResolution.V3
+                         Entity.Size .= (World.getDisplayVirtualResolution ()).V3
                          Entity.Absolute .= true
                          Entity.StaticImage .= Assets.Default.White
                          Entity.Color .= color 0.5f 0.5f 0.5f 0.5f] world |> ignore

@@ -180,7 +180,7 @@ type BlobboDispatcher () =
         let waterContent = blobbo.GetWaterContent world
 
         // Absorb nearby fluid particles when not full.
-        if world.Advancing && waterContent < maxWaterContent then
+        if world.TimeAdvancing && waterContent < maxWaterContent then
             match tryResolve (blobbo.GetWorldFluidEmitter world) blobbo with
             | Some emitter ->
                 let mutable absorbed = 0

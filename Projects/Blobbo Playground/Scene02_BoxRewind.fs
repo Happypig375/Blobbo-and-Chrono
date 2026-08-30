@@ -14,13 +14,13 @@ type Scene02_BoxRewindDispatcher () =
         [define Screen.GameplayState Quit]
 
     // here we define the behavior of our gameplay
-    override this.Process (selectionResults, screen, world) =
+    override this.Process (_, screen, world) =
 
         if screen.GetSelected world then
             World.beginGroup "Group" [] world
             // declare border
             World.doBlockBody2d "Border"
-                [Entity.Size .= Constants.Render.DisplayVirtualResolution.V3
+                [Entity.Size .= (World.getDisplayVirtualResolution ()).V3
                  Entity.BodyShape .= ContourShape
                      { Links =
                          [|v3 -0.5f 0.5f 0f
@@ -33,13 +33,12 @@ type Scene02_BoxRewindDispatcher () =
                  Entity.Elevation .= -1f
                  Entity.StaticImage .= Assets.Gameplay.Background] world |> ignore
 
-            let (box, _) =
-                World.doBoxBody2d "Box"
+            World.doBoxBody2d "Box"
                     [Entity.Position |= v3 -90f 0f 0f
                      Entity.Size .= v3Dup 16f
                      Entity.LinearVelocity |= v3 100f 0f 0f
                      Entity.Friction .= 0f
-                     Entity.FacetNames .= Set.ofList [nameof RewindableFacet]] world
+                     Entity.FacetNames .= Set.ofList [nameof RewindableFacet]] world |> ignore
             
             World.setEye2dCenter v2Zero world
         
@@ -50,28 +49,27 @@ type Scene02_BoxRewindDispatcher () =
             if World.isKeyboardKeyDown KeyboardKey.Right world then
                 world.DeclaredEntity.RewindPreview.Map (Option.map (fun r -> r - GameTime.ofUpdates 1)) world
             if World.isKeyboardKeyPressed KeyboardKey.Space world then
-                if world.Advancing then
-                    World.setAdvancing false world
+                if world.TimeAdvancing then
+                    World.setTimeAdvancing false world
                     world.DeclaredEntity.SetRewindPreview (Some GameTime.zero) world
                 else
-                    World.setAdvancing true world
+                    World.setTimeAdvancing true world
                     match world.DeclaredEntity.GetRewindPreview world with
                     | Some rewindPreview ->
                         World.publish { RewindAnchorOpt = ValueNone; RewindTime = rewindPreview } world.DeclaredEntity.RewindEvent world.DeclaredEntity world
                         world.DeclaredEntity.SetRewindPreview None world
                     | _ -> ()
-            if not world.Advancing then
+            if not world.TimeAdvancing then
                 World.doStaticSprite "Overlay" 
                     [Entity.Position .= v3 0f 0f 0.1f
-                     Entity.Size .= Constants.Render.DisplayVirtualResolution.V3
+                     Entity.Size .= (World.getDisplayVirtualResolution ()).V3
                      Entity.StaticImage .= Assets.Default.White
                      Entity.Color .= color 0.5f 0.5f 0.5f 0.5f] world |> ignore
-            let (box2, _) =
-                World.doBoxBody2d "Box2"
+            World.doBoxBody2d "Box2"
                     [Entity.Position |= v3 90f 0f 0f
                      Entity.Size .= v3Dup 16f
                      Entity.Friction .= 0f
-                     Entity.FacetNames .= Set.ofList [nameof RewindableFacet]] world
+                     Entity.FacetNames .= Set.ofList [nameof RewindableFacet]] world |> ignore
 
             // declare quit button
             if World.doButton "Quit" [Entity.Position .= v3 232.0f -144.0f 0.0f; Entity.Text .= "Quit"] world then
