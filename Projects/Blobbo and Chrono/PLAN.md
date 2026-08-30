@@ -729,6 +729,10 @@ With at least five unfamiliar testers:
 **Recorded result:** 0 / 5 unfamiliar testers; this gate remains pending and no preferred control
 mode has been selected.
 
+**Protocol:** use `../Blobbo Playground/Playtest/M1 Facilitator Guide.md` and its two anonymous CSV
+templates. The guide fixes the prompt, timing, counterbalanced control order, prediction observation,
+and pass criteria before results are collected.
+
 Do not mark the milestone fully complete until the human gate is recorded.
 
 ---
@@ -1159,6 +1163,36 @@ Do not resolve these by preference alone; attach evidence.
 - **Decision changed or retained:** the M1 code-ready gate passes. Keep all three candidates and controls
   available for the human comparison, run at least five unfamiliar testers next, and do not begin M2 or
   choose a preferred control until that evidence is recorded.
+
+### 2026-08-31 — M1 participant handoff and Box2D merge follow-up
+
+- **Base:** pushed M1 commit `57656a4fbf`; see the containing follow-up commit in Git history.
+- **Commands run:** the Nu, Playground, production-game, and Gaia builds; the three focused
+  `Box2dNetPhysicsEngineTests`; the five-test M1 project; `--verify-m1`; a Release/win-x64
+  self-contained publish; and the verifier again after extracting the participant ZIP.
+- **Results:** every build passed with zero warnings and zero errors. The focused Box2D tests passed
+  3 / 3, the M1 tests passed 5 / 5, and both verifier runs passed 16 / 16 with trace
+  `5013E3E41D876A49`.
+- **Participant build:** `bin/Blobbo-M1-Playtest-win-x64.zip` is a 90,122,689-byte self-contained
+  direct-launch package with 238 entries, including 196 physical assets and the facilitator guide plus
+  both anonymous CSV templates. It contains no `Log.txt`, `imgui.ini`, or `ShaderCache` entries. Its
+  SHA-256 is `BF7E1C841DEF3AE3CF8D0F831C7D377B5EF83C0008BDCF7DDE7B6CEA551A5D1A`.
+- **Interactive checks:** the packaged launcher opened directly in the M1 lab; drag, trace replay,
+  target-room selection, Pull selection, miss reporting, and Quit were exercised. In Scene 01, emitted
+  water popped both balloons, Blobbo absorbed to its 32-unit cap and visibly expanded, the expanded body
+  remained stable through a drag, and Reset restored 100 bodies / 656 joints with zero water and fluid.
+- **Human test protocol and participant count:** the fixed facilitator protocol and counterbalanced CSV
+  templates are ready; 0 / 5 unfamiliar testers have run them, so the human gate remains pending.
+- **Observed failures:** a fresh merged build exposed four non-exhaustive Box2D message handlers lost
+  while adapting Blobbo PR #2 to the Box2D.NET update. Runtime damping, sphere-shape, and distance-joint
+  handling were restored against the current direct APIs and covered by focused tests; upstream PR
+  #1437 remains unchanged. A clean Nu.Tests output removed a stale Box2D.NET 3.1.1.557 assembly before
+  the focused tests passed against 3.1.654. An earlier unfiltered Nu.Tests run passed 214 assertions,
+  then Windows Vulkan teardown raised a `vkDestroyImageView` access violation and an "unknown software
+  exception" popup; the focused headless tests and application checks did not reproduce it.
+- **Decision changed or retained:** distribute the self-contained participant build and collect the five
+  unfamiliar-tester records. Keep M1 pending and do not select a body or control until that evidence is
+  scored.
 
 ---
 

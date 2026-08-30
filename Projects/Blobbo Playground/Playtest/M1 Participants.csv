@@ -1,0 +1,6 @@
+participant_id,unfamiliar_with_blobbo,control_order,discovered_two_of_three,voluntarily_repeated,predicted_two_of_three,preferred_control,preference_reason,body_preference,observer_notes
+P01,,GrabThrow|PullSling|SwipeSmack,,,,,,,
+P02,,PullSling|SwipeSmack|GrabThrow,,,,,,,
+P03,,SwipeSmack|GrabThrow|PullSling,,,,,,,
+P04,,GrabThrow|SwipeSmack|PullSling,,,,,,,
+P05,,PullSling|GrabThrow|SwipeSmack,,,,,,,

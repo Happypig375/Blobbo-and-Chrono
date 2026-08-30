@@ -1306,9 +1306,38 @@ type [<ReferenceEquality>] Box2dNetPhysicsEngine =
         | (true, body) -> B2Bodies.b2Body_SetLinearVelocity (body, Box2dNetPhysicsEngine.toPhysicsV2 setBodyLinearVelocityMessage.LinearVelocity) // NOTE: wakes body for non-zero velocity.
         | (false, _) -> ()
 
+    static member private setBodyLinearDamping (setBodyLinearDampingMessage : SetBodyLinearDampingMessage) physicsEngine =
+        match physicsEngine.Bodies.TryGetValue setBodyLinearDampingMessage.BodyId with
+        | (true, body) -> B2Bodies.b2Body_SetLinearDamping (body, setBodyLinearDampingMessage.LinearDamping)
+        | (false, _) -> ()
+
     static member private setBodyAngularVelocity (setBodyAngularVelocityMessage : SetBodyAngularVelocityMessage) physicsEngine =
         match physicsEngine.Bodies.TryGetValue setBodyAngularVelocityMessage.BodyId with
         | (true, body) -> B2Bodies.b2Body_SetAngularVelocity (body, setBodyAngularVelocityMessage.AngularVelocity.Z) // NOTE: wakes body for non-zero velocity.
+        | (false, _) -> ()
+
+    static member private setBodyAngularDamping (setBodyAngularDampingMessage : SetBodyAngularDampingMessage) physicsEngine =
+        match physicsEngine.Bodies.TryGetValue setBodyAngularDampingMessage.BodyId with
+        | (true, body) -> B2Bodies.b2Body_SetAngularDamping (body, setBodyAngularDampingMessage.AngularDamping)
+        | (false, _) -> ()
+
+    static member private setBodyShape (setBodyShapeMessage : SetBodyShapeMessage) physicsEngine =
+        match physicsEngine.Bodies.TryGetValue setBodyShapeMessage.BodyId with
+        | (true, body) ->
+            match setBodyShapeMessage.BodyShape with
+            | SphereShape sphereShape ->
+                let shapeCount = B2Bodies.b2Body_GetShapeCount body
+                if shapeCount > 0 then
+                    let shapes = Array.zeroCreate shapeCount
+                    B2Bodies.b2Body_GetShapes (body, shapes.AsSpan (), shapeCount) |> ignore<int>
+                    let shape = shapes[0]
+                    let mutable circle = B2Shapes.b2Shape_GetCircle shape
+                    let transform = Option.defaultValue Affine.Identity sphereShape.TransformOpt
+                    circle.center <- Box2dNetPhysicsEngine.toPhysicsV2 transform.Translation
+                    circle.radius <- Box2dNetPhysicsEngine.toPhysicsPolygonRadius (sphereShape.Radius * transform.Scale.X)
+                    B2Shapes.b2Shape_SetCircle (shape, &circle)
+                    B2Bodies.b2Body_SetAwake (body, true)
+            | _ -> ()
         | (false, _) -> ()
 
     static member private setBodyJointMotorEnabled (setBodyJointMotorEnabledMessage : SetBodyJointMotorEnabledMessage) physicsEngine =
@@ -1343,6 +1372,17 @@ type [<ReferenceEquality>] Box2dNetPhysicsEngine =
                 B2RevoluteJoints.b2RevoluteJoint_SetTargetAngle (joint, setBodyJointTargetAngleMessage.TargetAngle)
             | _ -> ()
             B2Joints.b2Joint_WakeBodies joint
+        | (false, _) -> ()
+
+    static member private setBodyJointDistance (setBodyJointDistanceMessage : SetBodyJointDistanceMessage) physicsEngine =
+        match physicsEngine.Joints.TryGetValue setBodyJointDistanceMessage.BodyJointId with
+        | (true, joint) ->
+            match B2Joints.b2Joint_GetType joint with
+            | B2JointType.b2_distanceJoint ->
+                B2DistanceJoints.b2DistanceJoint_SetLength
+                    (joint, Box2dNetPhysicsEngine.toPhysics setBodyJointDistanceMessage.Distance)
+                B2Joints.b2Joint_WakeBodies joint
+            | _ -> ()
         | (false, _) -> ()
 
     static member private applyBodyLinearImpulse (applyBodyLinearImpulseMessage : ApplyBodyLinearImpulseMessage) physicsEngine =
@@ -1560,7 +1600,10 @@ type [<ReferenceEquality>] Box2dNetPhysicsEngine =
         | SetBodyCenterMessage setBodyCenterMessage -> Box2dNetPhysicsEngine.setBodyCenter setBodyCenterMessage physicsEngine
         | SetBodyRotationMessage setBodyRotationMessage -> Box2dNetPhysicsEngine.setBodyRotation setBodyRotationMessage physicsEngine
         | SetBodyLinearVelocityMessage setBodyLinearVelocityMessage -> Box2dNetPhysicsEngine.setBodyLinearVelocity setBodyLinearVelocityMessage physicsEngine
+        | SetBodyLinearDampingMessage setBodyLinearDampingMessage -> Box2dNetPhysicsEngine.setBodyLinearDamping setBodyLinearDampingMessage physicsEngine
         | SetBodyAngularVelocityMessage setBodyAngularVelocityMessage -> Box2dNetPhysicsEngine.setBodyAngularVelocity setBodyAngularVelocityMessage physicsEngine
+        | SetBodyAngularDampingMessage setBodyAngularDampingMessage -> Box2dNetPhysicsEngine.setBodyAngularDamping setBodyAngularDampingMessage physicsEngine
+        | SetBodyShapeMessage setBodyShapeMessage -> Box2dNetPhysicsEngine.setBodyShape setBodyShapeMessage physicsEngine
         | SetBodyVehicleForwardInputMessage _ -> () // no vehicle controller support
         | SetBodyVehicleRightInputMessage _ -> () // no vehicle controller support
         | SetBodyVehicleBrakeInputMessage _ -> () // no vehicle controller support
@@ -1568,6 +1611,7 @@ type [<ReferenceEquality>] Box2dNetPhysicsEngine =
         | SetBodyJointMotorEnabledMessage setBodyJointMotorEnabledMessage -> Box2dNetPhysicsEngine.setBodyJointMotorEnabled setBodyJointMotorEnabledMessage physicsEngine
         | SetBodyJointMotorSpeedMessage setBodyJointMotorSpeedMessage -> Box2dNetPhysicsEngine.setBodyJointMotorSpeed setBodyJointMotorSpeedMessage physicsEngine
         | SetBodyJointTargetAngleMessage setBodyJointTargetAngleMessage -> Box2dNetPhysicsEngine.setBodyJointTargetAngle setBodyJointTargetAngleMessage physicsEngine
+        | SetBodyJointDistanceMessage setBodyJointDistanceMessage -> Box2dNetPhysicsEngine.setBodyJointDistance setBodyJointDistanceMessage physicsEngine
         | ApplyBodyLinearImpulseMessage applyBodyLinearImpulseMessage -> Box2dNetPhysicsEngine.applyBodyLinearImpulse applyBodyLinearImpulseMessage physicsEngine
         | ApplyBodyAngularImpulseMessage applyBodyAngularImpulseMessage -> Box2dNetPhysicsEngine.applyBodyAngularImpulse applyBodyAngularImpulseMessage physicsEngine
         | ApplyBodyForceMessage applyBodyForceMessage -> Box2dNetPhysicsEngine.applyBodyForce applyBodyForceMessage physicsEngine
