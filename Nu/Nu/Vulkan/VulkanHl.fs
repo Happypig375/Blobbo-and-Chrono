@@ -377,6 +377,7 @@ module Hl =
 
     /// Make the surface state reflect the loss of the surface.
     let notifySurfaceLost () =
+        Log.info "Vulkan surface lost."
         SurfaceState_ <- SurfaceLost
 
     /// Callback to inform render loop about app backgrounding. Official documentation for android case -
@@ -643,7 +644,7 @@ module Hl =
                 colorInfo.loadOp <- VkAttachmentLoadOp.DontCare
             | ClearAttachments color ->
                 colorInfo.loadOp <- VkAttachmentLoadOp.Clear
-                colorInfo.clearValue <- VkClearValue (r = color.R, g = color.G, b = color.B, a = color.A)
+                colorInfo.clearValue <- VkClearValue (color.R, color.G, color.B, color.A)
             colorInfos[i] <- colorInfo
         use colorInfosPin = new ArrayPin<_> (colorInfos)
 
