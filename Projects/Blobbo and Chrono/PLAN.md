@@ -1,7 +1,7 @@
 # Blobbo and Chrono — music-shaped physics journey implementation plan
 
-**Status:** implementation plan; M0 code-ready gate completed with evidence below
-**Current milestone:** M0 — baseline, instrumentation, and experiment harness (complete)
+**Status:** implementation plan; M0 and M1 code-ready gates completed with evidence below; M1 human gate pending
+**Current milestone:** M1 — Blobbo body and control comparison (code-ready complete; human gate pending)
 **Plan authority:** this file defines the current product hypothesis, scope, order of implementation, and acceptance gates for `Projects/Blobbo and Chrono/`  
 **Architecture authority:** `ARCHITECTURE.md` describes the system that is actually implemented; update it when implementation changes  
 **Last reconciled:** 2026-08-31
@@ -701,21 +701,21 @@ evidence log.
 
 ### Deliverables
 
-- [ ] Implement a simplified physical ring/pressure Blobbo candidate.
-- [ ] Implement a stable-hull/visual-deformation baseline if practical.
-- [ ] Implement `GrabThrow`, `PullSling`, and `SwipeSmack` behind the same configuration.
-- [ ] Use a force-limited, collision-respecting grab rather than teleporting a body.
-- [ ] Add one empty toy room and one generous target room.
-- [ ] Record input and outcome traces for deterministic comparison.
-- [ ] Add provisional touch input abstraction even if the first executable target is mouse.
+- [x] Implement a simplified physical ring/pressure Blobbo candidate.
+- [x] Implement a stable-hull/visual-deformation baseline if practical.
+- [x] Implement `GrabThrow`, `PullSling`, and `SwipeSmack` behind the same configuration.
+- [x] Use a force-limited, collision-respecting grab rather than teleporting a body.
+- [x] Add one empty toy room and one generous target room.
+- [x] Record input and outcome traces for deterministic comparison.
+- [x] Add provisional touch input abstraction even if the first executable target is mouse.
 
 ### Code-ready gate
 
-- Every control mode can be selected without recompiling.
-- Equivalent recorded inputs can be replayed for tuning.
-- No mode can drag through solid walls or apply unbounded speed.
-- The simplified body materially reduces measured constraint cost.
-- The target room reports attempts and landing outcome.
+- [x] Every control mode can be selected without recompiling.
+- [x] Equivalent recorded inputs can be replayed for tuning.
+- [x] No mode can drag through solid walls or apply unbounded speed.
+- [x] The simplified body materially reduces measured constraint cost.
+- [x] The target room reports attempts and landing outcome.
 
 ### Human gate
 
@@ -725,6 +725,9 @@ With at least five unfamiliar testers:
 - most voluntarily repeat it in the empty room;
 - after three attempts, most can predict broad direction and relative strength;
 - one control mode has a clear qualitative or measured advantage.
+
+**Recorded result:** 0 / 5 unfamiliar testers; this gate remains pending and no preferred control
+mode has been selected.
 
 Do not mark the milestone fully complete until the human gate is recorded.
 
@@ -1123,10 +1126,45 @@ Do not resolve these by preference alone; attach evidence.
 - **Decision changed or retained:** retain the existing Scene 01 fixture and use this bounded,
   screen-owned telemetry/reset harness as the M1 comparison baseline. Do not begin M1 in this change.
 
+### 2026-08-31 — M1 code-ready validation
+
+- **Commit:** final M1 working tree based on merge commit `c4b3d4a865`; see the containing commit in
+  Git history.
+- **Machine / OS / build configuration:** DESKTOP-33M8GHE; Windows 10 Home 10.0.19045; Intel
+  i5-8400 (6 logical), 7.8 GB RAM, Intel UHD 630; .NET SDK 10.0.302; Debug, Gaia, and Release/win-x64.
+- **Commands run:** root `PropagateDefaultAssets.Windows.bat`; narrow Playground and production-game
+  builds; the five-test M1 project; `--verify-m1`; Gaia and Gaia-configuration builds; and
+  `dotnet publish "Projects/Blobbo Playground/Blobbo Playground.fsproj" -c Release -r win-x64
+  --self-contained false -p:IsPublishing=true`.
+- **Results:** the narrow Playground, `Blobbo and Chrono`, Gaia-configuration, and Gaia-host builds
+  passed with zero warnings and zero errors. All 5 M1 tests and all 16 executable verifier checks
+  passed. The deterministic verifier trace checksum was `5013E3E41D876A49`. The framework-dependent
+  win-x64 test package contains 196 physical asset files plus `Launch M1 Test.cmd`; launching it opens
+  directly into the M1 comparison screen.
+- **Measurements:** the legacy graph uses 33 logical bodies / 528 logical joints, the simplified ring
+  uses 13 / 24, and the stable hull uses 1 / 0. The ring therefore reduces the measured joint count by
+  95.5% relative to the legacy graph. All three control modes report bounded force, impulse, and speed.
+- **Interactive checks:** `GrabThrow`, `PullSling`, and `SwipeSmack`; ring, stable-hull, and legacy body
+  selection; both toy and target rooms; target outcomes; reset; viewport resizing; and deterministic
+  trace replay were exercised. In the final published build, a 15-sample drag replay advanced telemetry
+  to 2 attempts / 1 reset / 1 replay. The M1 dispatcher was also loaded in Gaia, simulation was started,
+  Pull was selected, and a drag recorded a 15-sample trace and one attempt.
+- **Human test protocol and participant count:** none; 0 / 5 unfamiliar testers. The M1 human gate is
+  still pending.
+- **Observed failures:** publishing without `IsPublishing=true` omitted piped assets; the corrected
+  command stages them. A custom output path exposed Nu's publish-path concatenation assumption, so the
+  standard publish output is copied into `bin/M1Test` for the test export. Physics initially registered
+  before the ImSim spawn position settled, and paused replay initially consumed input; an applied-position
+  synchronization check and advancing-time gate fixed those defects before final interaction testing.
+- **Decision changed or retained:** the M1 code-ready gate passes. Keep all three candidates and controls
+  available for the human comparison, run at least five unfamiliar testers next, and do not begin M2 or
+  choose a preferred control until that evidence is recorded.
+
 ---
 
 ## 20. Next implementation task
 
-M0 is complete. Begin **M1 only** in a separate implementation cycle after reviewing the M0 evidence
-and confirming that the baseline fixture remains the intended comparison target. Do not fold media,
-generation, Chrono recovery, enemies, story, or production art into the M1 control/body study.
+M1 is code-ready. Run its human gate with at least five unfamiliar testers and record discovery,
+voluntary repetition, directional/strength prediction after three attempts, and control preference.
+Do not begin M2 or fold media, generation, Chrono recovery, enemies, story, or production art into the
+control/body study until that evidence is recorded.

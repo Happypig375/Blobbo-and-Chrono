@@ -10,6 +10,7 @@
 		<None Include="Assets/*" />
 		<None Include="Assets/*/*" />
 		<None Include="AssetGraph.nuag" />
+		<None Include="Launch M1 Test.cmd" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
 		<Compile Include="Assets.fs" />
 		<Compile Include="Simulants.fs" />
 		<Compile Include="CSharpMath.Nu.fs" />
@@ -17,12 +18,15 @@
 		<Compile Include="MathObject.fs" />
 		<Compile Include="WaterContainerFacet.fs" />
 		<Compile Include="Blobbo.fs" />
+		<Compile Include="M1Experiment.fs" />
+		<Compile Include="M1Blobbo.fs" />
 		<Compile Include="WaterBalloon.fs" />
 		<Compile Include="Scene01_BlobboThrow.fs" />
 		<Compile Include="Scene02_BoxRewind.fs" />
 		<Compile Include="Scene03_MathSimplify.fs" />
 		<Compile Include="Scene04_SquareRace.fs" />
 		<Compile Include="Scene05_HeaterCooler.fs" />
+		<Compile Include="Scene06_M1ControlStudy.fs" />
 		<Compile Include="BlobboPlayground.fs" />
 		<Compile Include="BlobboPlaygroundPlugin.fs" />
 		<Compile Include="Program.fs" />

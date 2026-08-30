@@ -55,7 +55,10 @@ type BlobboPlaygroundPlugin () =
                 Game.SetGameState Scene01_BlobboThrow world)
              ("Scene02_BoxRewind", fun world ->
                 Simulants.Scene02_BoxRewind.SetGameplayState Playing world
-                Game.SetGameState Scene02_BoxRewind world)]
+                Game.SetGameState Scene02_BoxRewind world)
+             ("Scene06_M1ControlStudy", fun world ->
+                Simulants.Scene06_M1ControlStudy.SetGameplayState Playing world
+                Game.SetGameState Scene06_M1ControlStudy world)]
 
     // this specifies which packages are automatically loaded at game start-up.
     override this.InitialPackages =

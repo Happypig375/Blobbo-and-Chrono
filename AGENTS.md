@@ -40,6 +40,9 @@ dotnet build Nu.slnx
 ```
 
 Do not claim validation that was not run. Record environmental blockers precisely.
+Interactive testing is required when implementing a change and before submitting any upstream PR;
+visually inspect the result and exercise relevant controls such as clicks or drags.
+Interactively test dispatcher, facet, and default-asset changes in Gaia.
 
 ## Nu references and engine conventions
 

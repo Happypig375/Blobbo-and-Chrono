@@ -15,6 +15,7 @@ type GameState =
     | Scene03_MathSimplify
     | Scene04_SquareRace
     | Scene05_HeaterCooler
+    | Scene06_M1ControlStudy
 // this extends the Game API to expose the above ImSim model as a property.
 [<AutoOpen>]
 module BlobboPlaygroundExtensions =
@@ -29,7 +30,7 @@ type BlobboPlaygroundDispatcher () =
 
     // here we define default property values
     static member Properties =
-        [define Game.GameState Splash]
+        [define Game.GameState (if M1Launch.Direct then Scene06_M1ControlStudy else Splash)]
 
     // here we define the game's top-level behavior
     override this.Process (game, world) =
@@ -50,6 +51,7 @@ type BlobboPlaygroundDispatcher () =
         if World.doButton "Scene03_MathSimplify" [Entity.Text .= "03"] world then game.SetGameState Scene03_MathSimplify world
         if World.doButton "Scene04_SquareRace" [Entity.Text .= "04"] world then game.SetGameState Scene04_SquareRace world
         if World.doButton "Scene05_HeaterCooler" [Entity.Text .= "05"] world then game.SetGameState Scene05_HeaterCooler world
+        if World.doButton "Scene06_M1ControlStudy" [Entity.Text .= "M1"] world then game.SetGameState Scene06_M1ControlStudy world
         if World.doButton "Exit" [Entity.Text .= "Exit"] world && world.Unaccompanied then World.exit world
         World.endPanel world
         World.endGroup world
@@ -93,6 +95,14 @@ type BlobboPlaygroundDispatcher () =
         if FQueue.contains Select results then Simulants.Scene05_HeaterCooler.SetGameplayState Playing world
         if FQueue.contains Deselecting results then Simulants.Scene05_HeaterCooler.SetGameplayState Quit world
         if Simulants.Scene05_HeaterCooler.GetSelected world && Simulants.Scene05_HeaterCooler.GetGameplayState world = Quit then game.SetGameState Title world
+        World.endScreen world
+
+        // declare M1 body and control study
+        let behavior = Dissolve (Constants.Dissolve.Default, None)
+        let results = World.beginScreen<Scene06_M1ControlStudyDispatcher> Simulants.Scene06_M1ControlStudy.Name (game.GetGameState world = Scene06_M1ControlStudy) behavior [] world
+        if FQueue.contains Select results then Simulants.Scene06_M1ControlStudy.SetGameplayState Playing world
+        if FQueue.contains Deselecting results then Simulants.Scene06_M1ControlStudy.SetGameplayState Quit world
+        if Simulants.Scene06_M1ControlStudy.GetSelected world && Simulants.Scene06_M1ControlStudy.GetGameplayState world = Quit then game.SetGameState Title world
         World.endScreen world
 
         // handle Alt+F4 when not in editor

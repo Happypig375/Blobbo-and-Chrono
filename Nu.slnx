@@ -46,6 +46,9 @@
     <Project Path="Projects/Blobbo Playground/Blobbo Playground.fsproj">
       <BuildType Solution="Mixed|*" Project="Debug" />
     </Project>
+    <Project Path="Projects/Blobbo Playground/Tests/Blobbo Playground.Tests.fsproj">
+      <BuildType Solution="Mixed|*" Project="Debug" />
+    </Project>
     <Project Path="Projects/Breakout ImSim/Breakout ImSim.fsproj">
       <BuildType Solution="Mixed|*" Project="Debug" />
     </Project>

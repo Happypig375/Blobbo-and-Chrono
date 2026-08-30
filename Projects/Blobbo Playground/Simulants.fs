@@ -15,3 +15,4 @@ module Simulants =
     let Scene03_MathSimplify = Game / "Scene03_MathSimplify"
     let Scene04_SquareRace = Game / "Scene04_SquareRace"
     let Scene05_HeaterCooler = Game / "Scene05_HeaterCooler"
+    let Scene06_M1ControlStudy = Game / "Scene06_M1ControlStudy"

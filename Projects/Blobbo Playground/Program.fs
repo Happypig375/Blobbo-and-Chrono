@@ -5,22 +5,29 @@ open Nu
 module Program =
 
     // this the entry point for your Nu application
-    let [<EntryPoint; STAThread>] main _ =
+    let [<EntryPoint; STAThread>] main args =
 
-        // this points the current working directory at application's base directory
-        Directory.SetCurrentDirectory AppContext.BaseDirectory
+        if Array.contains "--verify-m1" args then
+            M1Verification.report ()
+        else
+            M1Launch.Direct <- Array.contains "--m1" args
 
-        // this initializes Nu before other Nu code is run
-        Nu.init ()
+            // this points the current working directory at application's base directory
+            Directory.SetCurrentDirectory AppContext.BaseDirectory
 
-        // this specifies the window configuration used to display the game
-        let sdlWindowConfig = { SdlWindowConfig.defaultConfig with WindowTitle = "Blobbo Playground" }
+            // this initializes Nu before other Nu code is run
+            Nu.init ()
+            if M1Launch.Direct then Globals.Render.DisplayScalar <- 1
 
-        // this specifies the configuration of the game engine's use of SDL
-        let sdlConfig = { SdlConfig.defaultConfig with WindowConfig = sdlWindowConfig }
+            // this specifies the window configuration used to display the game
+            let windowTitle = if M1Launch.Direct then "Blobbo M1 • Body × Control Lab" else "Blobbo Playground"
+            let sdlWindowConfig = { SdlWindowConfig.defaultConfig with WindowTitle = windowTitle }
 
-        // this specifies the world config using the above SDL config
-        let worldConfig = { WorldConfig.defaultConfig with SdlConfig = sdlConfig }
+            // this specifies the configuration of the game engine's use of SDL
+            let sdlConfig = { SdlConfig.defaultConfig with WindowConfig = sdlWindowConfig }
 
-        // this runs the engine with the given config and plugin, starting the game
-        World.run ignore worldConfig (BlobboPlaygroundPlugin ())
+            // this specifies the world config using the above SDL config
+            let worldConfig = { WorldConfig.defaultConfig with SdlConfig = sdlConfig }
+
+            // this runs the engine with the given config and plugin, starting the game
+            World.run ignore worldConfig (BlobboPlaygroundPlugin ())
