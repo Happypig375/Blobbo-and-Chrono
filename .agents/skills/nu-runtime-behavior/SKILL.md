@@ -2,57 +2,88 @@
 name: nu-runtime-behavior
 description: >-
   Diagnose, implement, and test Nu runtime behavior involving physics, ImSim lifecycle, World
-  construction, or entity integration. Use when porting simulations, changing runtime initialization,
-  or writing tests whose subject is Nu rather than a backend in isolation.
+  construction, native integration, or entity-level behavior. Use when the subject is Nu rather than
+  a backend in isolation.
 ---
 
 # Nu runtime behavior
 
-Restore the intended runtime behavior through Nu's existing abstractions, then verify it at the same
-level at which users experience it.
+Read the repository-root `AGENTS.md`, [`Standard.md`](../../../Standard.md), and
+`../nu-maintainer-workflow/SKILL.md` for engine or upstream work.
 
-Nu currently uses Box2D.NET for 2D physics and Jolt Physics for 3D physics. Treat Aether Physics as a
-legacy behavior reference, not as the backend for new work. Consult the
-[Box2D API reference](https://box2d.org/documentation/) for backend semantics.
+Restore the intended behavior through Nu's owning abstraction, then verify it at the level where users and
+sample projects experience it. Exact physics packages, native loaders, and signatures are volatile: inspect
+the checked-out `.fsproj`, backend modules, World integration, and tests before changing them. At the
+upstream revision recorded in `.agents/context/nu-maintainer-evidence.md`, Nu used Box2D.NET for 2D and Jolt
+for 3D, but that observation is not a timeless contract.
 
-## Preserve the model
+## Establish the behavioral model
 
-- Establish the reference behavior from the original implementation, documentation, and nearby Nu
-  code before tuning values.
-- Fix the cause before adding compensating damping, corrective transforms, repeated impulses, or
-  persistent state. Add such behavior only when it is part of the intended model.
-- When adapting a physical example to a different world scale, preserve its mechanics and geometry
-  and scale dimensionful quantities consistently. Keep intentional Nu shape and joint representations
-  unless evidence requires changing them.
-- Reuse engine constants and put demo-specific shared values in the closest existing `Constants`
-  module.
+1. Identify the supported public path: plugin, World, dispatcher, facet, entity, property, event, or service.
+2. Find the previous implementation or nearest working analogue.
+3. Write down the observable invariants: reachability, stability, collision/event delivery, geometry,
+   ordering, resource lifetime, or reload behavior.
+4. Separate units and scale conversions from tuning values.
+5. Fix the cause before adding compensating damping, repeated impulses, corrective transforms, sleeps, or
+   persistent flags.
 
-## Use Nu lifecycle and construction APIs
+Preserve intentional shape and joint representations unless evidence requires a change. Put shared physical
+or protocol values in the closest existing constants module; do not duplicate package defaults as magic
+numbers.
 
-- When an integration test needs non-stub runtime behavior, call the existing curried `World.make`
-  with its normal parameters, including an appropriate `SdlDeps` value. Do not add a renderer- or
-  physics-specific World constructor solely to make a test convenient.
-- Use the appropriate ImSim property operator and lifecycle signal. For init-only effects, prefer
-  `world.DeclaredInitializing` over a new persistent flag that duplicates initialization state.
-- Preserve established API currying and inline one-use forwarding aliases.
+## World and lifecycle
 
-## Native runtime dependencies
+- Use the normal curried World construction path and its real dependencies for integration tests. Do not add
+  a renderer-specific, physics-specific, or test-only public constructor merely for convenience.
+- Use existing ImSim declaration operators and initialization signals. Do not mirror lifecycle state in a
+  new flag.
+- Preserve API currying and established parameter order.
+- Keep declaration names and entity addresses stable unless the behavior explicitly requires a migration.
+- When an optional publication or rendering path is disabled, continue updating required simulation state
+  while avoiding the optional allocation or payload. Test both branches.
 
-When native libraries are copied or symlinked beside managed output, anchor their paths to
-`AppContext.BaseDirectory`, rather than relying on bare names or the process working directory. Pass
-the resulting concrete path to runtime hints such as `SDL_HINT_VULKAN_LIBRARY`. Capture native errors
-before cleanup can clear them, and retain those errors in test failures. `SDL_HINT_VULKAN_LIBRARY`
-expects the Vulkan loader, not an ICD; on macOS, use the output-local ABI loader `libvulkan.1.dylib`
-unconditionally, letting the loader, ICD manifests, and existing configuration select MoltenVK or
-KosmicKrisp. Distinguish an `SDL_Init` video-device failure from a later Vulkan-library loading
-failure before choosing the remedy.
+## Choose the correct test level
 
-## Test the Nu integration
+Prefer the highest level that still isolates the claim:
 
-- If the behavior under test belongs to a Nu game or engine integration, exercise the actual plugin,
-  World, dispatchers, facets, and entities. A hand-built equivalent backend world tests the backend,
-  not the Nu integration.
-- Stub external dependencies such as rendering when necessary, but retain the real World lifecycle
-  and public construction path.
-- Assert meaningful outcomes such as reachability, stability over time, and spatial relationships.
-  Isolate unrelated entities in focused stress tests without reconstructing the system being tested.
+- **Pure test:** conversions, deterministic domain functions, validation, serialization.
+- **Backend test:** a capability intentionally exposed only by one backend, or a backend regression before
+  Nu integration exists.
+- **Nu integration test:** plugin + World + dispatcher/facet/entity behavior.
+- **Sample/game validation:** controls, rendering, timing, editor reload, and preserved player-visible
+  behavior.
+
+A hand-built backend world does not prove Nu integration. Conversely, do not force a World test around a
+backend-only capability. When testing a backend directly, leave a concise nearby note explaining why the
+supported World path cannot exercise that capability.
+
+Stub unrelated rendering or I/O only when the real World lifecycle and public construction path remain.
+Assert meaningful outcomes over time rather than only construction. Use deterministic fixtures, bounded
+steps, tolerances justified by units, and focused stress scenes.
+
+## Native runtime and platform failures
+
+When a native library must be resolved beside managed output:
+
+- anchor the path to `AppContext.BaseDirectory`, not a process working directory;
+- pass the concrete loader path to the owning runtime hint;
+- distinguish a loader from an implementation/ICD and let existing manifests select the implementation;
+- capture the first native error before cleanup can overwrite it;
+- distinguish initialization, device creation, resource use, and teardown failures.
+
+Do not encode a platform workaround as a universal rule without current source and platform evidence. Keep
+the workaround local, document why the apparently simpler path fails, and test on the affected platform.
+
+## Regression and manual coverage
+
+Run the narrow test first, then the owning project and every sample that reaches the changed integration.
+Package or backend migrations require manual preservation checks across affected sample games, not only a
+successful engine build.
+
+Report outcomes precisely. A suite that reports passed assertions and later crashes during teardown is not a
+clean pass: record both facts, preserve the native error, and file or link an issue when it may represent a
+defect. For interactive checks, record scene, controls, duration or steps, representative observations, and
+runtime warnings/errors.
+
+Before concluding, inspect the diff for unintended tuning, duplicate constants, compatibility aliases,
+default-property repetition, project-reference expansion, source-order changes, and unrelated formatting.

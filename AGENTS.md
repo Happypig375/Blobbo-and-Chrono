@@ -1,126 +1,198 @@
 # Repository agent instructions
 
-## Scope
+## Scope and precedence
 
 These instructions apply repository-wide. A nested `AGENTS.md` or `AGENTS.override.md` takes
-precedence in its directory.
+precedence in its directory. `Standard.md` is the repository's F# code standard.
+
+The canonical skill root is `.agents/skills/`. Treat references to `.github/skills/` as stale and
+repair them when editing the containing file.
 
 Before changing code or assets:
 
-- Read `Standard.md` and follow its F# correctness, consistency, simplicity, and testing rules.
-- Read `.agents/skills/nu-quickstart/SKILL.md` before implementing unfamiliar Nu patterns.
-- Read `.agents/skills/nu-runtime-behavior/SKILL.md` for physics ports, World construction,
-  ImSim lifecycle behavior, or Nu runtime integration tests.
-- For work under `Projects/Blobbo and Chrono/`, read
-  `Projects/Blobbo and Chrono/ARCHITECTURE.md` first and update it when architecture changes.
-- Inspect the relevant implementation, tests, constants, lifecycle facilities, and recent history
-  before introducing a new abstraction.
+1. Read `Standard.md`, the closest `AGENTS.md`, and the skills routed below.
+2. Inspect the exact implementation, project file, assets, tests, and nearby call sites at the checked-out
+   revision. Find at least one current analogue before inventing a Nu pattern.
+3. Decide the smallest coherent layer that owns the change. Avoid compatibility shims, forwarding aliases,
+   extra constructors, and cross-project dependencies that only make the immediate edit convenient.
+4. State the observable behavior or invariant to preserve, and choose validation before implementation.
+5. Preserve unrelated changes. Use a separate worktree when branch work and local changes would otherwise
+   interfere.
 
-Preserve unrelated worktree changes. If work must be committed on another branch while local changes
-remain, use a separate worktree and stage only the requested files.
+## Skill routing
 
-## Repository map
+- `.agents/skills/nu-quickstart/SKILL.md`: unfamiliar facets, dispatchers, ImSim declarations, events, GUI,
+  and body joints.
+- `.agents/skills/nu-runtime-behavior/SKILL.md`: physics, World construction, lifecycle, native runtime
+  integration, or Nu-level tests.
+- `.agents/skills/nu-maintainer-workflow/SKILL.md`: Nu engine changes, upstream investigation, cleanup,
+  review preparation, or maintainer-sensitive diffs.
+- `.agents/skills/nu-assets-and-gaia/SKILL.md`: asset graph, default assets, shaders, `.nugroup` authoring,
+  Gaia loading, and code reload.
+- Under `Projects/Blobbo and Chrono/`, also read its `AGENTS.md`, `PLAN.md`, `PROJECT_STRUCTURE.md`, and
+  `ARCHITECTURE.md` in the order specified there.
+
+Put reusable procedural guidance in the narrowest applicable skill. Put project/product invariants in the
+closest `AGENTS.md`. Record source-backed Nu maintainer observations in
+`.agents/context/nu-maintainer-evidence.md`; do not turn one incident into a universal rule.
+
+## Evidence and API authority
+
+Use this order when sources disagree:
+
+1. The checked-out source, project files, assets, compiler behavior, and executable tests.
+2. Current upstream Nu source at an explicitly recorded commit.
+3. Maintained upstream wiki pages and primary dependency documentation.
+4. Nu issues, PR reviews, discussions, and commits for rationale and maintainer preference.
+5. `Happypig375/nu-chat-analysis`, DeepWiki, generated reports, and other secondary indexes for discovery.
+
+History explains intent but can contain obsolete APIs, temporary workarounds, mistakes, and later-reverted
+choices. Secondary analysis is hypothesis-rich paraphrase, not API authority. Distinguish observed fact,
+maintainer statement, project decision, and inference. Re-check volatile claims such as package versions,
+backend choices, signatures, file paths, platform workarounds, and initialization behavior against current
+source.
+
+When researching upstream:
+
+- pin the upstream commit or date used;
+- inspect the final merged code as well as the proposal and review;
+- compare a contribution with the maintainer's post-merge cleanup when available;
+- search related call sites, tests, sample projects, project references, and default assets;
+- record uncertainty or absence instead of fabricating a convention.
+
+## Repository map and commands
 
 - Nu engine: `Nu/Nu/` (`Nu.fsproj`)
-- Math support: `Nu/Nu.Math/` (`Nu.Math.csproj`, C#)
-- Spine support: `Nu/Nu.Spine/` (`Nu.Spine.csproj`, C#)
+- Math support: `Nu/Nu.Math/` (C#)
+- Spine support: `Nu/Nu.Spine/` (C#)
 - Nu engine tests: `Nu/Nu.Tests/`
-- World editor: `Nu/Nu.Gaia/` (loads game projects with code reload and builds them when Gaia builds)
+- World editor: `Nu/Nu.Gaia/`
 - Asset processor: `Nu/Nu.Pipe/`
-- Game projects: `Projects/` (each is a standalone `.fsproj`)
-- Blobbo and Chrono: `Projects/Blobbo and Chrono/`
+- Games and samples: `Projects/`
+- Blobbo production game: `Projects/Blobbo and Chrono/`
+- Blobbo experiment harness: `Projects/Blobbo Playground/`
 
-Useful commands:
+Useful commands from the repository root:
 
 ```bash
 dotnet tool restore
 dotnet build "Projects/Blobbo and Chrono/Blobbo and Chrono.fsproj"
+dotnet build "Projects/Blobbo Playground/Blobbo Playground.fsproj"
 dotnet build Nu/Nu.Gaia/Nu.Gaia.fsproj -f net10.0
 dotnet run --project Nu/Nu.Gaia
 dotnet test Nu/Nu.Tests/Nu.Tests.fsproj
 dotnet build Nu.slnx
 ```
 
-## Validation
+Do not assume every command is valid for every SDK or platform. Record the exact command, target framework,
+result, and environmental blocker.
 
-Run the narrowest relevant build or test first, then broader verification when practical. Test
-observable behavior and regressions, not only construction or implementation details. Never claim
-validation that was not run; record environmental blockers precisely.
+## Implementation discipline
 
-Interactive testing is required when implementing a change and before submitting an upstream PR.
-Exercise relevant controls such as clicks or drags, record the interaction, and inspect representative
-frames rather than only the end state. Test dispatcher, facet, and default-asset changes in Gaia.
+Follow `Standard.md`; in particular, preserve functional-first design, type inference, exhaustiveness,
+currying, debuggability, and warnings-as-errors behavior.
 
-## Nu references
+Nu's history and maintainer reviews reinforce these practices:
 
-- Use the [upstream Nu wiki](https://github.com/bryanedds/Nu/wiki) for maintained usage guidance.
-  Consult [Assets and the Asset Graph](https://github.com/bryanedds/Nu/wiki/Assets-and-the-Asset-Graph)
-  when changing asset discovery, packages, or `AssetGraph.nuag`.
-- Use [DeepWiki: Nu Game Engine](https://deepwiki.com/bryanedds/Nu) as the architecture and concepts
-  index. Fetch its latest content before answering questions about engine internals, architecture,
-  dispatchers, facets, or entities. For rendering-asset failures, start with
-  [Texture and Asset Loading](https://deepwiki.com/bryanedds/Nu/4.5-texture-and-asset-loading).
-- Treat the checked-out source, compiler, and tests as final authority when published guidance and the
-  current revision differ.
+- Use `UpperCamelCase` for genuine constants. Put a shared physical or protocol value in the closest existing
+  constants module instead of duplicating a magic value.
+- Keep namespace, `open`, module, and type structure compact and consistent with adjacent files. Preserve
+  F# compile order deliberately and remove redundant project references.
+- Prefer Nu helpers and established domain vocabulary, such as `v2`, `v3`, `v2Zero`, and `v3Zero`, over
+  equivalent lower-level constructions when the surrounding code does.
+- Inspect dispatcher and facet defaults before declaring properties. Omit values that merely repeat defaults
+  unless the declaration documents or protects an intentional override.
+- Remove dead code, stale TODOs, obsolete compatibility aliases, and one-use forwarding bindings. However,
+  retain local bindings for intermediate values that are semantically interesting, reused, or useful in a
+  debugger. Cleanup is contextual, not a command to minimize line count.
+- Choose names that expose lifecycle and intent (`finalizeFrame`, not `last`; domain identity, not a generic
+  boolean). Keep public field and union-case names sufficiently distinctive for inference.
+- Comments should preserve non-obvious contracts, why a lower-level path is necessary, or why an apparently
+  simpler alternative is wrong. Do not narrate syntax. Keep ordinary inline comments concise and aligned
+  with nearby Nu style; use complete documentation comments for public contracts.
+- Preserve intentional case-first ordering, stepped indentation, Lisp-style bracing, tuple parentheses, and
+  other `Standard.md` conventions even when automated formatters suggest a different house style.
+- End C-style files with a newline. Nu's maintainer convention intentionally leaves F# and Markdown files
+  without a terminal newline.
 
-## Default asset propagation
+A cleanup may change naming, comments, whitespace, dependency edges, and source order, but it must not hide a
+behavior change. Split unrelated semantic changes when they need independent review or validation.
 
-`Nu/Nu.Gaia/Assets/Default/` is the canonical default-asset source. After merging upstream engine
-changes that touch default assets or shaders, and before runtime validation of affected projects, run
-the matching propagation script from the repository root:
+## Nu integration boundaries
+
+Use the highest Nu abstraction that owns the behavior:
+
+- game behavior through World, dispatchers, facets, entities, signals, and asset tags;
+- backend APIs directly only when the behavior is genuinely backend-specific or Nu exposes no suitable path;
+- mutable native state and I/O at explicit edges, with immutable typed domain state inside;
+- `.nugroup` for authored entity trees, not as the sole authority for versioned generation, validation,
+  provenance, save semantics, or long-running mutable state.
+
+Do not add a test-only public constructor, persistent initialization flag, compatibility module, or duplicate
+property merely to bypass an existing lifecycle. If a direct-backend test is necessary, place a nearby note
+explaining why a World-level test would not exercise the supported capability.
+
+## Assets, Gaia, and default propagation
+
+Use asset tags and `AssetGraph.nuag`; do not introduce runtime file-relative asset lookup. Treat source order,
+asset packages, project output, default assets, and runtime loading as one integration surface.
+
+`Nu/Nu.Gaia/Assets/Default/` is the canonical default-asset source. After relevant upstream changes, run the
+matching propagation script from the repository root:
 
 ```bash
 PropagateDefaultAssets.Windows.bat
 ./PropagateDefaultAssets.Linux.sh
 ```
 
-Review and commit the resulting project asset changes; they are not disposable build output. Rebuild
-the relevant project after propagation, then launch it. A successful compile alone does not prove
-that runtime shader and asset requirements are present.
+Review propagated changes as source, rebuild the affected project, load it in Gaia when applicable, exercise
+code reload, and launch the runtime path. A compile does not prove that shaders, packages, native libraries,
+or serialized entity trees load.
 
-## Repository conventions
+## Validation
 
-- Create F# source files by default. Use another language only when extending an existing project in
-  that language, such as `Nu.Math` or `Nu.Spine` in C#.
-- Preserve established F# API shapes, including currying.
-- In F#, prefer Nu's equivalent vector helpers and constants, such as `v2`, `v3`, `v2Zero`, and
-  `v3Zero`, over `System.Numerics` vector constructors and static values.
-- Put shared constants in the closest existing `Constants` module and reuse engine constants where
-  available. Inline a value used only once instead of adding a forwarding alias.
-- Inspect dispatcher and facet defaults before setting entity properties; omit assignments that merely
-  repeat established defaults unless an intentional override is required.
-- Preserve or adapt comments documenting non-obvious contracts, such as winding, local frames,
-  lifecycle, and loader behavior. Remove them during refactoring only when the contract is genuinely
-  obsolete.
-- Put reusable task-specific guidance in a focused `.agents/skills/<name>/SKILL.md`; keep this file
-  limited to repository-wide rules and routing.
-- Keep upstream PR diffs minimal. End only C-style files with a newline; leave F# and Markdown files
-  without one.
+Run the narrowest useful check first, then expand according to the dependency radius.
 
-## AI-assisted production policy
+- Pure/domain change: focused tests, serialization or deterministic fixtures, then the owning project build.
+- Nu dispatcher/facet/property change: owning project build, relevant tests, Gaia load/reload, and an
+  interaction that reaches the changed behavior.
+- Physics/backend change: focused backend tests when justified, Nu integration tests, and every affected
+  sample or game path. Preserve behavior manually, not only compilation.
+- Asset/shader/default change: asset propagation when required, build, Gaia/runtime load, and representative
+  visual inspection.
+- Native/platform change: capture the first native error before cleanup, distinguish initialization from
+  later loading/teardown failures, and test on the affected platform when available.
 
-Use AI to improve the project's ability to author, inspect, revise, and verify systems. For durable,
-high-salience, frequently revised, or broadly reused work, prefer editable structured source over
-opaque terminal output: executable code, typed data, scene graphs, geometry, shaders, rigs, semantic
-events, generators, and explicit parameters or constraints.
+Assert observable outcomes and invariants, not only object construction. Do not reinterpret a process crash
+after reported assertions as a clean pass; report passed assertions and the teardown failure separately and
+file or link a defect when it may indicate a real bug.
 
-Directly generated media is suitable for exploration, references, mock-ups, and clearly marked
-placeholders. When generated work becomes durable or player-facing:
+Interactive validation is required for game feel and for upstream changes that affect samples. Record the
+scene, controls exercised, representative frames or observations, runtime logs, and anything not tested.
+Never claim a build, test, policy review, profile, or playtest that was not performed.
 
-- preserve the source, parameters, constraints, seeds, source assets, and local overrides needed to
-  reproduce and intentionally revise it;
-- use compilers, tests, solvers, physics engines, renderers, and deterministic pipelines for results
-  with checkable semantics;
-- keep provenance and licensing information sufficient for audit and remove or clearly track
-  placeholders before release;
-- comply with storefront and platform attribution, licensing, and disclosure requirements;
-- keep authoritative narrative and world state structured and validated rather than allowing
-  unconstrained generated prose to mutate it;
-- do not add runtime remote inference without an explicit architectural decision.
+## Upstream contribution shape
 
-A change involving AI-assisted systems or content is complete only when its important outputs are
-editable and reproducible at the appropriate level, its invariants and failure modes are discoverable,
-and it has executable validation proportionate to its risk.
+For changes intended for `bryanedds/Nu`:
 
-When a recurring correction reveals durable guidance, update the closest applicable `AGENTS.md` or
-skill instead of relying on future prompts to repeat it.
+- make the smallest reviewable coherent change and avoid drive-by formatting;
+- use the project's naming, whitespace, comments, EOF, currying, helper, and project-file conventions before
+  requesting review;
+- include the actual bug or invariant, current-source evidence, automated checks, manual sample coverage, and
+  known blockers;
+- keep package migrations direct when practical instead of preserving obsolete aliases;
+- inspect and learn from maintainer cleanup after merge.
+
+## AI-assisted production
+
+Prefer editable, structured, inspectable, and reproducible source for durable work: code, typed data, scene
+graphs, shaders, rigs, semantic events, generators, constraints, seeds, and validation. Directly generated
+media is suitable for exploration or clearly tracked placeholders. Durable player-facing output must retain
+the source, parameters, provenance, licensing, and local overrides needed for intentional revision.
+
+Do not add runtime remote inference or allow unconstrained generated text or media to mutate authoritative
+game state without an explicit architectural decision. AI-assisted code and content require validation
+proportionate to their risk.
+
+When a recurring correction reveals durable guidance, update the closest `AGENTS.md`, skill, or evidence note
+in the same change.
