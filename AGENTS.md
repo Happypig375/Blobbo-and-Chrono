@@ -83,6 +83,8 @@ that runtime shader and asset requirements are present.
 - Create F# source files by default. Use another language only when extending an existing project in
   that language, such as `Nu.Math` or `Nu.Spine` in C#.
 - Preserve established F# API shapes, including currying.
+- In F#, prefer Nu's equivalent vector helpers and constants, such as `v2`, `v3`, `v2Zero`, and
+  `v3Zero`, over `System.Numerics` vector constructors and static values.
 - Put shared constants in the closest existing `Constants` module and reuse engine constants where
   available. Inline a value used only once instead of adding a forwarding alias.
 - Put reusable task-specific guidance in a focused `.agents/skills/<name>/SKILL.md`; keep this file
