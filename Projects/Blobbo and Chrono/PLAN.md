@@ -1194,6 +1194,31 @@ Do not resolve these by preference alone; attach evidence.
   unfamiliar-tester records. Keep M1 pending and do not select a body or control until that evidence is
   scored.
 
+### 2026-08-31 — M1 recorded interactive package validation
+
+- **Commands run:** `dotnet test "Projects/Blobbo Playground/Tests/Blobbo Playground.Tests.fsproj"
+  --no-build --no-restore`; the narrow Playground build; the Debug and freshly extracted Release
+  executables with `--verify-m1`; and the same self-contained publish command recorded above.
+  Window-targeted `ffmpeg` capture used `gdigrab` at 30 fps while Orca dispatched window-local clicks
+  and drags; `ffprobe` measured each recording and representative frame sheets were visually inspected.
+- **Results:** the build passed with zero warnings and zero errors, all 5 tests passed, and both verifier
+  runs passed all 16 checks with trace `5013E3E41D876A49`.
+- **Recorded interactive checks:** four 640x360 recordings contain 9,206 frames over 324.18 seconds.
+  They show body and room selection; live Grab, Pull, and Swipe contact feedback; bounded force or
+  impulse; release trajectories and target outcomes; deterministic replay motion; reset; and Quit.
+  Inspected gesture sequences show Grab reaching its bounded 2,400 force, Pull and Swipe updating the
+  attempt and trace telemetry, and the body remaining stable without clipping.
+- **Observed failure and fix:** recording the previous package exposed that direct-launch Quit returned
+  to the hidden title state instead of ending the process. Direct unaccompanied M1 mode now calls
+  `World.exit`; ordinary Playground and Gaia use still returns to the title. In the republished package,
+  the recorded Quit click ended both the game and command launcher, the 15-line runtime log contained no
+  error, exception, fatal, panic, or failed entries, and no exception popup was present.
+- **Participant build:** `bin/Blobbo-M1-Playtest-win-x64.zip` is a 90,122,655-byte self-contained archive
+  with 238 entries and 196 physical assets. It contains no `Log.txt`, `imgui.ini`, or `ShaderCache`
+  entries. Its SHA-256 is `EC1F8D0ABA142BAFA93DDE13D4AA6CC8E705BBA9531871331BF59648311C9F11`.
+- **Human test protocol and participant count:** none; 0 / 5 unfamiliar testers. Recorded agent-driven
+  interaction validates the executable behavior but does not satisfy or change the M1 human gate.
+
 ---
 
 ## 20. Next implementation task

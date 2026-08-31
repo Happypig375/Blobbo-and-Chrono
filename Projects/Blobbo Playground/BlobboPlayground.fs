@@ -102,7 +102,10 @@ type BlobboPlaygroundDispatcher () =
         let results = World.beginScreen<Scene06_M1ControlStudyDispatcher> Simulants.Scene06_M1ControlStudy.Name (game.GetGameState world = Scene06_M1ControlStudy) behavior [] world
         if FQueue.contains Select results then Simulants.Scene06_M1ControlStudy.SetGameplayState Playing world
         if FQueue.contains Deselecting results then Simulants.Scene06_M1ControlStudy.SetGameplayState Quit world
-        if Simulants.Scene06_M1ControlStudy.GetSelected world && Simulants.Scene06_M1ControlStudy.GetGameplayState world = Quit then game.SetGameState Title world
+        if Simulants.Scene06_M1ControlStudy.GetSelected world &&
+           Simulants.Scene06_M1ControlStudy.GetGameplayState world = Quit then
+            if M1Launch.Direct && world.Unaccompanied then World.exit world
+            else game.SetGameState Title world
         World.endScreen world
 
         // handle Alt+F4 when not in editor
