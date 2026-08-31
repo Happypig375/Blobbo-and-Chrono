@@ -1208,6 +1208,12 @@ Do not resolve these by preference alone; attach evidence.
   impulse; release trajectories and target outcomes; deterministic replay motion; reset; and Quit.
   Inspected gesture sequences show Grab reaching its bounded 2,400 force, Pull and Swipe updating the
   attempt and trace telemetry, and the body remaining stable without clipping.
+- **Gaia dispatcher check:** the Playground Gaia-configuration build passed with zero warnings and zero
+  errors. Two clean 1280x720 Gaia recordings contain 1,175 frames over 40 seconds and 1,605 frames over
+  55 seconds. They separately show M1 loading and a drag producing a 24-sample trace and one attempt,
+  then M1 Quit returning to the Playground title while Gaia remained alive. A broader `dotnet build
+  "Nu/Nu.Gaia/Nu.Gaia.fsproj" -f net10.0 --no-restore` attempt ended with a bare `Stack overflow.` after
+  Nu.Pipe and remains an environmental blocker.
 - **Observed failure and fix:** recording the previous package exposed that direct-launch Quit returned
   to the hidden title state instead of ending the process. Direct unaccompanied M1 mode now calls
   `World.exit`; ordinary Playground and Gaia use still returns to the title. In the republished package,
