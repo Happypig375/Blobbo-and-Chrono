@@ -36,6 +36,16 @@ legacy behavior reference, not as the backend for new work. Consult the
   `world.DeclaredInitializing` over a new persistent flag that duplicates initialization state.
 - Preserve established API currying and inline one-use forwarding aliases.
 
+## Native runtime dependencies
+
+When native libraries are copied or symlinked beside managed output, anchor their paths to
+`AppContext.BaseDirectory`, rather than relying on bare names or the process working directory. Pass
+the resulting concrete path to runtime hints such as `SDL_HINT_VULKAN_LIBRARY`. Capture native errors
+before cleanup can clear them, and retain those errors in test failures. Preserve existing backend and
+configuration switches when applying a path fix (for example, do not override `MoltenVk=false`).
+Distinguish an `SDL_Init` video-device failure from a later Vulkan-library loading failure before
+choosing the remedy.
+
 ## Test the Nu integration
 
 - If the behavior under test belongs to a Nu game or engine integration, exercise the actual plugin,

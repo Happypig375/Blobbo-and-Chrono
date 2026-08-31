@@ -87,6 +87,11 @@ that runtime shader and asset requirements are present.
   `v3Zero`, over `System.Numerics` vector constructors and static values.
 - Put shared constants in the closest existing `Constants` module and reuse engine constants where
   available. Inline a value used only once instead of adding a forwarding alias.
+- Inspect dispatcher and facet defaults before setting entity properties; omit assignments that merely
+  repeat established defaults unless an intentional override is required.
+- Preserve or adapt comments documenting non-obvious contracts, such as winding, local frames,
+  lifecycle, and loader behavior. Remove them during refactoring only when the contract is genuinely
+  obsolete.
 - Put reusable task-specific guidance in a focused `.agents/skills/<name>/SKILL.md`; keep this file
   limited to repository-wide rules and routing.
 - Keep upstream PR diffs minimal. End only C-style files with a newline; leave F# and Markdown files
