@@ -41,10 +41,11 @@ legacy behavior reference, not as the backend for new work. Consult the
 When native libraries are copied or symlinked beside managed output, anchor their paths to
 `AppContext.BaseDirectory`, rather than relying on bare names or the process working directory. Pass
 the resulting concrete path to runtime hints such as `SDL_HINT_VULKAN_LIBRARY`. Capture native errors
-before cleanup can clear them, and retain those errors in test failures. Preserve existing backend and
-configuration switches when applying a path fix (for example, do not override `MoltenVk=false`).
-Distinguish an `SDL_Init` video-device failure from a later Vulkan-library loading failure before
-choosing the remedy.
+before cleanup can clear them, and retain those errors in test failures. `SDL_HINT_VULKAN_LIBRARY`
+expects the Vulkan loader, not an ICD; on macOS, use the output-local ABI loader `libvulkan.1.dylib`
+unconditionally, letting the loader, ICD manifests, and existing configuration select MoltenVK or
+KosmicKrisp. Distinguish an `SDL_Init` video-device failure from a later Vulkan-library loading
+failure before choosing the remedy.
 
 ## Test the Nu integration
 
