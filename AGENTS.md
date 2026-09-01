@@ -63,8 +63,7 @@ When researching upstream:
 ## Repository map and commands
 
 - Nu engine: `Nu/Nu/` (`Nu.fsproj`)
-- Math support: `Nu/Nu.Math/` (C#)
-- Spine support: `Nu/Nu.Spine/` (C#)
+- Math support (and copied C# algorithms): `Nu/Nu.Math/` (C#)
 - Nu engine tests: `Nu/Nu.Tests/`
 - World editor: `Nu/Nu.Gaia/`
 - Asset processor: `Nu/Nu.Pipe/`
@@ -99,7 +98,7 @@ Nu's history and maintainer reviews reinforce these practices:
 - Keep namespace, `open`, module, and type structure compact and consistent with adjacent files. Preserve
   F# compile order deliberately and remove redundant project references.
 - Prefer Nu helpers and established domain vocabulary, such as `v2`, `v3`, `v2Zero`, and `v3Zero`, over
-  equivalent lower-level constructions when the surrounding code does.
+  equivalent lower-level constructions (`Vector2`, `Vector3`) when the surrounding code does.
 - Inspect dispatcher and facet defaults before declaring properties. Omit values that merely repeat defaults
   unless the declaration documents or protects an intentional override.
 - Remove dead code, stale TODOs, obsolete compatibility aliases, and one-use forwarding bindings. However,
@@ -112,7 +111,7 @@ Nu's history and maintainer reviews reinforce these practices:
   with nearby Nu style; use complete documentation comments for public contracts.
 - Preserve intentional case-first ordering, stepped indentation, Lisp-style bracing, tuple parentheses, and
   other `Standard.md` conventions even when automated formatters suggest a different house style.
-- End C-style files with a newline. Nu's maintainer convention intentionally leaves F# and Markdown files
+- End C-style files with a newline. Nu's maintainer convention intentionally leaves non-C-style (e.g. F# and Markdown) files
   without a terminal newline.
 
 A cleanup may change naming, comments, whitespace, dependency edges, and source order, but it must not hide a
