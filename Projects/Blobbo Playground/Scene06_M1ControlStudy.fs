@@ -180,6 +180,11 @@ type Scene06_M1ControlStudyDispatcher () =
         | PullSling -> "PULL + SLING"
         | SwipeSmack -> "SWIPE + SMACK"
 
+    static member private ActiveText = function
+        | GrabThrow -> "AIMING THROW"
+        | PullSling -> "AIMING SLING"
+        | SwipeSmack -> "AIMING SMACK"
+
     override _.Process (_, screen, world) =
         if screen.GetSelected world then
             let configuration = M1ControlConfiguration.defaultConfiguration
@@ -237,7 +242,7 @@ type Scene06_M1ControlStudyDispatcher () =
 
             match state.Candidate with
             | LegacyGraph ->
-                World.doEntity<BlobboDispatcher> "Subject"
+                World.doEntity<M1LegacyBlobboDispatcher> "Subject"
                     [Entity.Position .= subjectSpawn.V3
                      Entity.Size .= v3 96.0f 96.0f 0.0f
                      Entity.WorldFluidEmitter .= Address.empty]
@@ -376,7 +381,7 @@ type Scene06_M1ControlStudyDispatcher () =
                         LastForce = output.Force
                         LastImpulse = output.Impulse }
 
-            // Motion trail, force tether, pointer halo, and pull trajectory.
+            // Motion trail, force tether, pointer halo, and mode-specific aim previews.
             for index in 0 .. trail.Length - 1 do
                 let progress = single (index + 1) / single trail.Length
                 M1SceneVisual.sprite
@@ -393,8 +398,12 @@ type Scene06_M1ControlStudyDispatcher () =
                 M1SceneVisual.sprite "Pointer Halo" sample.Position (v2Dup 22.0f) 4.1f (color 1.0f 0.9f 0.35f 0.45f) Assets.Default.Ball world
                 if state.ControlMode = PullSling then
                     let impulse =
-                        (active.PressPosition - sample.Position) * configuration.PullImpulsePerPixel
-                        |> M1Control.clampMagnitude configuration.MaximumImpulse
+                        M1Control.releaseImpulse
+                            configuration
+                            PullSling
+                            active.PressPosition
+                            sample.Position
+                            active.PointerVelocity
                     let launchVelocity = center.BodyLinearVelocity + impulse
                     let gravity = (Constants.Physics.GravityDefault * Constants.Engine.Meter2d).V2
                     for index in 1 .. 12 do
@@ -406,6 +415,55 @@ type Scene06_M1ControlStudyDispatcher () =
                             (v2Dup (7.0f - single index * 0.25f))
                             3.8f
                             (color 1.0f 0.42f 0.65f (0.9f - single index * 0.05f))
+                            Assets.Default.Ball
+                            world
+                elif state.ControlMode = SwipeSmack then
+                    let impulse =
+                        M1Control.releaseImpulse
+                            configuration
+                            SwipeSmack
+                            active.PressPosition
+                            sample.Position
+                            active.PointerVelocity
+                    let impulseMagnitude = impulse.Length ()
+                    if impulseMagnitude > 0.1f then
+                        let direction = impulse / impulseMagnitude
+                        let strength = impulseMagnitude / configuration.MaximumImpulse
+                        let previewStart = center.BodyCenter + direction * 34.0f
+                        let previewStop = previewStart + direction * (34.0f + strength * 72.0f)
+                        let normal = v2 -direction.Y direction.X
+                        let arrowBase = previewStop - direction * 14.0f
+                        let previewColor = color 1.0f 0.42f 0.16f 0.9f
+                        M1SceneVisual.segment
+                            "Swipe Preview"
+                            previewStart
+                            previewStop
+                            6.0f
+                            3.9f
+                            previewColor
+                            world
+                        M1SceneVisual.segment
+                            "Swipe Preview Left"
+                            previewStop
+                            (arrowBase + normal * 8.0f)
+                            5.0f
+                            3.9f
+                            previewColor
+                            world
+                        M1SceneVisual.segment
+                            "Swipe Preview Right"
+                            previewStop
+                            (arrowBase - normal * 8.0f)
+                            5.0f
+                            3.9f
+                            previewColor
+                            world
+                        M1SceneVisual.sprite
+                            "Swipe Preview Strength"
+                            previewStop
+                            (v2Dup (10.0f + strength * 14.0f))
+                            3.8f
+                            (color 1.0f 0.72f 0.22f 0.45f)
                             Assets.Default.Ball
                             world
             | ControlInactive -> ()
@@ -469,7 +527,10 @@ type Scene06_M1ControlStudyDispatcher () =
                  Entity.Elevation .= 20.0f
                  Entity.FontSizing .= Some 11.0f
                  Entity.Justification .= Justified (JustifyCenter, JustifyMiddle)
-                 Entity.Text @= Scene06_M1ControlStudyDispatcher.OutcomeText state.Outcome]
+                 Entity.Text @=
+                    match output.State with
+                    | ControlActive _ -> Scene06_M1ControlStudyDispatcher.ActiveText state.ControlMode
+                    | ControlInactive -> Scene06_M1ControlStudyDispatcher.OutcomeText state.Outcome]
                 world
 
             let bodyCount = M1Topology.bodyCount state.Candidate

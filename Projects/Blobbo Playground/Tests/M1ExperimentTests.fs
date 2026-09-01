@@ -37,6 +37,26 @@ module M1ExperimentTests =
         Assert.That (clamped.Length (), (Is.EqualTo 5.0f).Within 0.0001f)
 
     [<Test>]
+    let ``Release impulse preserves candidate direction rules`` () =
+        let configuration = M1ControlConfiguration.defaultConfiguration
+        let pointerVelocity = v2 100.0f 0.0f
+        let grab = M1Control.releaseImpulse configuration GrabThrow v2Zero v2Zero pointerVelocity
+        let pull =
+            M1Control.releaseImpulse
+                configuration
+                PullSling
+                v2Zero
+                (v2 -100.0f 0.0f)
+                pointerVelocity
+        let swipe = M1Control.releaseImpulse configuration SwipeSmack v2Zero v2Zero pointerVelocity
+        Assert.That (grab.X, (Is.EqualTo 16.0f).Within 0.0001f)
+        Assert.That (pull.X, (Is.EqualTo 280.0f).Within 0.0001f)
+        Assert.That (swipe.X, (Is.EqualTo 20.0f).Within 0.0001f)
+        Assert.That (grab.Y, Is.Zero)
+        Assert.That (pull.Y, Is.Zero)
+        Assert.That (swipe.Y, Is.Zero)
+
+    [<Test>]
     let ``Paused control step does not consume a release`` () =
         let configuration = M1ControlConfiguration.defaultConfiguration
         let activeSample =

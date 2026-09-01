@@ -101,6 +101,19 @@ module M1Control =
     let clampSpeed (configuration : M1ControlConfiguration) (velocity : Vector2) =
         clampMagnitude configuration.MaximumSpeed velocity
 
+    /// Calculate the bounded release impulse used by both control execution and live previews.
+    let releaseImpulse
+        (configuration : M1ControlConfiguration)
+        (mode : M1ControlMode)
+        (pressPosition : Vector2)
+        (pointerPosition : Vector2)
+        (pointerVelocity : Vector2) =
+        (match mode with
+         | GrabThrow -> pointerVelocity * configuration.GrabReleaseGain
+         | PullSling -> (pressPosition - pointerPosition) * configuration.PullImpulsePerPixel
+         | SwipeSmack -> pointerVelocity * configuration.SwipeImpulseGain)
+        |> clampMagnitude configuration.MaximumImpulse
+
     let private pointerVelocity (configuration : M1ControlConfiguration) (sample : M1PointerSample) (active : M1ActiveControl) =
         let elapsedTicks = max 1 (sample.Tick - active.PreviousTick)
         let elapsed = single elapsedTicks * configuration.FixedDeltaSeconds
@@ -142,12 +155,7 @@ module M1Control =
         (active : M1ActiveControl) =
         let measuredVelocity = pointerVelocity configuration sample active
         let velocity = if measuredVelocity.LengthSquared () > 1.0f then measuredVelocity else active.PointerVelocity
-        let impulse =
-            (match mode with
-             | GrabThrow -> velocity * configuration.GrabReleaseGain
-             | PullSling -> (active.PressPosition - sample.Position) * configuration.PullImpulsePerPixel
-             | SwipeSmack -> velocity * configuration.SwipeImpulseGain)
-            |> clampMagnitude configuration.MaximumImpulse
+        let impulse = releaseImpulse configuration mode active.PressPosition sample.Position velocity
         { State = ControlInactive
           Force = v2Zero
           Impulse = impulse

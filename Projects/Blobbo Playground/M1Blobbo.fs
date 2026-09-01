@@ -63,6 +63,60 @@ module [<AutoOpen>] M1BlobboExtensions =
         member this.SetM1VisualPull (value : Vector2) world = this.Set (nameof this.M1VisualPull) value world
         member this.M1VisualPull = lens (nameof this.M1VisualPull) this this.GetM1VisualPull this.SetM1VisualPull
 
+[<RequireQualifiedAccess>]
+module M1BlobboVisual =
+
+    let sprite (position : Vector2) (size : Vector2) (elevation : single) (colorValue : Color) world =
+        let image = Assets.Default.Ball
+        let insetOpt : Box2 voption = ValueNone
+        let clipOpt : Box2 voption = ValueNone
+        let emission = colorZero
+        let mutable transform =
+            Transform.makeIntuitive false position.V3 v3One v3Zero size.V3 v3Zero elevation
+        World.renderLayeredSpriteFast
+            (transform.Elevation, transform.Horizon, image, &transform, &insetOpt, &clipOpt,
+             image, &colorValue, Transparent, &emission, Unflipped, world)
+
+    let contourCenter fallback (contour : PhysicsBodyTransform array) =
+        if Array.isEmpty contour then fallback
+        else
+            let total =
+                Array.fold
+                    (fun total (transform : PhysicsBodyTransform) -> total + transform.BodyCenter)
+                    v2Zero
+                    contour
+            total / single contour.Length
+
+    let face (center : Vector2) (rotation : Quaternion) (velocity : Vector2) elevation world =
+        let lookSource =
+            if World.isMouseButtonDown MouseLeft world then
+                World.getMousePosition2dWorld false world - center
+            else velocity
+        let look =
+            if lookSource.LengthSquared () > 0.001f then Vector2.Normalize lookSource * 2.5f
+            else v2Zero
+        for index in 0 .. 1 do
+            let eyeOffset = v2 (if index = 0 then -10.0f else 10.0f) 6.0f
+            let orientedEyeOffset = Vector2.Transform (eyeOffset, rotation)
+            let eye = center + orientedEyeOffset
+            sprite eye (v2Dup 12.0f) (elevation + 1.0f) Color.White world
+            sprite (eye + look) (v2Dup 5.0f) (elevation + 1.1f) (color 0.03f 0.05f 0.12f 1.0f) world
+
+/// The legacy body keeps its original physics and contour rendering while receiving the shared M1 face.
+type M1LegacyBlobboDispatcher () =
+    inherit BlobboDispatcher ()
+
+    override _.Render (renderPass, entity, world) =
+        base.Render (renderPass, entity, world)
+        let center = entity.GetBlobboCenter world
+        let faceCenter = M1BlobboVisual.contourCenter center.BodyCenter (entity.GetBlobboContour world)
+        M1BlobboVisual.face
+            faceCenter
+            center.BodyRotation
+            center.BodyLinearVelocity
+            (entity.GetElevation world)
+            world
+
 /// Experimental low-constraint Blobbo representations. LegacyGraph remains owned by BlobboDispatcher.
 type M1BlobboDispatcher () =
     inherit Entity2dDispatcherImSim (true, false, false)
@@ -298,17 +352,6 @@ type M1BlobboDispatcher () =
                 transform.Elevation <- elevation
                 World.renderContour { Transform = transform; ClipOpt = ValueNone; Contour = contour } world
 
-        let renderSprite (position : Vector2) (size : Vector2) (elevation : single) (colorValue : Color) =
-            let image = Assets.Default.Ball
-            let insetOpt : Box2 voption = ValueNone
-            let clipOpt : Box2 voption = ValueNone
-            let emission = colorZero
-            let mutable transform =
-                Transform.makeIntuitive false position.V3 v3One v3Zero size.V3 v3Zero elevation
-            World.renderLayeredSpriteFast
-                (transform.Elevation, transform.Horizon, image, &transform, &insetOpt, &clipOpt,
-                 image, &colorValue, Transparent, &emission, Unflipped, world)
-
         match candidate with
         | SimplifiedRing ->
             renderFilled (entity.GetElevation world - 0.01f) (color 0.12f 0.95f 0.86f 0.2f) 1.18f
@@ -320,14 +363,21 @@ type M1BlobboDispatcher () =
 
         if candidate = SimplifiedRing then
             for point in entity.GetM1BodyContour world do
-                renderSprite point.BodyCenter (v2Dup 5.0f) (entity.GetElevation world + 0.2f) (color 0.65f 1.0f 0.92f 0.75f)
+                M1BlobboVisual.sprite
+                    point.BodyCenter
+                    (v2Dup 5.0f)
+                    (entity.GetElevation world + 0.2f)
+                    (color 0.65f 1.0f 0.92f 0.75f)
+                    world
 
-        let lookSource =
-            let pull = entity.GetM1VisualPull world
-            if pull.LengthSquared () > 0.001f then pull else center.BodyLinearVelocity
-        let look = if lookSource.LengthSquared () > 0.001f then Vector2.Normalize lookSource * 2.5f else v2Zero
-        for index in 0 .. 1 do
-            let eyeOffset = v2 (if index = 0 then -10.0f else 10.0f) 6.0f
-            let eye = center.BodyCenter + eyeOffset
-            renderSprite eye (v2Dup 12.0f) (entity.GetElevation world + 1.0f) Color.White
-            renderSprite (eye + look) (v2Dup 5.0f) (entity.GetElevation world + 1.1f) (color 0.03f 0.05f 0.12f 1.0f)
+        let faceCenter =
+            match candidate with
+            | SimplifiedRing -> M1BlobboVisual.contourCenter center.BodyCenter (entity.GetM1BodyContour world)
+            | StableHull -> center.BodyCenter
+            | LegacyGraph -> center.BodyCenter
+        M1BlobboVisual.face
+            faceCenter
+            center.BodyRotation
+            center.BodyLinearVelocity
+            (entity.GetElevation world)
+            world

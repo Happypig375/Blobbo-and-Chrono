@@ -1225,6 +1225,26 @@ Do not resolve these by preference alone; attach evidence.
 - **Human test protocol and participant count:** none; 0 / 5 unfamiliar testers. Recorded agent-driven
   interaction validates the executable behavior but does not satisfy or change the M1 human gate.
 
+### 2026-09-01 — M1 gesture-feedback visual refinement
+
+- **Commands run:** `dotnet test "Projects/Blobbo Playground/Tests/Blobbo Playground.Tests.fsproj"
+  --no-restore`; `dotnet build "Projects/Blobbo Playground/Blobbo Playground.fsproj" --no-restore`;
+  the Debug executable with `--verify-m1`; window-targeted Orca interaction; `ffmpeg` recording and
+  representative-frame extraction; and a current-session runtime-log scan.
+- **Results:** all 6 focused tests passed, the Playground build passed with zero warnings and zero
+  errors, and all 16 executable verifier checks passed with trace `5013E3E41D876A49`. The runtime
+  session exited cleanly and contained no error, exception, fatal, panic, or failed entries.
+- **Recorded interactive checks:** inspected before, during, and after frames for Grab, Pull, and Swipe.
+  Active gestures now replace the ambiguous `READY` label with mode-specific aiming text. Swipe adds a
+  bounded orange direction-and-strength arrow that clears on release; Grab retains its force tether and
+  halo, and Pull retains its sling trajectory and halo. Release frames show `IN FLIGHT`, followed by the
+  resulting miss state in the exercised Swipe sequence.
+- **Body visual comparison:** inspected Legacy, Ring, and Hull frames at the same scene scale. All three
+  candidates now share readable eyes and motion-oriented pupils; the eyes rotate with each physical
+  center and remain centered on the rendered contour, including the legacy deformable graph.
+- **Human test protocol and participant count:** none; 0 / 5 unfamiliar testers. This recorded visual
+  refinement validates implementation behavior but does not satisfy or change the M1 human gate.
+
 ---
 
 ## 20. Next implementation task
