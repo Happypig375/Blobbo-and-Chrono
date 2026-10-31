@@ -148,6 +148,10 @@ module Gaia =
 
     let mutable private MessageBoxOpt = Option<string>.None
     let mutable private RecoverableExceptionOpt = Option<Exception>.None
+    let private AgentLog = Queue<struct (int64 * string)> ()
+    let mutable private AgentLogSeq = 0L
+    let mutable private AgentFrame = 0L
+    let mutable private AgentDeferred = [] : (int64 * (World -> unit)) list
     let mutable private ShowEntityContextMenu = false
     let mutable private ShowNewProjectDialog = false
     let mutable private ShowOpenProjectDialog = false
@@ -483,6 +487,10 @@ DockSpace           ID=0x7C6B3D9B Window=0xA87D555D Pos=0,0 Size=1920,1080 Split
     let private concatLog (str : string) =
         truncateLog ()
         LogStr <- LogStr + str
+        lock AgentLog (fun () ->
+            AgentLogSeq <- AgentLogSeq + 1L
+            AgentLog.Enqueue struct (AgentLogSeq, str)
+            if AgentLog.Count > 4096 then AgentLog.Dequeue () |> ignore)
 
     let private shouldSwallowMouseButton (world : World) =
         let io = ImGui.GetIO ()
@@ -3239,6 +3247,126 @@ DockSpace           ID=0x7C6B3D9B Window=0xA87D555D Pos=0,0 Size=1920,1080 Split
         // fin
         ImGui.End ()
 
+    /// Evaluate F# input in the interactive session on the editor thread, appending to the Interactive window's
+    /// output, and return a structured outcome (used by both the Interactive window and the agent bridge).
+    let private evalInteractive (inputStr : string) world : EvalOutcome =
+        let mutable outcome = EvalOutcome.empty
+        snapshot (Evaluate inputStr) world
+        let initialEval = InteractiveNeedsInitialization
+        if InteractiveNeedsInitialization then
+
+            // run initialization script
+            let projectDllPathValid = File.Exists ProjectDllPath
+            let initial =
+                "#r \"System.Configuration.ConfigurationManager.dll\"\n" +
+                "#r \"System.Drawing.Common.dll\"\n" +
+                "#r \"FSharp.Core.dll\"\n" +
+                "#r \"FSharp.Compiler.Service.dll\"\n" +
+                "#r \"Astc-Encoder-CSharp.dll\"\n" +
+                "#r \"Box2D.NET.dll\"\n" +
+                "#r \"BCnEncoder.dll\"\n" +
+                "#r \"JoltPhysicsSharp.dll\"\n" +
+                "#r \"AssimpNet.dll\"\n" +
+                "#r \"BulletSharp.dll\"\n" +
+                "#r \"Csv.dll\"\n" +
+                "#r \"DotRecast.Recast.Toolset.dll\"\n" +
+                "#r \"FParsec.dll\"\n" +
+                "#r \"Magick.NET-Q8-AnyCPU.dll\"\n" +
+                "#r \"Pfim.dll\"\n" +
+                "#r \"SDL3-CS.dll\"\n" +
+                "#r \"SDL3_image-CS.dll\"\n" +
+                "#r \"SDL3_mixer-CS.dll\"\n" +
+                "#r \"SDL3_ttf-CS.dll\"\n" +
+                "#r \"TiledSharp.dll\"\n" +
+                "#r \"Twizzle.ImGui-Bundle.NET.dll\"\n" +
+                "#r \"Vortice.ShaderCompiler.dll\"\n" +
+                "#r \"Vortice.Vulkan.dll\"\n" +
+                "#r \"Vortice.VulkanMemoryAllocator.dll\"\n" +
+                "#r \"Prime.dll\"\n" +
+                "#r \"Nu.Math.dll\"\n" +
+                "#r \"Nu.dll\"\n" +
+                "#r \"Nu.Gaia.dll\"\n" +
+                (if projectDllPathValid then "#r \"" + PathF.GetFileName ProjectDllPath + "\"\n" else "") +
+                "open System\n" +
+                "open System.Numerics\n" +
+                "open Prime\n" +
+                "open Nu\n" +
+                "open Nu.Gaia"
+            match FsiSession.EvalInteractionNonThrowing initial with
+            | (Choice1Of2 _, _) -> ()
+            | (Choice2Of2 exn, _) -> Log.error ("Could not initialize fsi eval due to: " + scstring exn)
+
+            // attempt to open template namespace "MyGame", as well as namespace derived from project name
+            if projectDllPathValid then
+                let errorStr = string FsiErrorStream // preserve any existing error
+                let namespaceName = PathF.GetFileNameWithoutExtension (ProjectDllPath.Replace (" ", ""))
+                FsiSession.EvalInteractionNonThrowing ("open " + "MyGame") |> ignore<Choice<_, _> * _>
+                FsiSession.EvalInteractionNonThrowing ("open " + namespaceName) |> ignore<Choice<_, _> * _>
+                FsiErrorStream.GetStringBuilder().Clear() |> ignore<StringBuilder> // ignore any open directive errors
+                FsiErrorStream.Write errorStr // restore previous error string
+
+            // eval initialization finished
+            InteractiveNeedsInitialization <- false
+
+        // attempt to run interactive input
+        if inputStr.Contains (nameof TargetDir) then FsiSession.AddBoundValue (nameof TargetDir, TargetDir)
+        if inputStr.Contains (nameof ProjectDllPath) then FsiSession.AddBoundValue (nameof ProjectDllPath, ProjectDllPath)
+        if inputStr.Contains (nameof SelectedScreen) then FsiSession.AddBoundValue (nameof SelectedScreen, SelectedScreen)
+        if inputStr.Contains (nameof SelectedGroup) then FsiSession.AddBoundValue (nameof SelectedGroup, SelectedGroup)
+        if inputStr.Contains (nameof SelectedEntityOpt) then
+            if SelectedEntityOpt.IsNone // HACK: 1/2: workaround for binding a null value with AddBoundValue.
+            then FsiSession.EvalInteractionNonThrowing "let SelectedEntityOpt = Option<Entity>.None;;" |> ignore<Choice<_, _> * _>
+            else FsiSession.AddBoundValue (nameof SelectedEntityOpt, SelectedEntityOpt)
+        if inputStr.Contains "SelectedEntity" then
+            match SelectedEntityOpt with
+            | Some selectedEntity -> FsiSession.AddBoundValue ("SelectedEntity", selectedEntity)
+            | None -> FsiSession.AddBoundValue ("SelectedEntity", SelectedGroup / "@Sentinel")
+        if inputStr.Contains (nameof world) then FsiSession.AddBoundValue (nameof world, world)
+        if File.Exists Constants.Gaia.InteractiveInputFilePath then
+            File.SetAttributes (Constants.Gaia.InteractiveInputFilePath, FileAttributes.None)
+            File.WriteAllText (Constants.Gaia.InteractiveInputFilePath, inputStr)
+            File.SetAttributes (Constants.Gaia.InteractiveInputFilePath, FileAttributes.ReadOnly)
+        let interactiveInputStr = inputStr + ";;"
+        match FsiSession.EvalInteractionNonThrowing (interactiveInputStr, Constants.Gaia.InteractiveInputFilePath) with
+        | (Choice1Of2 _, diags) ->
+            let errorStr = string FsiErrorStream
+            let outStr = string FsiOutStream
+            let outStr =
+                if initialEval then
+                    let outStr = outStr.Replace("\r\n", "\n").Replace ("\n> ", "") // NOTE: normalized to \n first; splitting on \r\n dropped all output on Linux.
+                    let outStrLines = outStr.Split "\n"
+                    let outStrLines = Array.filter (fun (line : string) -> not (line.Contains "--> Referenced '") && not (String.IsNullOrWhiteSpace line)) outStrLines
+                    String.join Environment.NewLine outStrLines
+                else outStr
+            let outStr =
+                if SelectedEntityOpt.IsNone // HACK: 2/2: strip eval output relating to above 1/2 hack.
+                then outStr.Replace("val SelectedEntityOpt: Entity option = None\r\n", "").Replace("val SelectedEntityOpt: Entity option = None\n", "")
+                else outStr
+            if errorStr.Length > 0
+            then InteractiveOutputStr <- InteractiveOutputStr + errorStr
+            else InteractiveOutputStr <- InteractiveOutputStr + Environment.NewLine + outStr
+            outcome <- { Kind = "ok"; Output = outStr; Warnings = errorStr; Exception = ""; Diagnostics = Array.map EvalDiagnostic.make diags }
+        | (Choice2Of2 exn, diags) ->
+            let exnStr = "Unhandled exception: " + scstring exn
+            InteractiveOutputStr <- InteractiveOutputStr + Environment.NewLine + exnStr
+            let diagsStr = diags |> Array.map _.Message |> String.join Environment.NewLine
+            if diagsStr.Length > 0 then
+                InteractiveOutputStr <- InteractiveOutputStr + Environment.NewLine + diagsStr
+            let isCompileError = diags |> Array.exists (fun diag -> diag.Severity = FSharp.Compiler.Diagnostics.FSharpDiagnosticSeverity.Error)
+            outcome <-
+                { Kind = (if isCompileError then "compile_error" else "runtime_error")
+                  Output = string FsiOutStream
+                  Warnings = ""
+                  Exception = (if isCompileError then "" else scstring exn)
+                  Diagnostics = Array.map EvalDiagnostic.make diags }
+        InteractiveOutputStr <-
+            InteractiveOutputStr.Split Environment.NewLine
+            |> Array.filter (not << String.IsNullOrWhiteSpace)
+            |> String.join Environment.NewLine
+        FsiErrorStream.GetStringBuilder().Clear() |> ignore<StringBuilder>
+        FsiOutStream.GetStringBuilder().Clear() |> ignore<StringBuilder>
+        outcome
+
     let private imGuiInteractiveWindow world =
         let windowName = "Interactive"
         if ImGui.Begin (windowName, ImGuiWindowFlags.NoNav) then
@@ -3254,112 +3382,7 @@ DockSpace           ID=0x7C6B3D9B Window=0xA87D555D Pos=0,0 Size=1920,1080 Split
                 ImGui.Text "Evaluate current expression, then clear input (Ctrl+Shift+Enter)"
                 ImGui.EndTooltip ()
             if eval || enter then
-                snapshot (Evaluate InteractiveInputStr) world
-                let initialEval = InteractiveNeedsInitialization
-                if InteractiveNeedsInitialization then
-
-                    // run initialization script
-                    let projectDllPathValid = File.Exists ProjectDllPath
-                    let initial =
-                        "#r \"System.Configuration.ConfigurationManager.dll\"\n" +
-                        "#r \"System.Drawing.Common.dll\"\n" +
-                        "#r \"FSharp.Core.dll\"\n" +
-                        "#r \"FSharp.Compiler.Service.dll\"\n" +
-                        "#r \"Astc-Encoder-CSharp.dll\"\n" +
-                        "#r \"Box2D.NET.dll\"\n" +
-                        "#r \"BCnEncoder.dll\"\n" +
-                        "#r \"JoltPhysicsSharp.dll\"\n" +
-                        "#r \"AssimpNet.dll\"\n" +
-                        "#r \"BulletSharp.dll\"\n" +
-                        "#r \"Csv.dll\"\n" +
-                        "#r \"DotRecast.Recast.Toolset.dll\"\n" +
-                        "#r \"FParsec.dll\"\n" +
-                        "#r \"Magick.NET-Q8-AnyCPU.dll\"\n" +
-                        "#r \"Pfim.dll\"\n" +
-                        "#r \"SDL3-CS.dll\"\n" +
-                        "#r \"SDL3_image-CS.dll\"\n" +
-                        "#r \"SDL3_mixer-CS.dll\"\n" +
-                        "#r \"SDL3_ttf-CS.dll\"\n" +
-                        "#r \"TiledSharp.dll\"\n" +
-                        "#r \"Twizzle.ImGui-Bundle.NET.dll\"\n" +
-                        "#r \"Vortice.ShaderCompiler.dll\"\n" +
-                        "#r \"Vortice.Vulkan.dll\"\n" +
-                        "#r \"Vortice.VulkanMemoryAllocator.dll\"\n" +
-                        "#r \"Prime.dll\"\n" +
-                        "#r \"Nu.Math.dll\"\n" +
-                        "#r \"Nu.dll\"\n" +
-                        "#r \"Nu.Gaia.dll\"\n" +
-                        (if projectDllPathValid then "#r \"" + PathF.GetFileName ProjectDllPath + "\"\n" else "") +
-                        "open System\n" +
-                        "open System.Numerics\n" +
-                        "open Prime\n" +
-                        "open Nu\n" +
-                        "open Nu.Gaia"
-                    match FsiSession.EvalInteractionNonThrowing initial with
-                    | (Choice1Of2 _, _) -> ()
-                    | (Choice2Of2 exn, _) -> Log.error ("Could not initialize fsi eval due to: " + scstring exn)
-
-                    // attempt to open template namespace "MyGame", as well as namespace derived from project name
-                    if projectDllPathValid then
-                        let errorStr = string FsiErrorStream // preserve any existing error
-                        let namespaceName = PathF.GetFileNameWithoutExtension (ProjectDllPath.Replace (" ", ""))
-                        FsiSession.EvalInteractionNonThrowing ("open " + "MyGame") |> ignore<Choice<_, _> * _>
-                        FsiSession.EvalInteractionNonThrowing ("open " + namespaceName) |> ignore<Choice<_, _> * _>
-                        FsiErrorStream.GetStringBuilder().Clear() |> ignore<StringBuilder> // ignore any open directive errors
-                        FsiErrorStream.Write errorStr // restore previous error string
-
-                    // eval initialization finished
-                    InteractiveNeedsInitialization <- false
-
-                // attempt to run interactive input
-                if InteractiveInputStr.Contains (nameof TargetDir) then FsiSession.AddBoundValue (nameof TargetDir, TargetDir)
-                if InteractiveInputStr.Contains (nameof ProjectDllPath) then FsiSession.AddBoundValue (nameof ProjectDllPath, ProjectDllPath)
-                if InteractiveInputStr.Contains (nameof SelectedScreen) then FsiSession.AddBoundValue (nameof SelectedScreen, SelectedScreen)
-                if InteractiveInputStr.Contains (nameof SelectedGroup) then FsiSession.AddBoundValue (nameof SelectedGroup, SelectedGroup)
-                if InteractiveInputStr.Contains (nameof SelectedEntityOpt) then
-                    if SelectedEntityOpt.IsNone // HACK: 1/2: workaround for binding a null value with AddBoundValue.
-                    then FsiSession.EvalInteractionNonThrowing "let SelectedEntityOpt = Option<Entity>.None;;" |> ignore<Choice<_, _> * _>
-                    else FsiSession.AddBoundValue (nameof SelectedEntityOpt, SelectedEntityOpt)
-                if InteractiveInputStr.Contains "SelectedEntity" then
-                    match SelectedEntityOpt with
-                    | Some selectedEntity -> FsiSession.AddBoundValue ("SelectedEntity", selectedEntity)
-                    | None -> FsiSession.AddBoundValue ("SelectedEntity", SelectedGroup / "@Sentinel")
-                if InteractiveInputStr.Contains (nameof world) then FsiSession.AddBoundValue (nameof world, world)
-                if File.Exists Constants.Gaia.InteractiveInputFilePath then
-                    File.SetAttributes (Constants.Gaia.InteractiveInputFilePath, FileAttributes.None)
-                    File.WriteAllText (Constants.Gaia.InteractiveInputFilePath, InteractiveInputStr)
-                    File.SetAttributes (Constants.Gaia.InteractiveInputFilePath, FileAttributes.ReadOnly)
-                let interactiveInputStr = InteractiveInputStr + ";;"
-                match FsiSession.EvalInteractionNonThrowing (interactiveInputStr, Constants.Gaia.InteractiveInputFilePath) with
-                | (Choice1Of2 _, _) ->
-                    let errorStr = string FsiErrorStream
-                    let outStr = string FsiOutStream
-                    let outStr =
-                        if initialEval then
-                            let outStr = outStr.Replace ("\r\n> ", "") // TODO: ensure the use of \r\n also works on linux.
-                            let outStrLines = outStr.Split "\r\n"
-                            let outStrLines = Array.filter (fun (line : string) -> not (line.Contains "--> Referenced '")) outStrLines
-                            String.join "\r\n" outStrLines
-                        else outStr
-                    let outStr =
-                        if SelectedEntityOpt.IsNone // HACK: 2/2: strip eval output relating to above 1/2 hack.
-                        then outStr.Replace ("val SelectedEntityOpt: Entity option = None\r\n", "")
-                        else outStr
-                    if errorStr.Length > 0
-                    then InteractiveOutputStr <- InteractiveOutputStr + errorStr
-                    else InteractiveOutputStr <- InteractiveOutputStr + Environment.NewLine + outStr
-                | (Choice2Of2 exn, diags) ->
-                    let exnStr = "Unhandled exception: " + scstring exn
-                    InteractiveOutputStr <- InteractiveOutputStr + Environment.NewLine + exnStr
-                    let diagsStr = diags |> Array.map _.Message |> String.join Environment.NewLine
-                    if diagsStr.Length > 0 then
-                        InteractiveOutputStr <- InteractiveOutputStr + Environment.NewLine + diagsStr
-                InteractiveOutputStr <-
-                    InteractiveOutputStr.Split Environment.NewLine
-                    |> Array.filter (not << String.IsNullOrWhiteSpace)
-                    |> String.join Environment.NewLine
-                FsiErrorStream.GetStringBuilder().Clear() |> ignore<StringBuilder>
-                FsiOutStream.GetStringBuilder().Clear() |> ignore<StringBuilder>
+                evalInteractive InteractiveInputStr world |> ignore<EvalOutcome>
                 toBottom <- true
 
             ImGui.SameLine ()
@@ -4235,6 +4258,175 @@ DockSpace           ID=0x7C6B3D9B Window=0xA87D555D Pos=0,0 Size=1920,1080 Split
                 RecoverableExceptionOpt <- None
             ImGui.EndPopup ()
 
+    (* Agent Bridge (EXPERIMENTAL, agentic-gaia spike) *)
+
+    let private agentLogSince (since : int64) =
+        lock AgentLog (fun () ->
+            AgentLog
+            |> Seq.filter (fun struct (seq, _) -> seq > since)
+            |> Seq.map (fun struct (_, str) -> str)
+            |> String.concat "")
+
+    let private agentReply (request : AgentRequest) (fields : (string * obj) list) =
+        let payload = Dictionary<string, obj> ()
+        payload["id"] <- request.Id
+        payload["ok"] <- true
+        for (key, value) in fields do payload[key] <- value
+        request.Reply.TrySetResult (AgentBridge.toJson payload) |> ignore<bool>
+
+    let private agentArgString (name : string) (request : AgentRequest) =
+        match request.Args.ValueKind with
+        | Text.Json.JsonValueKind.Object ->
+            match request.Args.TryGetProperty name with
+            | (true, value) when value.ValueKind = Text.Json.JsonValueKind.String -> Some (value.GetString ())
+            | (true, value) -> Some (value.GetRawText ())
+            | _ -> None
+        | _ -> None
+
+    let private agentArgInt (name : string) defaultValue request =
+        match agentArgString name request with
+        | Some str -> match Int32.TryParse str with | (true, i) -> i | _ -> defaultValue
+        | None -> defaultValue
+
+    let private agentStatus (world : World) : (string * obj) list =
+        [("frame", box AgentFrame)
+         ("updateTime", box world.UpdateTime)
+         ("advancing", box world.TimeAdvancing)
+         ("imperative", box (World.getImperative world))
+         ("projectDllPath", box ProjectDllPath)
+         ("selectedScreen", box (string SelectedScreen))
+         ("selectedGroup", box (string SelectedGroup))
+         ("selectedEntity", box (match SelectedEntityOpt with Some entity -> string entity | None -> null))
+         ("undoDepth", box Pasts.Length)
+         ("logSeq", box AgentLogSeq)]
+
+    let private agentTryResolveSimulant (path : string) : Simulant option =
+        // accepts paths as printed by the hierarchy op ("Game/Screen/Group/Entity...") or without the "Game/" root
+        let names = path.Split ('/', StringSplitOptions.RemoveEmptyEntries)
+        let names = if names.Length > 0 && names[0] = "Game" then names else Array.append [|"Game"|] names
+        match names.Length with
+        | 1 -> Some (Nu.Game.Handle :> Simulant)
+        | 2 -> Some (Nu.Screen names :> Simulant)
+        | 3 -> Some (Nu.Group names :> Simulant)
+        | _ -> Some (Nu.Entity names :> Simulant)
+
+    let private agentHierarchy (world : World) =
+        [for screen in World.getScreens world do
+            yield
+                dict
+                    ["path", box (string screen)
+                     "dispatcher", box (getTypeName (screen.GetDispatcher world))
+                     "groups",
+                        box
+                            [for group in World.getGroups screen world do
+                                yield
+                                    dict
+                                        ["path", box (string group)
+                                         "dispatcher", box (getTypeName (group.GetDispatcher world))
+                                         "entities",
+                                            box
+                                                [for entity in World.getEntitiesDepthFirst group world do
+                                                    yield
+                                                        dict
+                                                            ["path", box (string entity)
+                                                             "dispatcher", box (getTypeName (entity.GetDispatcher world))]]]]]]
+
+    let private agentInspect (simulant : Simulant) world =
+        [for propertyDescriptor in SimulantPropertyDescriptor.getPropertyDescriptors simulant world do
+            let valueStr =
+                try let value = SimulantPropertyDescriptor.getValue propertyDescriptor simulant world
+                    let converter = SymbolicConverter (false, None, propertyDescriptor.PropertyType, ToSymbolMemo, OfSymbolMemo)
+                    match converter.ConvertTo (value, typeof<Symbol>) with
+                    | :? Symbol as symbol -> PrettyPrinter.prettyPrintSymbol symbol PrettyPrinter.defaultPrinter
+                    | _ -> string value
+                with exn -> "<error: " + exn.Message + ">"
+            yield
+                dict
+                    ["name", box propertyDescriptor.PropertyName
+                     "type", box (getTypeName propertyDescriptor.PropertyType)
+                     "value", box valueStr]]
+
+    let private agentProcessRequest (request : AgentRequest) (world : World) =
+        match request.Op with
+        | "status" ->
+            agentReply request (agentStatus world)
+        | "eval" ->
+            match agentArgString "code" request with
+            | Some code ->
+                let outcome = evalInteractive code world
+                agentReply request
+                    ([("kind", box outcome.Kind)
+                      ("output", box outcome.Output)
+                      ("warnings", box outcome.Warnings)
+                      ("exception", box outcome.Exception)
+                      ("diagnostics", box outcome.Diagnostics)] @ agentStatus world)
+            | None -> request.Reply.TrySetResult (AgentBridge.error request.Id "eval requires args.code") |> ignore<bool>
+        | "undo" ->
+            let undone = tryUndo world
+            agentReply request (("undone", box undone) :: agentStatus world)
+        | "redo" ->
+            let redone = tryRedo world
+            agentReply request (("redone", box redone) :: agentStatus world)
+        | "advance" ->
+            // advance game time for N editor frames, then halt again and reply
+            let frames = max 1 (agentArgInt "frames" 1 request)
+            let wasAdvancing = world.TimeAdvancing
+            if not wasAdvancing then
+                snapshot Advance world
+                World.setTimeAdvancing true world
+            let target = AgentFrame + int64 frames
+            AgentDeferred <-
+                (target, fun world ->
+                    // NOTE: halting is a request resolved at the next frame boundary, so reply one frame later.
+                    if not wasAdvancing then World.setTimeAdvancing false world
+                    AgentDeferred <- (AgentFrame + 1L, fun world -> agentReply request (("advancedFrames", box frames) :: agentStatus world)) :: AgentDeferred) :: AgentDeferred
+        | "set_advancing" ->
+            let on = agentArgString "on" request = Some "true"
+            if world.TimeAdvancing <> on then
+                snapshot (if on then Advance else Halt) world
+                World.setTimeAdvancing on world
+            AgentDeferred <- (AgentFrame + 1L, fun world -> agentReply request (agentStatus world)) :: AgentDeferred
+        | "wait_frames" ->
+            // let N editor frames render (time need not advance), e.g. before an external screenshot
+            let frames = max 1 (agentArgInt "frames" 2 request)
+            AgentDeferred <- (AgentFrame + int64 frames, fun world -> agentReply request (agentStatus world)) :: AgentDeferred
+        | "view_mode" ->
+            let viewMode =
+                match agentArgString "mode" request with
+                | Some "capture" -> CaptureMode
+                | Some "free" -> FreeMode
+                | _ -> NormalMode
+            setViewMode viewMode world
+            agentReply request (("viewMode", box (string viewMode)) :: agentStatus world)
+        | "reload_code" ->
+            let logSeqBefore = AgentLogSeq
+            tryReloadCode false world
+            agentReply request (("log", box (agentLogSince logSeqBefore)) :: agentStatus world)
+        | "log" ->
+            let since = int64 (agentArgInt "since" 0 request)
+            agentReply request [("log", box (agentLogSince since)); ("logSeq", box AgentLogSeq)]
+        | "hierarchy" ->
+            agentReply request [("screens", box (agentHierarchy world))]
+        | "inspect" ->
+            let path = Option.defaultValue "" (agentArgString "path" request)
+            match agentTryResolveSimulant path with
+            | Some simulant when World.getExists simulant world ->
+                agentReply request [("path", box (string simulant)); ("properties", box (agentInspect simulant world))]
+            | _ -> request.Reply.TrySetResult (AgentBridge.error request.Id ("No such simulant: " + path)) |> ignore<bool>
+        | op ->
+            request.Reply.TrySetResult (AgentBridge.error request.Id ("Unknown op: " + op)) |> ignore<bool>
+
+    /// Drain agent requests and complete due deferred replies. Runs on the editor thread once per frame.
+    let private agentProcess (world : World) =
+        AgentFrame <- inc AgentFrame
+        let (due, pending) = List.partition (fun (target, _) -> target <= AgentFrame) AgentDeferred
+        AgentDeferred <- pending
+        for (_, complete) in List.rev due do complete world
+        let mutable request = Unchecked.defaultof<AgentRequest>
+        while AgentBridge.Requests.TryDequeue &request do
+            try agentProcessRequest request world
+            with exn -> request.Reply.TrySetResult (AgentBridge.error request.Id ("Request failed: " + scstring exn)) |> ignore<bool>
+
     let private imGuiProcess (world : World) =
 
         // store old world state
@@ -4258,6 +4450,9 @@ DockSpace           ID=0x7C6B3D9B Window=0xA87D555D Pos=0,0 Size=1920,1080 Split
             if Stepping then
                 World.setTimeAdvancing false world
                 Stepping <- false
+
+            // process agent bridge requests (EXPERIMENTAL)
+            agentProcess world
 
             // use a generalized exception process
             try imGuiViewportManipulation world
@@ -4542,6 +4737,7 @@ DockSpace           ID=0x7C6B3D9B Window=0xA87D555D Pos=0,0 Size=1920,1080 Split
             let prettyPrinter = (SyntaxAttribute.defaultValue typeof<Overlay>).PrettyPrinter
             PrettyPrinter.prettyPrint extrinsicOverlaysStr prettyPrinter
         FsiSession <- Shell.FsiEvaluationSession.Create (FsiConfig, FsiArgs, FsiInStream, FsiOutStream, FsiErrorStream)
+        AgentBridge.tryStart ()
         let result = runWithCleanUpAndErrorProtection (Some ignore) world
         (FsiSession :> IDisposable).Dispose () // not sure why we have to cast here...
         FsiErrorStream.Dispose ()
