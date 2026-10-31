@@ -4346,6 +4346,72 @@ DockSpace           ID=0x7C6B3D9B Window=0xA87D555D Pos=0,0 Size=1920,1080 Split
                      "type", box (getTypeName propertyDescriptor.PropertyType)
                      "value", box valueStr]]
 
+    let private agentXmlDocCache = Dictionary<string, Xml.XmlDocument option> ()
+
+    let private agentTryReadXmlDoc (dllName : string) (xmlSig : string) =
+        // FCS only gives (dll, signature) for compiled code; the host must read the sidecar XML itself.
+        let dllPaths =
+            [yield dllName
+             yield dllName + ".dll"
+             for assembly in AppDomain.CurrentDomain.GetAssemblies () do
+                if not assembly.IsDynamic && String.Equals (assembly.GetName().Name, PathF.GetFileNameWithoutExtension dllName, StringComparison.OrdinalIgnoreCase) then
+                    yield assembly.Location]
+        let xmlPathOpt = dllPaths |> List.map (fun path -> PathF.ChangeExtension (path, ".xml")) |> List.tryFind File.Exists
+        match xmlPathOpt with
+        | Some xmlPath ->
+            let docOpt =
+                match agentXmlDocCache.TryGetValue xmlPath with
+                | (true, docOpt) -> docOpt
+                | (false, _) ->
+                    let docOpt = try let doc = Xml.XmlDocument () in doc.Load xmlPath; Some doc with _ -> None
+                    agentXmlDocCache[xmlPath] <- docOpt
+                    docOpt
+            match docOpt with
+            | Some doc ->
+                match doc.SelectSingleNode ("/doc/members/member[@name='" + xmlSig + "']") with
+                | null -> ("not-in-xml:" + xmlPath, "")
+                | node -> (xmlPath, String.Join (" ", node.InnerText.Split ([|' '; '\n'; '\r'; '\t'|], StringSplitOptions.RemoveEmptyEntries)))
+            | None -> ("unreadable:" + xmlPath, "")
+        | None -> ("no-xml-beside:" + dllName, "")
+
+    /// Resolve a (possibly qualified) name in the live FSI session: F# signature(s), XML docs, declaration location.
+    let private agentSymbol (name : string) world =
+        if InteractiveNeedsInitialization then evalInteractive "()" world |> ignore<EvalOutcome> // runs the session's #r/open prelude
+        let lineText = name.Trim ()
+        let names = lineText.Split '.' |> List.ofArray
+        let col = lineText.Length
+        let (_, checkResults, _) = FsiSession.ParseAndCheckInteraction lineText
+        let (FSharp.Compiler.EditorServices.ToolTipText elements) =
+            checkResults.GetToolTip (1, col, lineText, names, FSharp.Compiler.Tokenization.FSharpTokenTag.Identifier)
+        let overloads =
+            [for element in elements do
+                match element with
+                | FSharp.Compiler.EditorServices.ToolTipElement.Group datas ->
+                    for data in datas do
+                        let signature = data.MainDescription |> Array.map _.Text |> String.concat ""
+                        let (docSource, doc) =
+                            match data.XmlDoc with
+                            | FSharp.Compiler.Symbols.FSharpXmlDoc.FromXmlText xmlDoc -> ("source", String.Join (" ", xmlDoc.UnprocessedLines))
+                            | FSharp.Compiler.Symbols.FSharpXmlDoc.FromXmlFile (dllName, xmlSig) ->
+                                let (source, doc) = agentTryReadXmlDoc dllName xmlSig
+                                (source + "#" + xmlSig, doc)
+                            | FSharp.Compiler.Symbols.FSharpXmlDoc.None -> ("none", "")
+                        yield dict ["signature", box signature; "doc", box doc; "docSource", box docSource]
+                | FSharp.Compiler.EditorServices.ToolTipElement.CompositionError error ->
+                    yield dict ["signature", box ""; "doc", box ("error: " + error); "docSource", box "error"]
+                | _ -> ()]
+        let symbolFields =
+            match checkResults.GetSymbolUseAtLocation (1, col, lineText, names) with
+            | Some symbolUse ->
+                let symbol = symbolUse.Symbol
+                [("fullName", box symbol.FullName)
+                 ("kind", box (symbol.GetType().Name))
+                 ("assembly", box symbol.Assembly.SimpleName)
+                 ("declaration", box (match symbol.DeclarationLocation with Some range -> range.FileName + ":" + string range.StartLine | None -> null))]
+            | None -> [("fullName", box null)]
+        let diagnostics = checkResults.Diagnostics |> Array.map EvalDiagnostic.make
+        ("overloads", box overloads) :: ("diagnostics", box diagnostics) :: symbolFields
+
     let private agentProcessRequest (request : AgentRequest) (world : World) =
         match request.Op with
         | "status" ->
@@ -4407,6 +4473,10 @@ DockSpace           ID=0x7C6B3D9B Window=0xA87D555D Pos=0,0 Size=1920,1080 Split
             agentReply request [("log", box (agentLogSince since)); ("logSeq", box AgentLogSeq)]
         | "hierarchy" ->
             agentReply request [("screens", box (agentHierarchy world))]
+        | "symbol" ->
+            match agentArgString "name" request with
+            | Some name -> agentReply request (agentSymbol name world)
+            | None -> request.Reply.TrySetResult (AgentBridge.error request.Id "symbol requires args.name") |> ignore<bool>
         | "inspect" ->
             let path = Option.defaultValue "" (agentArgString "path" request)
             match agentTryResolveSimulant path with

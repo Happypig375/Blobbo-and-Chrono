@@ -44,8 +44,8 @@ def rpc(method, params=None):
     return reply
 
 
-def tool(name, **args):
-    return rpc("tools/call", {"name": name, "arguments": args})["result"]
+def tool(tool_name, **args):
+    return rpc("tools/call", {"name": tool_name, "arguments": args})["result"]
 
 
 def text_of(result):
@@ -79,7 +79,7 @@ check("initialize", init["result"]["serverInfo"]["name"] == "nu-gaia")
 server.stdin.write(json.dumps({"jsonrpc": "2.0", "method": "notifications/initialized"}) + "\n")
 server.stdin.flush()
 tools = rpc("tools/list")["result"]["tools"]
-check("tools/list", len(tools) >= 12, f"{len(tools)} tools")
+check("tools/list", len(tools) >= 13, f"{len(tools)} tools")
 
 status = json.loads(text_of(tool("gaia_status")))
 check("status: project loaded, time halted", status["projectDllPath"].endswith("Breakout ImSim.dll") and not status["advancing"])
@@ -132,6 +132,11 @@ check("advance 30 frames then halt", r["updateTime"] - t0 >= 25 and not r["advan
 r = tool("gaia_frames", count=4, every=15, view="game")
 image_of(r, "4-frames.png")
 check("frame sequence contact sheet", not r["isError"])
+
+r = json.loads(text_of(tool("gaia_symbol", name="World.createEntity")))
+ov = (r.get("overloads") or [{}])[0]
+check("gaia_symbol: F# signature + Nu.xml doc + declaration", "Group" in ov.get("signature", "") and "Create an entity" in ov.get("doc", "")
+      and (r.get("declaration") or "").endswith(".fs:2398"), f"{r.get('declaration')}")
 
 r = tool("nu_docs", query="createEntity", limit=5)
 check("nu_docs finds createEntity", "createEntity" in text_of(r), text_of(r).splitlines()[0][:100] if text_of(r) else "")

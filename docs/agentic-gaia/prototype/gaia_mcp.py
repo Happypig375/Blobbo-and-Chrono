@@ -103,6 +103,15 @@ TOOLS = [
         "inputSchema": {"type": "object", "properties": {"since": {"type": "integer"}}},
     },
     {
+        "name": "gaia_symbol",
+        "description": (
+            "Resolve a name (e.g. 'World.createEntity', 'Entity.SetColor', 'MyGame.MyDispatcher') in the live F# session, "
+            "with the session's opens: F# signature for each overload, XML doc summary, and declaration file:line "
+            "(read the source there when docs are thin)."
+        ),
+        "inputSchema": {"type": "object", "properties": {"name": {"type": "string"}}, "required": ["name"]},
+    },
+    {
         "name": "nu_docs",
         "description": "Search Nu API XML documentation (member ids and summaries) by regex/keywords. Returns up to `limit` members.",
         "inputSchema": {
@@ -208,6 +217,10 @@ def call_tool(name, args):
         return _text(reply.get("log", ""), is_error="Failed to compile" in reply.get("log", ""))
     if name == "gaia_log":
         return _text(_call("log", since=int(args.get("since", 0))).get("log", ""))
+    if name == "gaia_symbol":
+        reply = _call("symbol", name=args["name"])
+        keep = {k: reply.get(k) for k in ("fullName", "assembly", "declaration", "overloads", "diagnostics")}
+        return _text(keep, is_error=not reply.get("overloads"))
     if name == "nu_docs":
         docs = _load_docs()
         if not docs:

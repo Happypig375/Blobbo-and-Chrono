@@ -27,7 +27,7 @@
     }
    }
   },
-  "seconds": 0.033
+  "seconds": 0.034
  },
  {
   "request": {
@@ -192,6 +192,21 @@
       }
      },
      {
+      "name": "gaia_symbol",
+      "description": "Resolve a name (e.g. 'World.createEntity', 'Entity.SetColor', 'MyGame.MyDispatcher') in the live F# session, with the session's opens: F# signature for each overload, XML doc summary, and declaration file:line (read the source there when docs are thin).",
+      "inputSchema": {
+       "type": "object",
+       "properties": {
+        "name": {
+         "type": "string"
+        }
+       },
+       "required": [
+        "name"
+       ]
+      }
+     },
+     {
       "name": "nu_docs",
       "description": "Search Nu API XML documentation (member ids and summaries) by regex/keywords. Returns up to `limit` members.",
       "inputSchema": {
@@ -239,7 +254,7 @@
     "isError": false
    }
   },
-  "seconds": 0.963
+  "seconds": 1.034
  },
  {
   "request": {
@@ -266,7 +281,7 @@
     "isError": false
    }
   },
-  "seconds": 2.649
+  "seconds": 2.611
  },
  {
   "request": {
@@ -287,13 +302,13 @@
     "content": [
      {
       "type": "text",
-      "text": "{\n \"kind\": \"compile_error\",\n \"diagnostics\": [\n  {\n   \"Severity\": \"Error\",\n   \"Code\": \"FS0001\",\n   \"File\": \"input.fsx\",\n   \"StartLine\": 1,\n   \"StartColumn\": 16,\n   \"EndLine\": 1,\n   \"EndColumn\": 22,\n   \"Message\": \"This expression was expected to have type\\n    'int'    \\nbut here has type\\n    'string'    \"\n  }\n ],\n \"frame\": 5,\n \"undoDepth\": 2\n}"
+      "text": "{\n \"kind\": \"compile_error\",\n \"diagnostics\": [\n  {\n   \"Severity\": \"Error\",\n   \"Code\": \"FS0001\",\n   \"File\": \"input.fsx\",\n   \"StartLine\": 1,\n   \"StartColumn\": 16,\n   \"EndLine\": 1,\n   \"EndColumn\": 22,\n   \"Message\": \"This expression was expected to have type\\n    'int'    \\nbut here has type\\n    'string'    \"\n  }\n ],\n \"frame\": 6,\n \"undoDepth\": 2\n}"
      }
     ],
     "isError": true
    }
   },
-  "seconds": 0.079
+  "seconds": 0.085
  },
  {
   "request": {
@@ -314,13 +329,13 @@
     "content": [
      {
       "type": "text",
-      "text": "{\n \"kind\": \"runtime_error\",\n \"exception\": \"\\\"System.Exception: boom\\n   at <StartupCode$FSI_0007>.$FSI_0007.main@() in /home/happypig375/workspace/nu-gaia-agentic/Projects/Breakout ImSim/bin/Debug/net10.0/input.fsx:line 1\\n   at System.Reflection.MethodBaseInvoker.InterpretedInvoke_Method(Object obj, IntPtr* args)\\n   at System.Reflection.RuntimeMethodInfo.Invoke(Object obj, BindingFlags invokeAttr, Binder binder, Object[] parameters, CultureInfo culture)\\\"\",\n \"frame\": 7,\n \"undoDepth\": 3\n}"
+      "text": "{\n \"kind\": \"runtime_error\",\n \"exception\": \"\\\"System.Exception: boom\\n   at <StartupCode$FSI_0007>.$FSI_0007.main@() in /home/happypig375/workspace/nu-gaia-agentic/Projects/Breakout ImSim/bin/Debug/net10.0/input.fsx:line 1\\n   at System.RuntimeMethodHandle.InvokeMethod(ObjectHandleOnStack target, Void** arguments, ObjectHandleOnStack sig, BOOL isConstructor, ObjectHandleOnStack result)\\n   at System.RuntimeMethodHandle.InvokeMethod(ObjectHandleOnStack target, Void** arguments, ObjectHandleOnStack sig, BOOL isConstructor, ObjectHandleOnStack result)\\n   at System.Reflection.MethodBaseInvoker.InterpretedInvoke_Method(Object obj, IntPtr* args)\\n   at System.Reflection.RuntimeMethodInfo.Invoke(Object obj, BindingFlags invokeAttr, Binder binder, Object[] parameters, CultureInfo culture)\\\"\",\n \"frame\": 8,\n \"undoDepth\": 3\n}"
      }
     ],
     "isError": true
    }
   },
-  "seconds": 0.096
+  "seconds": 0.091
  },
  {
   "request": {
@@ -345,7 +360,7 @@
     "isError": false
    }
   },
-  "seconds": 0.014
+  "seconds": 0.013
  },
  {
   "request": {
@@ -372,7 +387,7 @@
     "isError": false
    }
   },
-  "seconds": 0.011
+  "seconds": 0.01
  },
  {
   "request": {
@@ -399,13 +414,13 @@
      },
      {
       "type": "text",
-      "text": "saved /tmp/claude-1375/-home-happypig375-workspace-nu-gaia-agentic/a7f90063-455f-4f9e-a42c-7e41cc5213da/scratchpad/check2/shot-27.png; frame=27 updateTime=0"
+      "text": "saved /tmp/claude-1375/-home-happypig375-workspace-nu-gaia-agentic/a7f90063-455f-4f9e-a42c-7e41cc5213da/scratchpad/check3/shot-28.png; frame=28 updateTime=0"
      }
     ],
     "isError": false
    }
   },
-  "seconds": 0.224
+  "seconds": 0.237
  },
  {
   "request": {
@@ -426,13 +441,13 @@
     "content": [
      {
       "type": "text",
-      "text": "{\n \"kind\": \"ok\",\n \"output\": \"val e: Entity = Game/Splash/SlideGroup/AgentBlock\\nval it: string = \\\"Game/Splash/SlideGroup/AgentBlock\\\"\\n\\n\",\n \"frame\": 36,\n \"undoDepth\": 4\n}"
+      "text": "{\n \"kind\": \"ok\",\n \"output\": \"val e: Entity = Game/Splash/SlideGroup/AgentBlock\\nval it: string = \\\"Game/Splash/SlideGroup/AgentBlock\\\"\\n\\n\",\n \"frame\": 37,\n \"undoDepth\": 4\n}"
      }
     ],
     "isError": false
    }
   },
-  "seconds": 0.379
+  "seconds": 0.298
  },
  {
   "request": {
@@ -459,13 +474,13 @@
      },
      {
       "type": "text",
-      "text": "saved /tmp/claude-1375/-home-happypig375-workspace-nu-gaia-agentic/a7f90063-455f-4f9e-a42c-7e41cc5213da/scratchpad/check2/shot-47.png; frame=47 updateTime=0"
+      "text": "saved /tmp/claude-1375/-home-happypig375-workspace-nu-gaia-agentic/a7f90063-455f-4f9e-a42c-7e41cc5213da/scratchpad/check3/shot-47.png; frame=47 updateTime=0"
      }
     ],
     "isError": false
    }
   },
-  "seconds": 0.241
+  "seconds": 0.218
  },
  {
   "request": {
@@ -490,7 +505,7 @@
     "isError": false
    }
   },
-  "seconds": 0.043
+  "seconds": 0.046
  },
  {
   "request": {
@@ -517,13 +532,13 @@
      },
      {
       "type": "text",
-      "text": "saved /tmp/claude-1375/-home-happypig375-workspace-nu-gaia-agentic/a7f90063-455f-4f9e-a42c-7e41cc5213da/scratchpad/check2/shot-64.png; frame=64 updateTime=0"
+      "text": "saved /tmp/claude-1375/-home-happypig375-workspace-nu-gaia-agentic/a7f90063-455f-4f9e-a42c-7e41cc5213da/scratchpad/check3/shot-64.png; frame=64 updateTime=0"
      }
     ],
     "isError": false
    }
   },
-  "seconds": 0.206
+  "seconds": 0.208
  },
  {
   "request": {
@@ -550,7 +565,7 @@
     "isError": false
    }
   },
-  "seconds": 0.089
+  "seconds": 0.085
  },
  {
   "request": {
@@ -569,13 +584,13 @@
     "content": [
      {
       "type": "text",
-      "text": "{\n \"id\": \"22\",\n \"ok\": true,\n \"frame\": 72,\n \"updateTime\": 0,\n \"advancing\": false,\n \"imperative\": false,\n \"projectDllPath\": \"/home/happypig375/workspace/nu-gaia-agentic/Projects/Breakout ImSim/bin/Debug/net10.0/Breakout ImSim.dll\",\n \"selectedScreen\": \"Game/Splash\",\n \"selectedGroup\": \"Game/Splash/SlideGroup\",\n \"selectedEntity\": null,\n \"undoDepth\": 4,\n \"logSeq\": 1\n}"
+      "text": "{\n \"id\": \"22\",\n \"ok\": true,\n \"frame\": 71,\n \"updateTime\": 0,\n \"advancing\": false,\n \"imperative\": false,\n \"projectDllPath\": \"/home/happypig375/workspace/nu-gaia-agentic/Projects/Breakout ImSim/bin/Debug/net10.0/Breakout ImSim.dll\",\n \"selectedScreen\": \"Game/Splash\",\n \"selectedGroup\": \"Game/Splash/SlideGroup\",\n \"selectedEntity\": null,\n \"undoDepth\": 4,\n \"logSeq\": 1\n}"
      }
     ],
     "isError": false
    }
   },
-  "seconds": 0.018
+  "seconds": 0.001
  },
  {
   "request": {
@@ -596,13 +611,13 @@
     "content": [
      {
       "type": "text",
-      "text": "{\n \"id\": \"23\",\n \"ok\": true,\n \"advancedFrames\": 30,\n \"frame\": 104,\n \"updateTime\": 30,\n \"advancing\": false,\n \"imperative\": false,\n \"projectDllPath\": \"/home/happypig375/workspace/nu-gaia-agentic/Projects/Breakout ImSim/bin/Debug/net10.0/Breakout ImSim.dll\",\n \"selectedScreen\": \"Game/Splash\",\n \"selectedGroup\": \"Game/Splash/SlideGroup\",\n \"selectedEntity\": null,\n \"undoDepth\": 5,\n \"logSeq\": 1\n}"
+      "text": "{\n \"id\": \"23\",\n \"ok\": true,\n \"advancedFrames\": 30,\n \"frame\": 103,\n \"updateTime\": 30,\n \"advancing\": false,\n \"imperative\": false,\n \"projectDllPath\": \"/home/happypig375/workspace/nu-gaia-agentic/Projects/Breakout ImSim/bin/Debug/net10.0/Breakout ImSim.dll\",\n \"selectedScreen\": \"Game/Splash\",\n \"selectedGroup\": \"Game/Splash/SlideGroup\",\n \"selectedEntity\": null,\n \"undoDepth\": 5,\n \"logSeq\": 1\n}"
      }
     ],
     "isError": false
    }
   },
-  "seconds": 0.542
+  "seconds": 0.545
  },
  {
   "request": {
@@ -630,18 +645,45 @@
      },
      {
       "type": "text",
-      "text": "4 frames, 15 apart; saved /tmp/claude-1375/-home-happypig375-workspace-nu-gaia-agentic/a7f90063-455f-4f9e-a42c-7e41cc5213da/scratchpad/check2/frames-192.png"
+      "text": "4 frames, 15 apart; saved /tmp/claude-1375/-home-happypig375-workspace-nu-gaia-agentic/a7f90063-455f-4f9e-a42c-7e41cc5213da/scratchpad/check3/frames-191.png"
      }
     ],
     "isError": false
    }
   },
-  "seconds": 1.511
+  "seconds": 1.515
  },
  {
   "request": {
    "jsonrpc": "2.0",
    "id": 18,
+   "method": "tools/call",
+   "params": {
+    "name": "gaia_symbol",
+    "arguments": {
+     "name": "World.createEntity"
+    }
+   }
+  },
+  "reply": {
+   "jsonrpc": "2.0",
+   "id": 18,
+   "result": {
+    "content": [
+     {
+      "type": "text",
+      "text": "{\n \"fullName\": \"Nu.WorldModuleEntity.createEntity\",\n \"assembly\": \"Nu\",\n \"declaration\": \"/home/happypig375/workspace/nu-gaia-agentic/Nu/Nu/World/WorldModuleEntity.fs:2398\",\n \"overloads\": [\n  {\n   \"signature\": \"static member World.createEntity: mountOpt: Entity Address option -> overlayDescriptor: OverlayDescriptor -> surnamesOpt: string array option -> group: Group -> world: World -> Entity (requires 'd :> EntityDispatcher)\",\n   \"doc\": \"Create an entity and add it to the world.\",\n   \"docSource\": \"/home/happypig375/workspace/nu-gaia-agentic/Projects/Breakout ImSim/bin/Debug/net10.0/Nu.xml#M:Nu.WorldModuleEntity.World.createEntity.Static``1(Microsoft.FSharp.Core.FSharpOption{Nu.Address{Nu.Entity}},Nu.OverlayDescriptor,Microsoft.FSharp.Core.FSharpOption{System.String[]},Nu.Group,Nu.World)\"\n  }\n ],\n \"diagnostics\": []\n}"
+     }
+    ],
+    "isError": false
+   }
+  },
+  "seconds": 0.453
+ },
+ {
+  "request": {
+   "jsonrpc": "2.0",
+   "id": 19,
    "method": "tools/call",
    "params": {
     "name": "nu_docs",
@@ -653,7 +695,7 @@
   },
   "reply": {
    "jsonrpc": "2.0",
-   "id": 18,
+   "id": 19,
    "result": {
     "content": [
      {
@@ -664,6 +706,6 @@
     "isError": false
    }
   },
-  "seconds": 0.036
+  "seconds": 0.044
  }
 ]
