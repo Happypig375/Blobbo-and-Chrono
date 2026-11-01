@@ -16,12 +16,34 @@ import socket
 import sys
 import itertools
 
-DEFAULT_SOCKET = os.path.join(os.environ.get("XDG_RUNTIME_DIR", "/tmp"), "nu-gaia-agent.sock")
+import stat
+
+
+def private_runtime_dir():
+    """$XDG_RUNTIME_DIR, required: the bridge socket is code execution as this user, so never fall back to /tmp."""
+    path = os.environ.get("XDG_RUNTIME_DIR")
+    if not path:
+        raise RuntimeError("XDG_RUNTIME_DIR is not set; refusing to use a shared directory for the Gaia bridge")
+    check_private(path, is_dir=True)
+    return path
+
+
+def check_private(path, is_dir):
+    """Raise unless `path` is owned by this user, not a symlink and (for directories) has no group/other access."""
+    st = os.lstat(path)
+    if stat.S_ISLNK(st.st_mode) or st.st_uid != os.getuid():
+        raise RuntimeError(f"{path} is a symlink or not owned by this user")
+    if is_dir and st.st_mode & 0o077:
+        raise RuntimeError(f"{path} must be mode 0700 (is {oct(st.st_mode & 0o777)})")
+
+
+def default_socket():
+    return os.environ.get("NU_GAIA_AGENT_SOCKET") or os.path.join(private_runtime_dir(), "nu-gaia-agent.sock")
 
 
 class GaiaBridge:
     def __init__(self, path=None, timeout=150.0):
-        self.path = path or os.environ.get("NU_GAIA_AGENT_SOCKET", DEFAULT_SOCKET)
+        self.path = path or default_socket()
         self.timeout = timeout
         self._ids = itertools.count(1)
         self._sock = None
@@ -29,6 +51,8 @@ class GaiaBridge:
 
     def _connect(self):
         if self._sock is None:
+            check_private(os.path.dirname(os.path.abspath(self.path)), is_dir=True)
+            check_private(self.path, is_dir=False)  # never send code to a socket another user planted
             sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
             sock.settimeout(self.timeout)
             sock.connect(self.path)

@@ -1,7 +1,7 @@
 # Agentic Gaia: recommended agent interface
 
 Inputs: `investigation.md` (findings 1–4, code references), `literature-review.md` (sources, read depth),
-prototype in `prototype/` (verified end to end, 26/26 checks after round-2 hardening). Literature references below use the review's ids
+prototype in `prototype/` (verified end to end, 28/28 checks after round-2 hardening and review fixes). Literature references below use the review's ids
 (A1, C7 …); most are preprints, so they shape priorities rather than prove effects.
 
 ## 1. Recommendation in one paragraph
@@ -161,15 +161,44 @@ This matters because agent latency can bring back slow compile-and-run cycles (B
      connection thread, so it works while the editor is blocked.
    - After 10 s without a frame, new requests **fail fast** with an error naming the running op instead of
      queueing behind it. A legitimately long op such as `reload_code` (~25 s) also trips this, and the error says so.
-   - Recovery is a supervisor restart (`gaia_restart`), which loses unsaved world state.
+   - Recovery is a supervisor restart (`gaia_restart`), which loses unsaved world state. It signals only a process
+     whose cmdline is `Nu.Gaia.dll` **and** whose environment carries this server's socket path. Gaia ignores
+     SIGTERM (SDL turns it into a quit event), so the restart escalates to SIGKILL after 5 s. The socket file is then
+     left behind and is removed as stale at the next start, after a connect probe shows nobody is listening.
+   - Gaia's own "Unhandled Exception!" dialog (an exception in the frame loop) no longer stalls the bridge.
+     `status` and `ping` report `pendingException`, most ops refuse with a pointer, and `gaia_resolve_exception`
+     (hard_rewind | ignore) resolves it headlessly.
+   - Time control is serialized (one advance/set_advancing in flight) and `frames` is capped at 600 on the server.
+     A failing deferred completion is caught, so an advance's halt can never be skipped by an exception.
+   - The transport never blocks the accept thread. Each connection runs on the thread pool, waits are async
+     (`WhenAny`), in-flight requests are capped at 64 and connections at 16, and accept errors are logged instead of
+     killing the editor. The bridge's bookkeeping (log journal, heartbeat) is skipped entirely when it is off.
    - The client checks that reply ids match request ids and drops a connection after any timeout, so a stale reply
      is never read as the answer to a later request (research-workflow-evaluation lesson 3).
-5. **Isolation for untrusted or autonomous runs**:
+5. **Local access control** (round 2, from the review). The socket must live in a private directory: mode 0700,
+   owned by the user, not a symlink, i.e. `$XDG_RUNTIME_DIR`. Gaia refuses to start the bridge otherwise, and the
+   client checks the socket's owner before sending code. There is no `/tmp` fallback anywhere. The launcher's log
+   directory (whose `gaia.project` decides what `gaia_restart` runs) gets the same checks. Xvfb runs with an
+   Xauthority cookie, so other local users cannot screenshot the display or inject input.
+6. **Isolation for untrusted or autonomous runs**:
    - Run Gaia in a container or VM with no network, on a git worktree of the project.
    - The agent's file edits are then git-revertible.
    - Network isolation also prevents the copy-from-the-internet effect seen in A4.
-6. **Human in the loop**: MCP's guidance (E1) is that clients should let users deny tool calls. `gaia_eval` and
+7. **Human in the loop**: MCP's guidance (E1) is that clients should let users deny tool calls. `gaia_eval` and
    `gaia_reload_code` are the calls to gate in cautious modes. Read-only tools need no gate.
+
+### 5a. Lessons from research-workflow-evaluation (exchange note, 1 Nov) and how this design applies them
+These are that project's operational findings about agent harnesses, not literature evidence. Source:
+`~/workspace/exchange/research-workflow-evaluation--to--nu-gaia-agentic.md`, §3.
+| Lesson | Applied here |
+|---|---|
+| Qualify real execution, not configuration text | `check_mcp.py` drives a live Gaia through a real MCP round trip and exercises a compile error, a runtime error, a timeout (deliberate hang) and a recovery. Nothing is claimed from configuration alone. |
+| Guards give false positives; keep raw evidence apart from the gate | No textual eval filter (e.g. rejecting `while true`): it would block harmless code and miss real hangs. Liveness is gated on the observed heartbeat, and `ping` returns the raw fields (frame, ms since frame, running op) beside the `unresponsive` verdict. |
+| Route events by request id; never merge stale completions | Atomic withdraw-on-timeout in the transport; client-side id check; a connection is dropped after any timeout (§5.4). Deferred replies (advance, wait_frames) are bound to their own request object, not to "the current request". |
+| Own and clean up spawned processes | Partly done. `gaia_restart` signals only a pid whose cmdline is `Nu.Gaia.dll`, and the launcher detaches stdin and records pid and project. Not done: a cgroup-scoped owner (e.g. `systemd-run --user --scope`) that would certify that the whole process tree is gone. That is next if Gaia is ever run unattended. |
+| Independent code-only review for safety-relevant code | Done in round 2. A separate Sonnet reviewer, given only the code and the contract, found 15 issues (2 blocking: an accept-loop exception would kill Gaia, and the first request could run on the accept thread). All were fixed or documented (§5.4, §5.5, §8). As in that project, passing author checks (26/26) had not caught them. |
+| Check the tool inventory the agent actually sees | Done in round 2. A real `claude -p` session (Haiku, `--strict-mcp-config`, 5 turns, $0.005) listed all 16 `mcp__gaia__*` tools and called status, eval and screenshot. It described the screenshot correctly (the Nu splash logo) and exposed a regression: init noise leaked into the eval output after a symbol-first session, which is now fixed and checked. Record: `prototype/claude-code-session-check.json`. |
+| Replay saved code to check claimed numbers | The check is a script with a saved transcript (`prototype/check-transcript.json`), so every number in §8 can be replayed. |
 
 ## 6. Alternatives and why not (details in `investigation.md` §2)
 
@@ -222,7 +251,7 @@ This matters because agent latency can bring back slow compile-and-run cycles (B
   ```bash
   nice dotnet build Nu/Nu.Gaia/Nu.Gaia.fsproj -c Debug        # builds engine + sample projects (~5 min first time)
   docs/agentic-gaia/prototype/run_gaia_headless.sh             # Xvfb :91 + lavapipe + Breakout ImSim + bridge
-  python3 -I docs/agentic-gaia/prototype/check_mcp.py OUT_DIR  # 26 checks incl. hang + restart (NU_GAIA_CHECK_HANG=0 skips); PNGs + transcript
+  python3 -I docs/agentic-gaia/prototype/check_mcp.py OUT_DIR  # 28 checks incl. hang + restart (NU_GAIA_CHECK_HANG=0 skips); PNGs + transcript
   claude mcp add gaia -- env NU_GAIA_AGENT_SOCKET=$XDG_RUNTIME_DIR/nu-gaia-agent.sock DISPLAY=:91 \
       NU_XML_DOC=$PWD/Nu/Nu/bin/Debug/net10.0/Nu.xml python3 $PWD/docs/agentic-gaia/prototype/gaia_mcp.py
   ```
@@ -236,8 +265,8 @@ This matters because agent latency can bring back slow compile-and-run cycles (B
   - a source-edit + reload cycle that changes behaviour (reload was run without source changes and succeeded);
   - Windows named pipes;
   - 3D scenes under lavapipe;
-  - MCP registration inside a real Claude Code session (the check drives the MCP server over stdio, as a client
-    would).
+  - Gaia's exception dialog path (`gaia_resolve_exception`) and time-control serialization: implemented and
+    reviewed, but not exercised by `check_mcp.py` (no reliable way yet to make a frame throw on demand).
 - **Spike-quality gaps**:
   - Fixed in round 2: screenshots are cropped to the window rectangle that `status` reports (SDL position and
     size), with no root-window margin. The first `symbol` call no longer adds an undo entry, because session

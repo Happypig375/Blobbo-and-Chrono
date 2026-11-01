@@ -152,6 +152,7 @@ module Gaia =
     let mutable private AgentLogSeq = 0L
     let mutable private AgentFrame = 0L
     let mutable private AgentDeferred = [] : (int64 * (World -> unit)) list
+    let mutable private AgentTimeControlBusy = false // one advance/set_advancing in flight at a time
     let mutable private ShowEntityContextMenu = false
     let mutable private ShowNewProjectDialog = false
     let mutable private ShowOpenProjectDialog = false
@@ -487,10 +488,11 @@ DockSpace           ID=0x7C6B3D9B Window=0xA87D555D Pos=0,0 Size=1920,1080 Split
     let private concatLog (str : string) =
         truncateLog ()
         LogStr <- LogStr + str
-        lock AgentLog (fun () ->
-            AgentLogSeq <- AgentLogSeq + 1L
-            AgentLog.Enqueue struct (AgentLogSeq, str)
-            if AgentLog.Count > 4096 then AgentLog.Dequeue () |> ignore)
+        if AgentBridge.Active then
+            lock AgentLog (fun () ->
+                AgentLogSeq <- AgentLogSeq + 1L
+                AgentLog.Enqueue struct (AgentLogSeq, str)
+                if AgentLog.Count > 4096 then AgentLog.Dequeue () |> ignore)
 
     let private shouldSwallowMouseButton (world : World) =
         let io = ImGui.GetIO ()
@@ -3301,7 +3303,9 @@ DockSpace           ID=0x7C6B3D9B Window=0xA87D555D Pos=0,0 Size=1920,1080 Split
                 FsiErrorStream.GetStringBuilder().Clear() |> ignore<StringBuilder> // ignore any open directive errors
                 FsiErrorStream.Write errorStr // restore previous error string
 
-            // eval initialization finished
+            // eval initialization finished; drop its "--> Referenced ..." noise so that it cannot leak into the output
+            // of a later eval when initialization was triggered by something else (e.g. the agent bridge's symbol op)
+            FsiOutStream.GetStringBuilder().Clear() |> ignore<StringBuilder>
             InteractiveNeedsInitialization <- false
 
     /// Evaluate F# input in the interactive session on the editor thread, appending to the Interactive window's
@@ -4303,6 +4307,7 @@ DockSpace           ID=0x7C6B3D9B Window=0xA87D555D Pos=0,0 Size=1920,1080 Split
          ("selectedEntity", box (match SelectedEntityOpt with Some entity -> string entity | None -> null))
          ("undoDepth", box Pasts.Length)
          ("logSeq", box AgentLogSeq)
+         ("pendingException", box (match RecoverableExceptionOpt with Some exn -> scstring exn | None -> null))
          // window rectangle in screen pixels, so external captures can crop to the window
          ("window",
             match (World.tryGetWindowPosition world, World.tryGetWindowSize world) with
@@ -4384,7 +4389,7 @@ DockSpace           ID=0x7C6B3D9B Window=0xA87D555D Pos=0,0 Size=1920,1080 Split
         | None -> ("no-xml-beside:" + dllName, "")
 
     /// Resolve a (possibly qualified) name in the live FSI session: F# signature(s), XML docs, declaration location.
-    let private agentSymbol (name : string) world =
+    let private agentSymbol (name : string) (_ : World) =
         ensureInteractiveInitialized () // the session's #r/open prelude; no snapshot, so no undo entry
         let lineText = name.Trim ()
         let names = lineText.Split '.' |> List.ofArray
@@ -4423,6 +4428,21 @@ DockSpace           ID=0x7C6B3D9B Window=0xA87D555D Pos=0,0 Size=1920,1080 Split
 
     let private agentProcessRequest (request : AgentRequest) (world : World) =
         match request.Op with
+        | op when RecoverableExceptionOpt.IsSome && not (List.contains op ["status"; "log"; "hierarchy"; "inspect"; "symbol"; "resolve_exception"]) ->
+            request.Reply.TrySetResult (AgentBridge.error request.Id "Gaia's 'Unhandled Exception!' dialog is open; read status.pendingException, then call resolve_exception with choice hard_rewind (undo the last edit) or ignore.") |> ignore<bool>
+        | "resolve_exception" ->
+            match (RecoverableExceptionOpt, agentArgString "choice" request) with
+            | (None, _) -> request.Reply.TrySetResult (AgentBridge.error request.Id "No exception is pending.") |> ignore<bool>
+            | (Some _, Some "hard_rewind") ->
+                let undone = tryUndo world
+                RecoverableExceptionOpt <- None
+                agentReply request (("undone", box undone) :: agentStatus world)
+            | (Some _, Some "ignore") ->
+                RecoverableExceptionOpt <- None
+                agentReply request (agentStatus world)
+            | (Some _, _) -> request.Reply.TrySetResult (AgentBridge.error request.Id "resolve_exception requires args.choice = hard_rewind | ignore") |> ignore<bool>
+        | "advance" | "set_advancing" when AgentTimeControlBusy ->
+            request.Reply.TrySetResult (AgentBridge.error request.Id "Another advance/set_advancing is still in flight; wait for its reply.") |> ignore<bool>
         | "status" ->
             agentReply request (agentStatus world)
         | "eval" ->
@@ -4444,7 +4464,8 @@ DockSpace           ID=0x7C6B3D9B Window=0xA87D555D Pos=0,0 Size=1920,1080 Split
             agentReply request (("redone", box redone) :: agentStatus world)
         | "advance" ->
             // advance game time for N editor frames, then halt again and reply
-            let frames = max 1 (agentArgInt "frames" 1 request)
+            let frames = Math.Clamp (agentArgInt "frames" 1 request, 1, 600)
+            AgentTimeControlBusy <- true
             let wasAdvancing = world.TimeAdvancing
             if not wasAdvancing then
                 snapshot Advance world
@@ -4454,16 +4475,17 @@ DockSpace           ID=0x7C6B3D9B Window=0xA87D555D Pos=0,0 Size=1920,1080 Split
                 (target, fun world ->
                     // NOTE: halting is a request resolved at the next frame boundary, so reply one frame later.
                     if not wasAdvancing then World.setTimeAdvancing false world
-                    AgentDeferred <- (AgentFrame + 1L, fun world -> agentReply request (("advancedFrames", box frames) :: agentStatus world)) :: AgentDeferred) :: AgentDeferred
+                    AgentDeferred <- (AgentFrame + 1L, fun world -> AgentTimeControlBusy <- false; agentReply request (("advancedFrames", box frames) :: agentStatus world)) :: AgentDeferred) :: AgentDeferred
         | "set_advancing" ->
             let on = agentArgString "on" request = Some "true"
             if world.TimeAdvancing <> on then
                 snapshot (if on then Advance else Halt) world
                 World.setTimeAdvancing on world
-            AgentDeferred <- (AgentFrame + 1L, fun world -> agentReply request (agentStatus world)) :: AgentDeferred
+            AgentTimeControlBusy <- true
+            AgentDeferred <- (AgentFrame + 1L, fun world -> AgentTimeControlBusy <- false; agentReply request (agentStatus world)) :: AgentDeferred
         | "wait_frames" ->
             // let N editor frames render (time need not advance), e.g. before an external screenshot
-            let frames = max 1 (agentArgInt "frames" 2 request)
+            let frames = Math.Clamp (agentArgInt "frames" 2 request, 1, 600)
             AgentDeferred <- (AgentFrame + int64 frames, fun world -> agentReply request (agentStatus world)) :: AgentDeferred
         | "view_mode" ->
             let viewMode =
@@ -4498,10 +4520,15 @@ DockSpace           ID=0x7C6B3D9B Window=0xA87D555D Pos=0,0 Size=1920,1080 Split
     /// Drain agent requests and complete due deferred replies. Runs on the editor thread once per frame.
     let private agentProcess (world : World) =
         AgentFrame <- inc AgentFrame
-        AgentBridge.heartbeat AgentFrame
+        AgentBridge.heartbeat AgentFrame (match RecoverableExceptionOpt with Some exn -> exn.GetType().Name + ": " + exn.Message | None -> "")
         let (due, pending) = List.partition (fun (target, _) -> target <= AgentFrame) AgentDeferred
         AgentDeferred <- pending
-        for (_, complete) in List.rev due do complete world
+        for (_, complete) in List.rev due do
+            // a failing completion must neither escape the frame nor stop the remaining ones (e.g. an advance's halt)
+            try complete world
+            with exn ->
+                AgentTimeControlBusy <- false // never leave time control locked by a failed completion
+                Log.error ("Agent bridge deferred completion failed: " + scstring exn)
         let mutable request = Unchecked.defaultof<AgentRequest>
         while AgentBridge.Requests.TryDequeue &request do
             // a request whose client already timed out was withdrawn; never run it late
@@ -4526,6 +4553,10 @@ DockSpace           ID=0x7C6B3D9B Window=0xA87D555D Pos=0,0 Size=1920,1080 Split
         let dockNodeFlags = ImGuiDockNodeFlags.NoDockingOverCentralNode ||| ImGuiDockNodeFlags.PassthruCentralNode
         let dockSpaceId = ImGui.DockSpaceOverViewport (0u, ImGui.GetMainViewport (), dockNodeFlags)
 
+        // process agent bridge requests (EXPERIMENTAL); also while the exception dialog is open, so a headless agent
+        // can see and resolve it
+        if AgentBridge.Active then agentProcess world
+
         // attempt to proceed with normal operation
         match RecoverableExceptionOpt with
         | None ->
@@ -4534,9 +4565,6 @@ DockSpace           ID=0x7C6B3D9B Window=0xA87D555D Pos=0,0 Size=1920,1080 Split
             if Stepping then
                 World.setTimeAdvancing false world
                 Stepping <- false
-
-            // process agent bridge requests (EXPERIMENTAL)
-            agentProcess world
 
             // use a generalized exception process
             try imGuiViewportManipulation world
@@ -4823,6 +4851,7 @@ DockSpace           ID=0x7C6B3D9B Window=0xA87D555D Pos=0,0 Size=1920,1080 Split
         FsiSession <- Shell.FsiEvaluationSession.Create (FsiConfig, FsiArgs, FsiInStream, FsiOutStream, FsiErrorStream)
         AgentBridge.tryStart ()
         let result = runWithCleanUpAndErrorProtection (Some ignore) world
+        AgentBridge.stop ()
         (FsiSession :> IDisposable).Dispose () // not sure why we have to cast here...
         FsiErrorStream.Dispose ()
         FsiInStream.Dispose ()

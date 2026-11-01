@@ -75,13 +75,18 @@ module AgentBridge =
     /// (A legitimately long op such as reload_code also trips this; the error names the op that is running.)
     let UnresponsiveThreshold = TimeSpan.FromSeconds 10.0
 
-    /// Requests beyond this many waiting are refused.
-    let MaxQueued = 64
+    /// Requests beyond this many in flight (queued, running or awaiting a deferred reply) are refused.
+    let MaxInFlight = 64
+
+    /// Connections beyond this many open at once are closed immediately.
+    let MaxConnections = 16
 
     /// Requests waiting for the editor thread.
     let Requests = ConcurrentQueue<AgentRequest> ()
 
-    let mutable private ListenerOpt = Option<Socket>.None
+    let mutable private ListenerOpt = Option<Socket * string>.None
+    let private InFlight = ref 0
+    let private Connections = ref 0
 
     // liveness, written by the editor thread and read by connection threads (all under Gate)
     let private Gate = obj ()
@@ -91,10 +96,14 @@ module AgentBridge =
     let mutable private BusyId = ""
     let mutable private BusyOp = ""
     let mutable private BusySinceMs = 0L
+    let mutable private PendingException = ""
 
-    /// Record that the editor thread completed a frame. Editor thread only.
-    let heartbeat (frame : int64) =
-        lock Gate (fun () -> LastFrame <- frame; LastFrameMs <- Clock.ElapsedMilliseconds)
+    /// Whether the bridge is listening. When false, Gaia skips all bridge bookkeeping.
+    let mutable Active = false
+
+    /// Record that the editor thread completed a frame, and any pending unhandled-exception dialog. Editor thread only.
+    let heartbeat (frame : int64) (pendingException : string) =
+        lock Gate (fun () -> LastFrame <- frame; LastFrameMs <- Clock.ElapsedMilliseconds; PendingException <- pendingException)
 
     /// Atomically claim a queued request for execution; false if the transport already withdrew it. Editor thread only.
     let tryClaim (request : AgentRequest) =
@@ -119,6 +128,7 @@ module AgentBridge =
                BusyId = BusyId
                BusyOp = BusyOp
                BusyMs = busyMs
+               PendingException = PendingException
                Unresponsive = LastFrame > 0L && float sinceFrameMs > UnresponsiveThreshold.TotalMilliseconds |})
 
     /// Serialize a reply object to a single JSON line.
@@ -140,7 +150,9 @@ module AgentBridge =
         fields["busyId"] <- box live.BusyId
         fields["busyMs"] <- box live.BusyMs
         fields["queued"] <- box Requests.Count
+        fields["inFlight"] <- box (Volatile.Read &InFlight.contents)
         fields["unresponsive"] <- box live.Unresponsive
+        fields["pendingException"] <- box (if live.PendingException = "" then null else live.PendingException)
         fields
 
     let private unresponsiveError (id : string) =
@@ -152,7 +164,7 @@ module AgentBridge =
             "; request NOT queued. A non-terminating eval cannot be cancelled in-process: poll ping, or restart Gaia."
         toJson fields
 
-    let private handleRequest (line : string) =
+    let private parseRequest (line : string) =
         use doc = JsonDocument.Parse line
         let root = doc.RootElement
         let id = match root.TryGetProperty "id" with | (true, v) -> v.ToString () | _ -> ""
@@ -161,66 +173,126 @@ module AgentBridge =
             match root.TryGetProperty "timeout_s" with
             | (true, v) when v.ValueKind = JsonValueKind.Number -> TimeSpan.FromSeconds (Math.Clamp (v.GetDouble (), 1.0, 600.0))
             | _ -> ReplyTimeout
-        if op = "ping" then
-            // answered here, never queued: works while the editor thread is blocked
-            toJson (livenessFields id true)
-        elif (liveness ()).Unresponsive then unresponsiveError id
-        elif Requests.Count >= MaxQueued then error id ("Too many queued requests (" + string MaxQueued + "); request not queued.")
-        else
-            let args = match root.TryGetProperty "args" with | (true, v) -> v.Clone () | _ -> JsonDocument.Parse("{}").RootElement.Clone ()
-            let tcs = TaskCompletionSource<string> TaskCreationOptions.RunContinuationsAsynchronously
-            let request = { Id = id; Op = op; Args = args; Reply = tcs; State = ref 0 }
-            Requests.Enqueue request
-            if tcs.Task.Wait timeout then tcs.Task.Result
-            else
-                // withdraw it so it can never run after the client gave up; if it already started, say so
-                let withdrawn = Interlocked.CompareExchange (&request.State.contents, 2, 0) = 0
-                tcs.TrySetCanceled () |> ignore<bool>
-                let fields = livenessFields id false
-                fields["timedOut"] <- box true
-                fields["withdrawn"] <- box withdrawn
-                fields["error"] <-
-                    "Timed out after " + string timeout.TotalSeconds + " s. " +
-                    (if withdrawn then "The request had not started and was withdrawn; it will not run."
-                     else "The request had already started on the editor thread and cannot be cancelled; its effects may still apply when it finishes (check status/undo later).")
-                toJson fields
+        let args = match root.TryGetProperty "args" with | (true, v) -> v.Clone () | _ -> JsonDocument.Parse("{}").RootElement.Clone ()
+        (id, op, timeout, args)
 
-    let private handleConnection (client : Socket) =
+    let private handleRequest (line : string) : Task<string> =
         task {
-            use stream = new NetworkStream (client, true)
-            use reader = new StreamReader (stream, UTF8Encoding false)
-            use writer = new StreamWriter (stream, UTF8Encoding false)
-            writer.AutoFlush <- true
-            let mutable running = true
-            while running do
-                let! line = reader.ReadLineAsync ()
-                if isNull line then running <- false
-                elif not (String.IsNullOrWhiteSpace line) then
-                    let reply =
-                        try handleRequest line
-                        with exn -> error "" ("Bad request: " + exn.Message)
-                    try do! writer.WriteLineAsync reply
-                    with _ -> running <- false // client went away
-        } :> Task
+            let (id, op, timeout, args) = parseRequest line
+            if op = "ping" then
+                // answered here, never queued: works while the editor thread is blocked
+                return toJson (livenessFields id true)
+            elif (liveness ()).Unresponsive then return unresponsiveError id
+            elif Interlocked.Increment &InFlight.contents > MaxInFlight then
+                Interlocked.Decrement &InFlight.contents |> ignore<int>
+                return error id ("Too many requests in flight (" + string MaxInFlight + "); request not queued.")
+            else
+                try let tcs = TaskCompletionSource<string> TaskCreationOptions.RunContinuationsAsynchronously
+                    let request = { Id = id; Op = op; Args = args; Reply = tcs; State = ref 0 }
+                    Requests.Enqueue request
+                    let! winner = Task.WhenAny (tcs.Task :> Task, Task.Delay timeout)
+                    if obj.ReferenceEquals (winner, tcs.Task) then return tcs.Task.Result
+                    else
+                        // withdraw it so it can never run after the client gave up; if it already started, say so
+                        let withdrawn = Interlocked.CompareExchange (&request.State.contents, 2, 0) = 0
+                        tcs.TrySetCanceled () |> ignore<bool>
+                        if tcs.Task.IsCompletedSuccessfully then return tcs.Task.Result // finished in the race window
+                        else
+                            let fields = livenessFields id false
+                            fields["timedOut"] <- box true
+                            fields["withdrawn"] <- box withdrawn
+                            fields["error"] <-
+                                "Timed out after " + string timeout.TotalSeconds + " s. " +
+                                (if withdrawn then "The request had not started and was withdrawn; it will not run."
+                                 else "The request had already started on the editor thread and cannot be cancelled; its effects may still apply when it finishes (check status/undo later).")
+                            return toJson fields
+                finally Interlocked.Decrement &InFlight.contents |> ignore<int>
+        }
+
+    let private handleConnection (client : Socket) : Task =
+        task {
+            try use stream = new NetworkStream (client, true)
+                use reader = new StreamReader (stream, UTF8Encoding false)
+                use writer = new StreamWriter (stream, UTF8Encoding false)
+                writer.AutoFlush <- true
+                let mutable running = true
+                while running do
+                    let! line = reader.ReadLineAsync ()
+                    if isNull line then running <- false
+                    elif not (String.IsNullOrWhiteSpace line) then
+                        let! reply =
+                            task {
+                                try return! handleRequest line
+                                with exn -> return error "" ("Bad request: " + exn.Message)
+                            }
+                        try do! writer.WriteLineAsync reply
+                        with _ -> running <- false // client went away
+            finally Interlocked.Decrement &Connections.contents |> ignore<int>
+        }
+
+    let private isPrivateDirectory (dir : string) =
+        let info = DirectoryInfo dir
+        let groupOrOther =
+            UnixFileMode.GroupRead ||| UnixFileMode.GroupWrite ||| UnixFileMode.GroupExecute |||
+            UnixFileMode.OtherRead ||| UnixFileMode.OtherWrite ||| UnixFileMode.OtherExecute
+        info.Exists && isNull info.LinkTarget && (File.GetUnixFileMode dir &&& groupOrOther) = enum 0
+
+    let private isLive (socketPath : string) =
+        try use probe = new Socket (AddressFamily.Unix, SocketType.Stream, ProtocolType.Unspecified)
+            probe.Connect (UnixDomainSocketEndPoint socketPath)
+            true
+        with _ -> false
+
+    /// Stop listening and remove the socket file. Idempotent.
+    let stop () =
+        match ListenerOpt with
+        | Some (listener, socketPath) ->
+            ListenerOpt <- None
+            Active <- false
+            try listener.Dispose () with _ -> ()
+            try File.Delete socketPath with _ -> ()
+        | None -> ()
 
     /// Start listening if the socket environment variable is set. Idempotent.
     let tryStart () =
         match (Environment.GetEnvironmentVariable SocketEnvVar, ListenerOpt) with
         | (null, _) | ("", _) | (_, Some _) -> ()
         | (socketPath, None) ->
-            try if File.Exists socketPath then File.Delete socketPath
+            let socketPath = Path.GetFullPath socketPath
+            let dir = Path.GetDirectoryName socketPath
+            // the socket is arbitrary code execution as this user, so it must live in a private (0700, non-symlink)
+            // directory such as $XDG_RUNTIME_DIR; that also closes the window between bind and chmod below
+            if not (OperatingSystem.IsWindows ()) && not (isPrivateDirectory dir) then
+                Log.error ("Agent bridge not started: " + dir + " must be a private directory (mode 0700, not a symlink).")
+            elif isLive socketPath then
+                Log.error ("Agent bridge not started: another process is already listening on " + socketPath + ".")
+            else
                 let listener = new Socket (AddressFamily.Unix, SocketType.Stream, ProtocolType.Unspecified)
-                listener.Bind (UnixDomainSocketEndPoint socketPath)
-                // owner-only access: on a shared machine an eval socket is arbitrary code execution as this user
-                if not (OperatingSystem.IsWindows ()) then
-                    File.SetUnixFileMode (socketPath, UnixFileMode.UserRead ||| UnixFileMode.UserWrite)
-                listener.Listen 4
-                ListenerOpt <- Some listener
-                let acceptLoop () =
-                    while true do
-                        let client = listener.Accept ()
-                        handleConnection client |> ignore<Task>
-                let thread = Thread (acceptLoop, IsBackground = true, Name = "GaiaAgentBridge")
-                thread.Start ()
-                Log.info ("Agent bridge listening on " + socketPath)
-            with exn -> Log.error ("Agent bridge failed to start: " + exn.Message)
+                try if File.Exists socketPath then File.Delete socketPath // stale socket from a dead instance
+                    listener.Bind (UnixDomainSocketEndPoint socketPath)
+                    if not (OperatingSystem.IsWindows ()) then
+                        File.SetUnixFileMode (socketPath, UnixFileMode.UserRead ||| UnixFileMode.UserWrite)
+                    listener.Listen 16
+                    ListenerOpt <- Some (listener, socketPath)
+                    Active <- true
+                    AppDomain.CurrentDomain.ProcessExit.Add (fun _ -> stop ())
+                    let acceptLoop () =
+                        let mutable listening = true
+                        while listening do
+                            try let client = listener.Accept ()
+                                if Interlocked.Increment &Connections.contents > MaxConnections then
+                                    Interlocked.Decrement &Connections.contents |> ignore<int>
+                                    client.Dispose ()
+                                else Task.Run<unit> (fun () -> task { do! handleConnection client }) |> ignore<Task<unit>>
+                            with
+                            | :? ObjectDisposedException -> listening <- false
+                            | exn ->
+                                // never let an accept error kill the editor process; back off briefly
+                                Console.Error.WriteLine ("Agent bridge accept error: " + exn.Message)
+                                Thread.Sleep 100
+                    let thread = Thread (acceptLoop, IsBackground = true, Name = "GaiaAgentBridge")
+                    thread.Start ()
+                    Log.info ("Agent bridge listening on " + socketPath)
+                with exn ->
+                    listener.Dispose ()
+                    Log.error ("Agent bridge failed to start: " + exn.Message)

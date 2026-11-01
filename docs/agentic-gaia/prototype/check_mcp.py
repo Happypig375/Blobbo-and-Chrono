@@ -81,10 +81,12 @@ check("initialize", init["result"]["serverInfo"]["name"] == "nu-gaia")
 server.stdin.write(json.dumps({"jsonrpc": "2.0", "method": "notifications/initialized"}) + "\n")
 server.stdin.flush()
 tools = rpc("tools/list")["result"]["tools"]
-check("tools/list", len(tools) >= 15, f"{len(tools)} tools")
+check("tools/list", len(tools) >= 16, f"{len(tools)} tools")
 
 status = json.loads(text_of(tool("gaia_status")))
 check("status: project loaded, time halted", status["projectDllPath"].endswith("Breakout ImSim.dll") and not status["advancing"])
+second = subprocess.run([os.path.join(HERE, "run_gaia_headless.sh")], capture_output=True, text=True, timeout=60)
+check("launcher refuses a second instance while Gaia runs", second.returncode != 0 and "still running" in second.stderr, second.stderr.strip()[-120:])
 
 r = tool("gaia_eval", code="World.getScreens world |> Seq.length")
 check("eval ok + value echoed (first eval; Linux CRLF fix)", not r["isError"] and "val it: int = 5" in text_of(r), text_of(r)[:120])
@@ -175,6 +177,8 @@ if os.environ.get("NU_GAIA_CHECK_HANG", "1") != "0":
     r = json.loads(text_of(tool("gaia_symbol", name="World.createEntity")))
     check("first symbol call on a fresh session: docs resolved, no undo entry",
           "Create an entity" in ((r.get("overloads") or [{}])[0].get("doc") or "") and json.loads(text_of(tool("gaia_status")))["undoDepth"] == 0)
+    r = tool("gaia_eval", code="1 + 1")
+    check("eval after symbol-initialised session has no init noise", text_of(r).count("Referenced") == 0 and "val it: int = 2" in text_of(r), text_of(r)[:120])
 
 server.stdin.close()
 server.wait(timeout=10)

@@ -17,12 +17,15 @@ import time
 import xml.etree.ElementTree as ET
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from gaia_bridge import GaiaBridge, screenshot  # noqa: E402
+from gaia_bridge import GaiaBridge, check_private, private_runtime_dir, screenshot  # noqa: E402
 
 PROTOCOL_VERSION = "2025-06-18"
-SHOT_DIR = os.environ.get("NU_GAIA_SHOT_DIR", os.path.join(os.environ.get("XDG_RUNTIME_DIR", "/tmp"), "nu-gaia-shots"))
+SHOT_DIR = os.environ.get("NU_GAIA_SHOT_DIR") or os.path.join(private_runtime_dir(), "nu-gaia-shots")
+EVAL_TIMEOUT_S = 30.0  # default for gaia_eval: the MCP loop is serial, so a hang should surface quickly
 NU_XML = os.environ.get("NU_XML_DOC")  # path to Nu.xml (generated next to Nu.dll)
-LOG_DIR = os.environ.get("GAIA_LOG_DIR", os.path.join(os.environ.get("XDG_RUNTIME_DIR", "/tmp"), "nu-gaia-logs"))
+LOG_DIR = os.environ.get("GAIA_LOG_DIR") or os.path.join(private_runtime_dir(), "nu-gaia-logs")
+if not os.environ.get("XAUTHORITY") and os.path.exists(os.path.join(LOG_DIR, "xauth")):
+    os.environ["XAUTHORITY"] = os.path.join(LOG_DIR, "xauth")  # cookie written by run_gaia_headless.sh
 LAUNCHER = os.path.join(os.path.dirname(os.path.abspath(__file__)), "run_gaia_headless.sh")
 
 TOOLS = [
@@ -39,7 +42,8 @@ TOOLS = [
             "Each eval snapshots the world first, so gaia_undo reverts its world changes (not files or FSI definitions). "
             "Returns kind ok|compile_error|runtime_error, FSI output, and diagnostics with line/column. "
             "Keep snippets small; a non-terminating eval freezes the editor (then use gaia_ping to confirm and "
-            "gaia_restart to recover). timeout_s (default 120) bounds the wait; a timed-out eval cannot be cancelled."
+            "gaia_restart to recover). timeout_s (default 30) bounds the wait; a timed-out eval cannot be cancelled. "
+            "If Gaia's exception dialog is open (status.pendingException), call gaia_resolve_exception first."
         ),
         "inputSchema": {
             "type": "object",
@@ -54,6 +58,18 @@ TOOLS = [
             "frame, the op currently running and for how long, queue length, unresponsive flag."
         ),
         "inputSchema": {"type": "object", "properties": {}},
+    },
+    {
+        "name": "gaia_resolve_exception",
+        "description": (
+            "Resolve Gaia's 'Unhandled Exception!' dialog (shown in status.pendingException after a frame threw): "
+            "hard_rewind undoes the last edit; ignore keeps the world as-is. Most tools refuse while it is open."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {"choice": {"type": "string", "enum": ["hard_rewind", "ignore"]}},
+            "required": ["choice"],
+        },
     },
     {
         "name": "gaia_restart",
@@ -176,10 +192,17 @@ def _capture(view, max_width):
         _call("view_mode", mode="capture")
     try:
         status = _call("wait_frames", frames=2)
-        return screenshot(max_width=max_width, window=status.get("window"))  # crop to Gaia's window
-    finally:
+        image = screenshot(max_width=max_width, window=status.get("window"))  # crop to Gaia's window
+    except Exception:
         if view == "game":
-            _call("view_mode", mode="normal")
+            try:
+                _call("view_mode", mode="normal")
+            except Exception:  # noqa: BLE001 - keep the original error, not the restore failure
+                pass
+        raise
+    if view == "game":
+        _call("view_mode", mode="normal")
+    return image
 
 
 def _save(image, stem):
@@ -192,6 +215,7 @@ def _save(image, stem):
 def _restart():
     """Supervisor action: stop the Gaia process recorded by run_gaia_headless.sh and relaunch it on the same project.
     Only a process whose command line is Nu.Gaia.dll is signalled (guards against a recycled pid)."""
+    check_private(LOG_DIR, is_dir=True)  # gaia.project decides what code runs; trust only a private log dir
     pid_path = os.path.join(LOG_DIR, "gaia.pid")
     project_path = os.path.join(LOG_DIR, "gaia.project")
     stopped = None
@@ -200,16 +224,23 @@ def _restart():
         pid = int(open(pid_path).read().strip())
         try:
             cmdline = open(f"/proc/{pid}/cmdline", "rb").read()
+            environ = open(f"/proc/{pid}/environ", "rb").read().split(b"\0")
         except OSError:
-            cmdline = b""
-        if b"Nu.Gaia.dll" in cmdline:
-            os.kill(pid, signal.SIGTERM)
-            for _ in range(50):
-                if not os.path.exists(f"/proc/{pid}"):
-                    break
-                time.sleep(0.1)
-            else:
-                os.kill(pid, signal.SIGKILL)
+            cmdline, environ = b"", []
+        # signal only the instance this launcher started: Nu.Gaia.dll bound to *our* bridge socket
+        ours = ("NU_GAIA_AGENT_SOCKET=" + _bridge.path).encode() in environ
+        if b"Nu.Gaia.dll" in cmdline and ours:
+            try:
+                os.kill(pid, signal.SIGTERM)
+                for _ in range(50):
+                    if not os.path.exists(f"/proc/{pid}"):
+                        break
+                    time.sleep(0.1)
+                else:
+                    os.kill(pid, signal.SIGKILL)
+                    time.sleep(0.5)
+            except ProcessLookupError:
+                pass  # already gone
             stopped = pid
     cmd = [LAUNCHER]
     if os.path.exists(project_path):
@@ -235,15 +266,20 @@ def call_tool(name, args):
     if name == "gaia_status":
         return _text(_call("status"))
     if name == "gaia_eval":
-        timeout_s = args.get("timeout_s")
-        reply = _bridge.request("eval", timeout_s=float(timeout_s) if timeout_s else None, code=args["code"])
+        reply = _bridge.request("eval", timeout_s=float(args.get("timeout_s") or EVAL_TIMEOUT_S), code=args["code"])
         failed = not reply.get("ok") or reply.get("kind") != "ok"
         keys = ("kind", "output", "warnings", "exception", "diagnostics", "frame", "undoDepth", "error", "timedOut", "withdrawn", "busyOp", "busyMs")
         keep = {k: reply.get(k) for k in keys if reply.get(k)}
         return _text(keep, is_error=failed)
     if name == "gaia_ping":
-        reply = _bridge.request("ping")
-        return _text(reply, is_error=bool(reply.get("unresponsive")))
+        side = GaiaBridge(path=_bridge.path, timeout=10.0)  # own connection: independent of any stuck request
+        try:
+            reply = side.request("ping")
+        finally:
+            side.close()
+        return _text(reply, is_error=bool(reply.get("unresponsive") or reply.get("pendingException")))
+    if name == "gaia_resolve_exception":
+        return _text(_call("resolve_exception", choice=args["choice"]))
     if name == "gaia_restart":
         if args.get("confirm") is not True:
             return _text("gaia_restart requires confirm=true", is_error=True)
