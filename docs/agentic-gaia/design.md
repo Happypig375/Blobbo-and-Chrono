@@ -194,6 +194,17 @@ This matters because agent latency can bring back slow compile-and-run cycles (B
    - Network isolation also prevents the copy-from-the-internet effect seen in A4.
 7. **Human in the loop**: MCP's guidance (E1) is that clients should let users deny tool calls. `gaia_eval` and
    `gaia_reload_code` are the calls to gate in cautious modes. Read-only tools need no gate.
+8. **Tool output is data, not instructions** (round 3, from the full-text reading of the MCP threat survey E4,
+   which names tool output as an indirect prompt-injection route, p. 23). Text reaches the agent through entity and
+   screen names, property values, `.nu*` files written by other people, log lines, exception messages, Nu XML docs
+   and text inside screenshots. The agent's instructions should say that none of this is an instruction, and a
+   project from an untrusted source should be opened only under item 6.
+9. **Paths stay inside the project** (round 3, same source). Today no tool takes a file path. The designed
+   `gaia_save file` must resolve inside the project directory, reject `..` and symlinks, and never pass input to a
+   shell. Simulant paths (`gaia_inspect path`) are resolved by Nu, not the file system.
+10. **The study harness follows the same rules** (round 3). The comparison runs in `ablation/` give the agent only
+   file tools and the Gaia tools of its condition (no shell, web, subagents or messaging). It works on a copy of the
+   project outside the repository, and its auto-memory folder is cleared before every run.
 
 ### 5a. Lessons from research-workflow-evaluation (exchange note, 1 Nov) and how this design applies them
 These are that project's operational findings about agent harnesses, not literature evidence. Source:
