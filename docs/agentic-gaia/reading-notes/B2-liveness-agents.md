@@ -52,3 +52,75 @@ Entry: "Mattis ... (2026). PX/26 workshop at ‹Programming› 2026 (talk abstra
 - Peer-review status of PX/26 companion papers: not verified (PX is a workshop; the proceedings list it as a "Full Paper"). Credibility-gate label: `hold_from_substantive_support` until the body is read; usable as `context_or_prior_art_only` for the framing only.
 - Hirschfeld is also a coauthor of B3 in the review (live game development environment); this paper's own evidence base is unknown.
 - All four authors are at Hasso Plattner Institute / University of Potsdam; no conflict statement could be checked.
+
+---
+
+## Full-text addendum (Opus, 2026-11-01 ~17:50 HKT): supersedes "abstract only" above
+- **Access:** retrieved with `litfetch` through the campus browser after a human cleared the ACM bot check
+  (status `entitled`; report `docs/agentic-gaia/litfetch-b2.json`). The PDF is the published version, CC BY 4.0
+  (licence line on p. 71). It is not committed; it lives at `~/papers/inbox/10.1145_3801119.3801131.pdf`.
+- **Read depth:** full text, all 7 pp. (71–77), including Figs. 1–5 and the 12 references.
+- **Type:** a position/discussion paper. There is no empirical study, measurement or user study. Its evidence is
+  argument plus cited work (e.g. Ferdowsi et al. CHI'24 [3], Vaithilingam et al. CHI'22 [12], Subramonyam et al.
+  CHI'24 [9]).
+
+### Key arguments (with locators)
+1. **Two opposing forces** (§3.1, p. 73). Agents raise the scope of change to "strategically predictive" (level 6),
+   while "the speed and continuity of feedback has dropped back to compile-and-run levels, but instead of compile
+   time we are confronted with generation time". The runtime can stay live even when the experience does not: "a
+   live programming environment operated through an agent remains live, but the programmer's experience does not"
+   (p. 73).
+2. **Norman's gulfs** (§4.1, p. 74).
+   - Agents *collapse* the gulf of execution, and actions are performed "through agent tools provided by the
+     environment, such as protocols like MCP".
+   - They *widen* the gulf of evaluation, because large changes are hard to perceive. The notation becomes part of
+     what must be evaluated.
+   - They add Subramonyam et al.'s **gulf of envisioning** (forming an unambiguous intent).
+   - A worked jump-and-run example (gravity vs jump height; p. 74) illustrates the seven stages. It is the same
+     domain as our Breakout and gameplay-tuning use case.
+3. **Feedback has three parts** (Fig. 4, p. 75): what the agent did and why; its effect on the code; and the runtime
+   consequences. "Liveness can help communicate all three perspectives."
+4. **Proposals** (§5, pp. 75–76), none of them evaluated:
+   - Clarify intent "live", grounded in runtime objects ("drag-and-drop" objects into prompts; agents refer to
+     objects; offer several interpretations, in the spirit of level 5; Fig. 5).
+   - Show agent changes in a running system through well-scoped, representative examples, including invariants
+     ("example scenarios that intentionally did not change their outcome"). They call this a "frame of
+     explanation" and list it as open work.
+   - The agent explains itself (context used, feedback received), ideally as a first-class, manipulable artifact.
+   - Use generation time well: pair-programming-style continuous, demonstrated explanation.
+   - **Expose live tools to agents.** "Since live programming enables humans to gather feedback more efficiently,
+     it will likely also benefit agents. This opens up the design space for exposing live and run-time tools to
+     agents, ranging from smaller, low-level tools like probes and inspectors to high-level tools such as
+     profilers, call graph analyses, or omniscient debuggers." (p. 76)
+5. **Conclusion** (§6, p. 76): the running program inside a live environment should become "the shared artifact
+   about which programmers and agents converse".
+
+### Verbatim quotes, checked against the PDF text
+1. "a live programming environment operated through an agent remains live, but the programmer's experience does not." (p. 73)
+2. "Agents widen the Gulf of Evaluation." (p. 74, run-in heading)
+3. "Liveness can help communicate all three perspectives of feedback." (p. 75, Fig. 4 caption)
+4. "This opens up the design space for exposing live and run-time tools to agents, ranging from smaller, low-level tools like probes and inspectors to high-level tools such as profilers, call graph analyses, or omniscient debuggers." (p. 76)
+5. "we expect the running program inside a live programming environment to become the shared artifact about which programmers and agents converse" (p. 76)
+
+### Corrections to the abstract-only note and the review entry
+- The abstract-level reading was accurate, but the paper says more. Beyond human-experience costs, it explicitly
+  argues for the agent-side direction this spike takes: exposing probes and inspectors to agents and making the
+  running program the shared artifact. It is position-level support, not evidence.
+- "Informs: keep feedback latency low and reviewable" stands. Add three points:
+  - evaluation needs all three feedback parts (Fig. 4);
+  - invariant examples (what did *not* change) belong in the evidence;
+  - the human watching the live editor needs the agent's changes demonstrated, not just described.
+
+### Design relevance for Gaia
+- Our tools already return two of the three feedback parts: eval/diagnostics (code effect) and
+  screenshots/frames/inspect (runtime). The third, "what the agent did and why", is the transcript plus Gaia's
+  Interactive window. `gaia_diff` (next) and the end-of-session contact sheet address the widened gulf of
+  evaluation.
+- `gaia_assert` with *unchanged-outcome* scenarios matches their "frame of explanation" including invariants.
+- Live, object-grounded intent is a natural extension: selected entity → prompt context. The bridge binds
+  `SelectedEntity` already.
+
+### Leads (not read)
+- Ferdowsi et al., CHI'24, "Validating AI-Generated Code with Live Programming", doi 10.1145/3613904.3642495. This
+  is an empirical study and the most relevant follow-up.
+- Thiede et al., Onward!'24, "Talking to Objects in Natural Language", doi 10.1145/3689492.3690049.

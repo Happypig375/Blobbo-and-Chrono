@@ -29,7 +29,8 @@ Date: 2026-11-01 (HKT). Scoping review for the Gaia agent-interface design, not 
 - **Round 2 (2026-11-01, afternoon):**
   - **Full-text reading.** Thirteen load-bearing sources were read by two Sonnet/xhigh readers, following
     research-workflow-evaluation's D8 rule (Sonnet/xhigh for coverage of key results). Twelve were read in full
-    text from the latest arXiv versions. B2's retrieval *failed*, which is distinct from closed access. Each has
+    text from the latest arXiv versions. B2's first retrieval *failed* (ACM 403), which is distinct from closed
+    access; litfetch then fetched it after a human cleared the bot check, and I read it in full. Each has
     a reading note in `reading-notes/` with versions, read depth, locators and verbatim quotes. The entries carry
     a "Round 2 full-text reading" bullet, which supersedes earlier claims where they conflict.
   - **Quote check.** I re-downloaded A1 (v1 and v2) and C14 and searched the PDFs for their quoted strings
@@ -144,7 +145,7 @@ Date: 2026-11-01 (HKT). Scoping review for the Gaia agent-interface design, not 
 - Route: WebSearch. Depth: abstract (WF). Workshop abstract only; no study design visible.
 - Finding: uses Tanimoto's liveness levels and Norman's gulfs. Argues agents can bring back slow compile-and-run cycles and that the gulf of evaluation may overwhelm novices. Position-level evidence.
 - Informs: why a REPL/world-inspection agent should keep feedback latency low and reviewable.
-- **Round 2 full-text reading** (Sonnet/xhigh reader, 2026-11-01; `reading-notes/B2-liveness-agents.md`). Depth: abstract only (verbatim, conference page); PDF retrieval **failed** (ACM DL 403 Cloudflare; proceedings PDF link 404), not closed (OpenAlex: CC BY). Not a talk abstract: a 7-page full paper (pp. 71–77), doi 10.1145/3801119.3801131. Needs a human download or litfetch.
+- **Round 2 full-text reading** (Opus, 2026-11-01; `reading-notes/B2-liveness-agents.md`, full-text addendum). Depth: full text, all 7 pp. (PDF via litfetch after a human cleared the ACM bot check; CC BY). Not a talk abstract: a 7-page position paper in the ‹Programming› Companion '26 proceedings (pp. 71–77, doi 10.1145/3801119.3801131), with no empirical study. Beyond latency, it argues (a) agents collapse the gulf of execution but widen the gulf of evaluation and add a 'gulf of envisioning'; (b) feedback must cover what the agent did and why, the code effect and the runtime consequences (Fig. 4); (c) changes should be demonstrated on representative examples, including invariants; (d) 'exposing live and run-time tools to agents ... like probes and inspectors' should also speed up agents (p. 76). This is position-level support for this spike's direction, not evidence. Lead: Ferdowsi et al. CHI'24 (empirical, unread).
 
 **B3. Shortening feedback loops in a live game development environment.** Beckmann, T., Krebs, E., Rein, P., Ramson, S., & Hirschfeld, R. (2021). *IEEE VL/HCC*, 1-5. https://doi.org/10.1109/vl/hcc51201.2021.9576454 (Z:WWPCM2VC)
 - Route: Zotero + Scite. Depth: Scite metadata (closed) + Z-note (prior agent: main paper and supplement read in full). Short paper.
