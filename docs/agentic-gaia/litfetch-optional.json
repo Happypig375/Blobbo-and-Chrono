@@ -1,0 +1,59 @@
+{
+  "time": "2026-11-01T16:27:23.125867+00:00",
+  "results": [
+    {
+      "input": "10.1109/cig.2019.8848092",
+      "doi": "10.1109/cig.2019.8848092",
+      "url": "https://ieeexplore.ieee.org/document/8848092/",
+      "target": "/home/happypig375/papers/inbox/10.1109_cig.2019.8848092.pdf",
+      "status": "entitled",
+      "detail": "publisher PDF downloaded through campus browser",
+      "oa_doi": "10.1109/cig.2019.8848092"
+    },
+    {
+      "input": "10.1109/vl/hcc51201.2021.9576454",
+      "doi": "10.1109/vl/hcc51201.2021.9576454",
+      "url": "https://ieeexplore.ieee.org/document/9576454/",
+      "target": "/home/happypig375/papers/inbox/10.1109_vl_hcc51201.2021.9576454.pdf",
+      "status": "entitled",
+      "detail": "publisher PDF downloaded through campus browser",
+      "oa_doi": "10.1109/vl/hcc51201.2021.9576454"
+    },
+    {
+      "input": "10.1109/ms.2011.87",
+      "doi": "10.1109/ms.2011.87",
+      "url": "http://ieeexplore.ieee.org/document/5953580/",
+      "target": "/home/happypig375/papers/inbox/10.1109_ms.2011.87.pdf",
+      "status": "entitled",
+      "detail": "publisher PDF downloaded through campus browser",
+      "oa_doi": "10.1109/ms.2011.87"
+    },
+    {
+      "input": "10.1145/3337722.3337740",
+      "doi": "10.1145/3337722.3337740",
+      "url": "https://dl.acm.org/doi/10.1145/3337722.3337740",
+      "target": "/home/happypig375/papers/inbox/10.1145_3337722.3337740.pdf",
+      "status": "entitled",
+      "detail": "publisher PDF downloaded through campus browser",
+      "oa_doi": "10.1145/3337722.3337740"
+    },
+    {
+      "input": "10.1145/3427763.3428312",
+      "doi": "10.1145/3427763.3428312",
+      "url": "https://dl.acm.org/doi/10.1145/3427763.3428312",
+      "target": "/home/happypig375/papers/inbox/10.1145_3427763.3428312.pdf",
+      "status": "entitled",
+      "detail": "publisher PDF downloaded through campus browser",
+      "oa_doi": "10.1145/3427763.3428312"
+    },
+    {
+      "input": "10.1145/3796519",
+      "doi": "10.1145/3796519",
+      "url": "https://dl.acm.org/doi/10.1145/3796519",
+      "target": "/home/happypig375/papers/inbox/10.1145_3796519.pdf",
+      "status": "entitled",
+      "detail": "publisher PDF downloaded through campus browser",
+      "oa_doi": "10.1145/3796519"
+    }
+  ]
+}

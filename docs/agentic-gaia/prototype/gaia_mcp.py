@@ -48,7 +48,8 @@ TOOLS = [
         "name": "gaia_eval",
         "description": (
             "Evaluate F# in Gaia's live interactive session on the editor thread (Prime, Nu, Nu.Gaia and the project "
-            "are opened). `world`, `SelectedScreen`, `SelectedGroup`, `SelectedEntity` are bound when mentioned. "
+            "are opened; open the project's own namespace yourself if needed, e.g. `open Breakout`). `world`, "
+            "`SelectedScreen`, `SelectedGroup`, `SelectedEntity` are bound when mentioned. "
             "Each eval snapshots the world first, so gaia_undo reverts its world changes (not files or FSI definitions). "
             "Returns kind ok|compile_error|runtime_error, FSI output, and diagnostics with line/column. "
             "Keep snippets small; a non-terminating eval freezes the editor (then use gaia_ping to confirm and "
@@ -147,7 +148,13 @@ TOOLS = [
     },
     {
         "name": "gaia_reload_code",
-        "description": "Hot-reload the project's F# source files from disk into the live world (Gaia F9). Returns the build log.",
+        "description": (
+            "Hot-reload the project's F# source files from disk into the live world (Gaia F9). Returns the build log "
+            "('Code updated.' on success, 'Failed to compile' with errors otherwise). Afterwards both the old and new "
+            "definitions exist in the session: if an extension member is then reported ambiguous (FS0816), use the "
+            "generic property API instead, e.g. `Game.Set \"GameState\" Gameplay world` or `screen.Get<int> \"Score\" world`. "
+            "Objects that already exist may keep old values; re-enter the screen or restore a checkpoint to see the change."
+        ),
         "inputSchema": {"type": "object", "properties": {}},
     },
     {

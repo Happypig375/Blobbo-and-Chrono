@@ -150,27 +150,32 @@ Date: 2026-11-01 (HKT). Scoping review for the Gaia agent-interface design, not 
 **B3. Shortening feedback loops in a live game development environment.** Beckmann, T., Krebs, E., Rein, P., Ramson, S., & Hirschfeld, R. (2021). *IEEE VL/HCC*, 1-5. https://doi.org/10.1109/vl/hcc51201.2021.9576454 (Z:WWPCM2VC)
 - Route: Zotero + Scite. Depth: Scite metadata (closed) + Z-note (prior agent: main paper and supplement read in full). Short paper.
 - Finding (from Z-note): a Squeak/Smalltalk ECS with hot code replacement, snapshots and replay. Distinguishes temporary state edits, persisted edits and replay from a snapshot. Overwriting derived state risks losing history. Co-locating tools with the game is a design hypothesis, not a measured benefit.
-- Informs: REPL granularity; edit semantics (temporary vs persistent); snapshot-and-replay as undo. Relevant to Nu's live world editing.
+- Informs: REPL granularity; edit semantics (temporary vs persistent); snapshots for restart and replay (the paper has no undo). Relevant to Nu's live world editing.
+- **Round 3 full-text reading** (Sonnet reader, 2026-11-02; PDF via litfetch, campus access; `reading-notes/B3-beckmann-feedback-loops.md`). Depth: main paper in full (5 pp.); Zenodo supplement not re-read. A tool paper whose only evidence is the authors building three small games ("tentatively demonstrate", p. 1); no participants, no timings. Corrections: the risk with editing derived state is an *inconsistent* current state versus what a restart produces (p. 2-3), not lost history; and the snapshots serve restart and replay, not undo. Lesson for agents: persist the rule or the initial value, never a value the simulation computes.
 
 **B4. Live-tooling in the game industry.** Beckmann, T., Flach, C., Krebs, E., Ramson, S., Rein, P., & Hirschfeld, R. (2019). An exploratory literature study on live-tooling in the game industry. *LIVE 2019* (author preprint). (Z:8RJSNJML; no DOI verified)
 - Depth: Z-note only. Finding (from Z-note): practitioner-literature crawl (Gamasutra/GDC Vault) of live game tooling. Informs: what live tools game developers actually use.
 
 **B5. Towards Liveness in Game Development.** Martin, A. R., & Colton, S. (2019). *IEEE CoG 2019*. https://doi.org/10.1109/cig.2019.8848092 (Z:Z98DZFSU)
 - Depth: Scite metadata (closed; author list differs, see above) + Z-note (prior agent: 4-page paper fully read). Paywalled but important; a conference-hosted copy exists per the Z-note.
-- Informs: liveness for game dev. The finding was not extracted by me.
+- Informs: liveness for game dev.
+- **Round 3 full-text reading** (Sonnet reader, 2026-11-02; PDF via litfetch, campus access; `reading-notes/B5-martin-colton-liveness.md`). Depth: full text (4 pp.). A position and work-in-progress paper with one toy demo and no evaluation. Finding: live edits leave stale state (enemies spawned before a size change keep the old size, p. 2), REPL edits are temporary (p. 2), and the proposed fix is to replay the logged input after each code change, at the cost of re-running the whole log (p. 4). Lesson for agents: after an edit, re-create or replay before judging; existing objects may not show the change.
 
 **B6. State Explorer.** Volkovas, R., Fairbank, M., Woodward, J. R., & Lucas, S. (2020). Practical game design tool: State Explorer. *IEEE CoG 2020*. https://doi.org/10.1109/COG47356.2020.9231863 (Z:C8K9CW2D)
 - Depth: Z-note only. Finding (from Z-note): a Godot editor plugin that explores reachable states under designer-supplied predicates. It found an unintended move in Tic-Tac-Toe and supplied undo for Sokoban without game-side undo logic. Used on a commercial tower-defence game, with substantial integration cost reported.
 - Informs: state-copy/exploration as editor tooling; design-space queries an agent could issue.
 
 **B7. Repairing games at runtime (Mayet).** Lewis, C., & Whitehead, J. (2011). *IEEE Software, 28*(5), 53-59. https://doi.org/10.1109/ms.2011.87 (Z:88QVA7LU)
-- Depth: Scite metadata (closed) + Z-note. Finding (from Z-note): runtime repair of observed game state. Informs: safety (runtime repair/rollback).
+- Depth: Scite metadata (closed) + Z-note. Finding (from Z-note): runtime repair of observed game state. Informs: safety (runtime repair; the paper has no rollback).
+- **Round 3 full-text reading** (Sonnet reader, 2026-11-02; PDF via litfetch, campus access; `reading-notes/B7-lewis-whitehead-mayet.md`). Depth: full text (7 pp.). A magazine system description with one demo game and faults the authors inserted; no counts or timings. Mayet checks game events against hand-written rules and asks the game to apply *forward* repairs; the rule engine never changes game state itself (p. 58). It argues for bounded checks ("within N frames") because "eventually" cannot be tested, which is how `gaia_assert` works. Its "liveness property" is the model-checking term, not live programming. Correction: earlier wording said "rollback"; the paper has none.
 
 **B8. SuBViS.** MacCormick, D., & Zaman, L. (2019). *FDG 2019*, 1-11. https://doi.org/10.1145/3337722.3337740 (Z:BDIULBB9)
-- Depth: Scite metadata (closed) + Z-note. Finding (from Z-note): a Blueprint tool with node-level and graph-level "alternatives". Switching alternatives did not change behaviour while the game was running and required a manual recompile. No runtime state transfer. Informs: branching/alternatives for design exploration, and the limits of non-live alternatives.
+- **Round 3 full-text reading** (Sonnet reader, 2026-11-02; PDF via litfetch, campus access; `reading-notes/B8-subvis.md`). Depth: full text (11 pp.). A tool paper with a hypothetical use case and a four-person think-aloud pilot (p. 7), no statistics. Participants valued trying ideas without fear of losing earlier work (p. 9); the missing live switch confused them. Supports named checkpoints (`gaia_checkpoint`) and the rule that every switch must be followed by a reload and a check.
+- Depth: Scite metadata (closed) + Z-note. Finding (from Z-note): a Blueprint tool with node-level and graph-level "alternatives". Switching alternatives did not change behaviour while the game was running and required a manual recompile. No runtime switching (the paper does not discuss state transfer). Informs: branching/alternatives for design exploration, and the limits of non-live alternatives.
 
-**B9. The essence of live coding.** Bärenz, M. (2020). *SPLASH Onward!*, 2-14. https://doi.org/10.1145/3427763.3428312 (Z:WTCS6U8P)
-- Depth: Scite metadata only (closed). Title thesis: "change the program, keep the state". Not read. Informs: state-preserving hot reload semantics.
+**B9. The essence of live coding.** Bärenz, M. (2020). *REBLS '20* (ACM SIGPLAN workshop on Reactive and Event-Based Languages and Systems), 2-14. https://doi.org/10.1145/3427763.3428312 (Z:WTCS6U8P)
+- Depth (round 1): Scite metadata only (closed). Title thesis: "change the program, keep the state". Informs: state-preserving hot reload semantics.
+- **Round 3 full-text reading** (Sonnet reader, 2026-11-02; PDF via litfetch, campus access; `reading-notes/B9-essence-live-coding.md`). Depth: full text. Correction: the venue is REBLS '20, not Onward! (fixed above). A Haskell language-design paper with toy demos and no empirical study. It migrates state automatically by comparing old and new state types; the only guarantee is that the new state type-checks (p. 12). Lesson for agents: a reload that compiles is not a correct game; check after every reload (the round-3 assert tool exists for this).
 
 **B10. SpaceTime Programming.** Döderlein, J.-B., Khelladi, D. E., & Acher, M. (2026). *arXiv:2603.18735*. https://doi.org/10.48550/arxiv.2603.18735
 - Route: Scite. Depth: abstract + 5 excerpts.
@@ -320,8 +325,9 @@ Date: 2026-11-01 (HKT). Scoping review for the Gaia agent-interface design, not 
 - **Round 2 full-text reading** (Sonnet/xhigh reader, 2026-11-01; `reading-notes/E3-mcp-tool-descriptions.md`). Depth: arXiv v3 full text (52 pp.); TOSEM version not read. TOSEM venue confirmed via Crossref only. 5.85 pp and 67.46% are medians over four model-level changes; only Qwen3-Next has paired baseline/augmented runs (steps −26%). No single best set of description components; dropping Examples did not significantly hurt.
 
 **E4. MCP landscape and security.** Hou, X., Zhao, Y., Wang, S., et al. (2025/2026). *ACM TOSEM 35*(10). https://doi.org/10.1145/3796519 (arXiv:2503.23278)
-- Route: Scite. Depth: abstract only; the full text is institutional/closed. Paywalled-but-important.
-- Finding: lifecycle and threat taxonomy (16 threat scenarios, four attacker types) with safeguards. Informs: safety of an eval-capable MCP server.
+- Route: Scite. Depth (round 1): abstract only.
+- Finding: lifecycle and threat taxonomy (16 threat scenarios, four attacker types) with safeguards.
+- **Round 3 full-text reading** (Sonnet reader, 2026-11-02; PDF via litfetch, campus access; `reading-notes/E4-mcp-landscape.md`). Depth: security sections (5-6), lifecycle, abstract and conclusion read closely; background and landscape skimmed; references not read. A survey and vision paper with proof-of-concept servers and no attack-rate measurements; safeguards are untested recommendations. It models untrusted third-party servers, not a first-party tool built to run code, so it informs Gaia only by analogy: local access control (it warns about unauthenticated localhost servers, p. 24), tool output as adversarial input (p. 23), path and command injection, and host sandboxing. Correction: the earlier "Informs: safety of an eval-capable MCP server" overstated it.
 
 **E5. Learning to rewrite tool descriptions (Trace-Free+).** Guo, R., Dong, K., Gao, X., & Das, K. (2026). *arXiv:2602.20426*. https://doi.org/10.48550/arxiv.2602.20426
 - Route: Scite + WebFetch. Depth: abstract (WF). Preprint.
@@ -414,9 +420,9 @@ game-editor REPL, consistent with the Scite branch.
 
 ## Paywalled or closed, important (not fetched)
 
-- Hou et al. MCP landscape (TOSEM): full text institutional.
 - Zamfirescu-Pereira et al. CHI'25: the ACM page returned 403; the arXiv version (2503.06911) is open and the abstract was read.
-- Martin & Colton (CoG 2019), Lewis & Whitehead (IEEE Software 2011), Beckmann et al. (VL/HCC 2021, closed on Scite; author copies exist per Z-note), MacCormick & Zaman (FDG 2019), Bärenz (2020), Volkovas et al. (CoG 2020). All have Zotero entries, so a user-side retrieval is possible. None was fetched by me.
+- Volkovas et al. (CoG 2020) has a Zotero entry; not fetched.
+- Fetched and read in round 3 (2026-11-02, litfetch with campus access, one ACM bot check passed by a person): Martin & Colton (B5), Beckmann et al. (B3), Lewis & Whitehead (B7), MacCormick & Zaman (B8), Bärenz (B9), Hou et al. (E4). Report: `litfetch-optional.json`.
 - Perish or Flourish (functional programming) Z:KLVL5BID and Harness-Bench Z:L28XYA6F: not read.
 
 ---

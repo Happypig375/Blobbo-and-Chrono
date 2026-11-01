@@ -1,7 +1,7 @@
 # Agentic Gaia: recommended agent interface
 
 Inputs: `investigation.md` (findings 1–4, code references), `literature-review.md` (sources, read depth),
-prototype in `prototype/` (verified end to end, 28/28 checks after round-2 hardening and review fixes). Literature references below use the review's ids
+prototype in `prototype/` (verified end to end: 39/39 checks after round 3). Literature references below use the review's ids
 (A1, C7 …); most are preprints, so they shape priorities rather than prove effects.
 
 ## 1. Recommendation in one paragraph
@@ -13,7 +13,7 @@ feedback channels after every change (compiler diagnostics, structured world sta
 short frame sequences) plus the live F# session's own type checker for API lookup. Every mutating call is
 wrapped in Gaia's existing world snapshot so it can be undone. Live-world edits are explicitly *temporary*;
 designs become *persistent* only through source edits + hot reload or saved scene files. Headless operation on
-Linux is Xvfb + Mesa lavapipe today; an in-engine Vulkan readback is the next step for exact, display-free capture.
+Linux is Xvfb + Mesa lavapipe. Since round 3, screenshots come from an in-engine Vulkan readback (exact pixels, no X grab).
 
 ## 2. Architecture
 
@@ -73,18 +73,18 @@ Tool names as an agent sees them. **Built** = in the spike and covered by `proto
 ### Observe and verify
 | Tool | Args | Returns | Status |
 |---|---|---|---|
-| `gaia_screenshot` | `view` editor/game, `max_width` | PNG (MCP image content) + saved path | built |
+| `gaia_screenshot` | `view` editor/game, `max_width` | PNG (MCP image content) + saved path. Round 3: read back from the renderer (`capture` op; `NU_GAIA_CAPTURE=x11` for the old X grab) | built |
 | `gaia_frames` | `count`, `every`, `view` | one contact-sheet PNG of a frame sequence (motion at a fraction of video tokens) | built |
 | `gaia_log` | `since` | editor log after a sequence number | built |
-| `gaia_diff` | `from` snapshot | changed simulants and properties between two snapshots | next |
-| `gaia_assert` | F# predicate, `frames?` | evaluates a boolean over the world each frame for N frames; first failing frame | next |
+| `gaia_diff` | `from` checkpoint, `limit` | simulants added and removed, and each changed property with its value before and after (symbolic text) | built (round 3) |
+| `gaia_assert` | F# predicate over `world`, `frames` (1-600), `probe?`, `advance?` | compiled once, checked every frame (game time runs when N > 1; undoable); first failing frame, exception, probe value | built (round 3) |
 | `gaia_clip` | `seconds`, `fps` | short WebP/MP4 clip | next |
 
 ### Session
 | Tool | Args | Returns | Status |
 |---|---|---|---|
 | `gaia_undo` / `gaia_redo` | – | `undone`/`redone` + status | built |
-| `gaia_checkpoint` | `name` / `restore` | named snapshot outside the linear undo stack (best-so-far retention) | next |
+| `gaia_checkpoint` | `name`, `restore?`, `delete?` | named world snapshot outside the linear undo stack (at most 16; restore is itself undoable) | built (round 3) |
 | `gaia_ping` | – | liveness answered off the editor thread: last frame, ms since it, running op and duration, queue length, `unresponsive` | built (round 2) |
 | `gaia_restart` | `confirm: true` | supervisor restart of the Gaia this server launched (pid checked against `Nu.Gaia.dll`), same project; world/undo/FSI state lost | built (round 2) |
 | `gaia_reset_session` | – | restart only FSI (keep the world) after a poisoned but not hung session | next |
@@ -259,7 +259,7 @@ These are that project's operational findings about agent harnesses, not literat
   ```bash
   nice dotnet build Nu/Nu.Gaia/Nu.Gaia.fsproj -c Debug        # builds engine + sample projects (~5 min first time)
   docs/agentic-gaia/prototype/run_gaia_headless.sh             # Xvfb :91 + lavapipe + Breakout ImSim + bridge
-  python3 -I docs/agentic-gaia/prototype/check_mcp.py OUT_DIR  # 28 checks incl. hang + restart (NU_GAIA_CHECK_HANG=0 skips); PNGs + transcript
+  python3 -I docs/agentic-gaia/prototype/check_mcp.py OUT_DIR  # 39 checks incl. readback, checkpoint/diff/assert, hang + restart (NU_GAIA_CHECK_HANG=0 skips); PNGs + transcript
   claude mcp add gaia -- env NU_GAIA_AGENT_SOCKET=$XDG_RUNTIME_DIR/nu-gaia-agent.sock DISPLAY=:91 \
       NU_XML_DOC=$PWD/Nu/Nu/bin/Debug/net10.0/Nu.xml python3 $PWD/docs/agentic-gaia/prototype/gaia_mcp.py
   ```
@@ -270,7 +270,7 @@ These are that project's operational findings about agent harnesses, not literat
   - `img/check-4-frames.png`
   - `img/gaia-headless-editor.png`
 - **Not verified**:
-  - a source-edit + reload cycle that changes behaviour (reload was run without source changes and succeeded);
+  - (verified in round 3: editing `BallSpeed` in Gameplay.fs and calling reload changed the running ball speed from 150 to 300. After a reload, project extension members can become ambiguous (FS0816) because old and new definitions coexist; the generic `Set`/`Get` property API works.)
   - Windows named pipes;
   - 3D scenes under lavapipe;
   - Gaia's exception dialog path (`gaia_resolve_exception`) and time-control serialization: implemented and
@@ -291,9 +291,9 @@ These are that project's operational findings about agent harnesses, not literat
 
 ## 9. Next steps (in order)
 
-1. **In-engine frame readback**: in `VulkanContext.endFrame`, add `vkCmdCopyImageToBuffer` from `resolveTexture`
+1. **Done in round 3 (in-engine frame readback)**: in `VulkanContext.endFrame`, add `vkCmdCopyImageToBuffer` from `resolveTexture`
    to a staging buffer, then add a `capture` op. This gives exact frames with no X, and real clips.
-2. **More tools**: `gaia_diff`, `gaia_assert` and `gaia_checkpoint`, which supply the verification signals the
+2. **Done in round 3 (more tools)**: `gaia_diff`, `gaia_assert` and `gaia_checkpoint`, which supply the verification signals the
    literature says matter most.
 3. **`gaia_save` and `gaia_set_property`**, using Gaia's existing converters. This makes the persistence
    boundary explicit.
