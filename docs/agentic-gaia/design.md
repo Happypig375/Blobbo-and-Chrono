@@ -109,14 +109,21 @@ E2, E3, E5): a few task-shaped tools, structured errors, no 150-tool catalogue.
    - `diagnostics` for code.
    - `gaia_inspect` / `gaia_diff` for state.
    - `gaia_screenshot` for layout and colour.
-   - `gaia_frames` (or a clip) for anything that moves. GameDevBench's spot-checked result says motion evidence,
-     not still screenshots, carried the gain for Claude (A1).
+   - `gaia_frames` (or a clip) for anything that moves. Full-text reading confirms that in GameDevBench (A1)
+     runtime video, not editor screenshots, carried the gain (Sonnet 4.5 v1: video +14.4 points, screenshot 0.0).
+     In D1, screenshots helped mostly by driving exploration that *finds* bugs (+2.85), not as input to the fix
+     (+0.65).
+   - Replayed input is the strongest runtime check found: in A10, replay before and after an edit caught 76.2% of
+     failed edits, against 0% for build-only checks. This argues for `gaia_input` plus `gaia_assert` (next).
    - Self-critique without such a signal is unreliable (C4, C6, C13).
 5. **Judge and keep/undo**:
    - Where possible, use state assertions (`gaia_assert`, e.g. "ball stays inside the walls for 300 frames"),
      because "it runs" and "it looks right" both miss logic bugs (A4, A6).
    - On failure, `gaia_undo` and retry.
-   - Cap repair rounds at about 3: gains concentrate early, and later rounds risk regressions (C14, C15).
+   - Cap repair rounds at about 3. Gains concentrate in rounds 1–3 (C14, D2, H4–H6). Refine only when a check
+     actually failed, because refining passing code breaks it (C15). Return the concrete failure text, not a bare
+     flag (H9). After that, roll back and restart the step rather than patching further (H6), keeping a note of
+     what failed (F1).
    - Keep a named best-so-far checkpoint (A10).
 6. **Report to the human**:
    - Evals are visible in Gaia's Interactive window and Timeline.

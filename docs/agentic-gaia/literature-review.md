@@ -26,6 +26,21 @@ Date: 2026-11-01 (HKT). Scoping review for the Gaia agent-interface design, not 
   benefit". So editor screenshots alone did not help every model; runtime motion evidence did. This directly
   motivates the frame-sequence tool in `design.md`. (Which configuration produced 47.7% was not in the excerpts.)
 
+- **Round 2 (2026-11-01, afternoon):**
+  - **Full-text reading.** Thirteen load-bearing sources were read by two Sonnet/xhigh readers, following
+    research-workflow-evaluation's D8 rule (Sonnet/xhigh for coverage of key results). Twelve were read in full
+    text from the latest arXiv versions. B2's retrieval *failed*, which is distinct from closed access. Each has
+    a reading note in `reading-notes/` with versions, read depth, locators and verbatim quotes. The entries carry
+    a "Round 2 full-text reading" bullet, which supersedes earlier claims where they conflict.
+  - **Quote check.** I re-downloaded A1 (v1 and v2) and C14 and searched the PDFs for their quoted strings
+    (results in the "Quote verification" section: all 14 genuine). Other notes are unverified at quote level.
+  - **Consensus.** The quota reset on 1 Nov and three searches ran (section H, abstract depth). Every
+    Scite/Consensus call is logged in `~/workspace/exchange/literature-quota.tsv`.
+  - **Search ledger and Zotero status.** All searches are in `search-ledger.tsv`. Per-entry Zotero status is in
+    `zotero-status.tsv`, matched by DOI or arXiv id against the read-only nightly export: 15 of 76 entries are in
+    Zotero, and the rest are labelled "not yet in Zotero" (NEEDS-HUMAN item 4). Title-prefix matches were
+    checked by hand, and four false ones were rejected.
+
 ---
 
 ## A. LLM / agentic game development, PCG
@@ -35,16 +50,19 @@ Date: 2026-11-01 (HKT). Scoping review for the Gaia agent-interface design, not 
 - Finding: Godot tasks from tutorials. Agents solve about half (v1: 54.5% of 132; Z-note v2: 53.8% of 333). Success drops from 46.9% on gameplay tasks to 31.6% on 2D graphics. Two simple feedback tools consistently improve performance. One is an Editor Screenshot MCP that returns an editor screenshot (scene, node tree, inspector). The other is runtime video. Claude Sonnet 4.5 rose from 33.3% to 47.7%.
 - Informs: visual feedback; the editor-screenshot-as-MCP-tool pattern, which is closest to our design. Limit: tutorial-derived localized edits.
 - Spot-check (Opus, Scite excerpts): for Claude Sonnet 4.5, runtime video 33.3% → 41.7%, screenshot MCP alone no improvement, both combined ≈ best single method. See the provenance section above.
+- **Round 2 full-text reading** (Sonnet/xhigh reader, 2026-11-01; `reading-notes/A1-gamedevbench.md`). Depth: full text v2 (ICML 2026, PMLR 306) + v1 Sec. 4.2. The entry mixes versions: 132 tasks, 46.9%/31.6% and 33.3→47.7 are v1; v2 (333 tasks) gives 51.4%/33.0%, GPT-5.4 41.1→52.0, Sonnet 4.5 28.8→34.8 (both arms). The open spot-check question is resolved: in v1 Table 2, 47.7% is Sonnet 4.5 with **video only**; the prose's 41.7% is a v1 text/table mismatch. Video-only +14.4, screenshot-only 0.0, both +12.9. In v2, 'both' is below video-only for all three models with isolated arms ("video runtime often provides more improvement than enabling both", v2 p. 7). Agents solve by code generation alone (no editor GUI).
 
 **A2. GameCraft-Bench.** Luo, T. D., Wang, R., Bi, J., et al. (2026). GameCraft-Bench: Can agents build playable games end-to-end in a real game engine? *arXiv:2606.17861*. https://doi.org/10.48550/arxiv.2606.17861
 - Route: Scite. Depth: excerpts (5; the abstract is only a figure caption).
 - Finding: 140 Godot tasks. Agents must deliver replayable demonstration traces. A multimodal judge scores sampled gameplay frames (2 fps) against hidden rubrics. Mechanics scores exceed content and presentation scores. The authors argue many failures "only become visible after rendering" and that without visual feedback "an agent may continue editing code while remaining blind" (a claim, not an ablation).
 - Informs: visual feedback; judge-based evaluation.
+- **Round 2 full-text reading** (Sonnet/xhigh reader, 2026-11-01; `reading-notes/A2-gamecraft-bench.md`). Depth: full text v1. The screenshot claim rests on a call count and one case study, not an ablation; screenshot use does not track score (GPT-5.5 1.91 calls/task → 39.49; Kimi 21.41 → 30.65). Much low-score mass is protocol non-compliance (no valid replay traces). Judge is GPT-5.5, also an evaluated agent; human calibration is a small check (judge +3.32 points more permissive). Best 41.46% (Opus 4.7). Transferable design: agent-written, deterministically replayable input traces as evidence.
 
 **A3. GameEngineBench.** La, B., Chang, S., Kim, B., et al. (2026). GameEngineBench: Evaluating coding agents on real C++ runtime environments. *arXiv:2607.03525*. https://doi.org/10.48550/arxiv.2607.03525
 - Route: Zotero (Z:RJ9GV3AP) + WebFetch. Depth: abstract (WF).
 - Finding: 110 scoped C++ tasks in Unreal Engine 5 projects. Changes must compile and pass behavioural tests. Best of 12 configurations reaches 55.5% pass@1, and 31 tasks are unsolved by all.
 - Informs: evaluation; engine-API difficulty.
+- **Round 2 full-text reading** (Sonnet/xhigh reader, 2026-11-01; `reading-notes/A3-gameenginebench.md`). Depth: full text v2 (15 Jul 2026). Success is **not** 'compile and pass behavioural tests': an unnamed LLM judge gives the verdict after compile + injected PIE run and can override test failures. 55.5% is one configuration (Claude Fable 5, max effort); next best 29.1%. Difficulty is cross-system runtime behaviour (replication, lifecycle, init order), not API knowledge. No visual feedback in this paper. Harness confounded with model.
 
 **A4. GameLogicBench.** Che, X., Ge, Y., Li, S., et al. (2026). GameLogicBench: Evaluating coding agents on runtime game logic with tick-level state assertions. *arXiv:2609.21562* (v2). https://doi.org/10.48550/arxiv.2609.21562
 - Route: Zotero (Z:XMYGZCHB) + WebFetch. Depth: abstract (WF) + Z-note (prior agent reports a complete reading).
@@ -60,6 +78,7 @@ Date: 2026-11-01 (HKT). Scoping review for the Gaia agent-interface design, not 
 - Route: Scite. Depth: abstract + 5 excerpts.
 - Finding: 70 tasks (C++, Blueprint, editor scripting) with deterministic build, asset and runtime checks and no LLM judge. Compared two editor-tool (MCP) configurations. C++ completion exceeds Blueprint by 30.0 and 42.9 percentage points on 10 paired tasks. 42.2% and 50.0% of asset-passing Blueprint submissions fail runtime assertions. In trajectories, "success revisions do not guarantee correct gameplay". They exclude creative tasks needing visual judgement. They note MCP-Unity and Epic's in-editor Unreal MCP as existing authoring tool sets.
 - Informs: tool-interface design; why structure-valid does not mean behaviour-valid; limits of LLM-free grading for creative work.
+- **Round 2 full-text reading** (Sonnet/xhigh reader, 2026-11-01; `reading-notes/A6-craftbench-ue.md`). Depth: full text. 42.2%/50.0% are on-time submissions (19/45, 20/40) on the 10 paired tasks; counting late ones 34.3%/40.0% of all final submissions. MCP1 vs MCP2 differ in entry points (3 vs 176), permissions and drivers, so no clean tool-granularity evidence (authors say so). **Conflict of interest:** the authors' organisation develops MCP2. What it supports: readback/inspection evidence matters more than write success; agents rarely run or look at the game unless pushed (image capture in ~6–9% of BP runs).
 
 **A7. AutoUE.** Yin, L., Cheng, W., Qin, Z., et al. (2026). AutoUE: Automated generation of 3D games in Unreal Engine via multi-agent systems. *arXiv:2603.07106*. https://doi.org/10.48550/arxiv.2603.07106
 - Route: Scite + WebFetch. Depth: abstract (WF).
@@ -80,6 +99,7 @@ Date: 2026-11-01 (HKT). Scoping review for the Gaia agent-interface design, not 
 - Route: Scite + WebFetch. Depth: abstract (WF).
 - Finding: naive iterative refinement overfits a small set of tests. A local explore-diagnose-improve loop plus a global loop that keeps the best checkpoint and detects regression improves quality under matched budgets on GameCraft-Bench tasks.
 - Informs: checkpoint/best-so-far retention; overfitting to test cases.
+- **Round 2 full-text reading** (Sonnet/xhigh reader, 2026-11-01; `reading-notes/A10-rsigame.md`). Depth: main text + appendices A–E, F.1 (F.2–F.3 skimmed). Overfitting is the authors' framing, not a controlled test. Budgets matched on rounds/tool calls, approximately on tokens. Judge is Qwen3.8-27B (also the play agent and a generator), so scores are not comparable with A2. The best checkpoint is chosen by a separate Monitor with its own proxy rubric, isolated from the benchmark rubric. Key unmentioned result: replay-based verification catches 76.2% of failed edits versus 0% for build-only checks.
 
 **A11. CreativeGame.** Ma, H., Wang, H., Wang, S., et al. (2026). *arXiv:2604.19926*. https://doi.org/10.48550/arxiv.2604.19926
 - Route: Scite + WebFetch. Depth: abstract (WF).
@@ -124,6 +144,7 @@ Date: 2026-11-01 (HKT). Scoping review for the Gaia agent-interface design, not 
 - Route: WebSearch. Depth: abstract (WF). Workshop abstract only; no study design visible.
 - Finding: uses Tanimoto's liveness levels and Norman's gulfs. Argues agents can bring back slow compile-and-run cycles and that the gulf of evaluation may overwhelm novices. Position-level evidence.
 - Informs: why a REPL/world-inspection agent should keep feedback latency low and reviewable.
+- **Round 2 full-text reading** (Sonnet/xhigh reader, 2026-11-01; `reading-notes/B2-liveness-agents.md`). Depth: abstract only (verbatim, conference page); PDF retrieval **failed** (ACM DL 403 Cloudflare; proceedings PDF link 404), not closed (OpenAlex: CC BY). Not a talk abstract: a 7-page full paper (pp. 71–77), doi 10.1145/3801119.3801131. Needs a human download or litfetch.
 
 **B3. Shortening feedback loops in a live game development environment.** Beckmann, T., Krebs, E., Rein, P., Ramson, S., & Hirschfeld, R. (2021). *IEEE VL/HCC*, 1-5. https://doi.org/10.1109/vl/hcc51201.2021.9576454 (Z:WWPCM2VC)
 - Route: Zotero + Scite. Depth: Scite metadata (closed) + Z-note (prior agent: main paper and supplement read in full). Short paper.
@@ -214,6 +235,7 @@ Date: 2026-11-01 (HKT). Scoping review for the Gaia agent-interface design, not 
 **C12. Agent-centric Debugging Interface (ADI).** Xiang, J., Xu, X., Chu, X., Tian, H., & Zhang, Y. (2026). *FSE 2026* (per arXiv). arXiv:2604.24212. https://doi.org/10.48550/arxiv.2604.24212 (Z:B6V8URKN)
 - Depth: abstract (WF + Zotero abstract). Finding: a function-level debugging interface with a Frame Lifetime Trace replaces line-by-line debugger stepping, which is too costly for agents. 63.8% on SWE-bench Verified at about USD 1.28 per task, and +6.2% to +18.5% when added to existing agents.
 - Informs: richer, summarised runtime state as a tool, with cost-aware granularity. Debugger granularity maps to REPL-step granularity.
+- **Round 2 full-text reading** (Sonnet/xhigh reader, 2026-11-01; `reading-notes/C12-adi.md`). Depth: full text (22 pp.). Published as PACMSE (FSE) 2026, doi 10.1145/3797126; actual title 'Empowering Autonomous Debugging Agents with Efficient Dynamic Analysis'. +6.2% to +18.5% are relative; absolute +2.4 to +5.6 pp. On the same agent a plain PDB tool adds +0.8 pp for +$0.60/task while function-level ADI adds +8.8 pp for +$0.26: inspection granularity matters more than having a debugger.
 
 **C13. Reassessing one-round test-time refinement.** Kim, J. (2026). *AI* (MDPI) 7(9), 353. https://doi.org/10.3390/ai7090353
 - Route: Scite. Depth: abstract. Venue/credibility not checked (`not_yet_assessed`).
@@ -224,11 +246,13 @@ Date: 2026-11-01 (HKT). Scoping review for the Gaia agent-interface design, not 
 - Route: Scite. Depth: abstract. Preprint.
 - Finding: feeding errors back up to 5 times gains +4.9 to +17.1 pp (HumanEval) and +16 to +30 pp (MBPP), mostly in the first two rounds. Logic (assertion) errors are the hardest, at about 45% repaired.
 - Informs: diminishing returns; error type matters.
+- **Round 2 full-text reading** (Sonnet/xhigh reader, 2026-11-01; `reading-notes/C14-how-many-tries.md`). Depth: full text (11 pp.). 'Up to five attempts' = at most 4 feedback rounds. The ~45% assertion-error repair rate is HumanEval only (~63% on MBPP). Two repair rounds capture most of the gain; specific error messages repair far more often than bare wrong-result signals.
 
 **C15. Feedback Over Form.** McAndrews, C. J. (2026). *arXiv:2604.21950*. https://doi.org/10.48550/arxiv.2604.21950
 - Route: Scite. Depth: abstract. Preprint, 1-3B models.
 - Finding: execution feedback mattered more than pipeline topology. Refinement fixes runtime errors but rarely logic errors. Early stopping was essential ("without it, every iteration is net-negative").
 - Informs: stopping rules; logic bugs need semantic oracles.
+- **Round 2 full-text reading** (Sonnet/xhigh reader, 2026-11-01; `reading-notes/C15-feedback-over-form.md`). Depth: full text (19 pp.). 'Early stopping' means returning as soon as tests pass, not an iteration cap; without it the refiner breaks 14–62% of already-correct code. Design rule: refine only when an explicit check fails.
 
 **C16. Transferability of code repair to low-resource PLs.** Wong, K., Amayuelas, A., Pan, L., & Wang, W. Y. (2025). *Findings of NAACL 2025*, 3410-3432. https://aclanthology.org/2025.findings-naacl.190/ (doi 10.18653/v1/2025.findings-naacl.190)
 - Route: Scite + WebFetch. Depth: abstract (WF).
@@ -246,11 +270,13 @@ Date: 2026-11-01 (HKT). Scoping review for the Gaia agent-interface design, not 
 - Route: Scite + WebFetch. Depth: abstract (Scite and WF). Preprint.
 - Finding: text-only feedback is weak for event-driven, visual GUI programs. A multi-agent system that interacts with the running UI and inspects visuals raised Gemini-3-Flash's success from 21.68% to 28.29% (visual score 0.428 to 0.558). Modest absolute gain.
 - Informs: visual plus interaction feedback.
+- **Round 2 full-text reading** (Sonnet/xhigh reader, 2026-11-01; `reading-notes/D1-coding-with-eyes.md`). Depth: full text. The +6.61-point gain is not all visual: a non-visual version of the same pipeline reaches +3.11 (like text-only CLI agents); vision adds +3.50 inside the pipeline, of which +2.85 comes from screenshot-driven *exploration to find bugs* and only +0.65 from showing the fixer the failing screenshot. Cost ~14× single-shot. Visual score is a ResNet similarity model without human validation.
 
 **D2. Vision-guided iterative refinement (frontend).** Sansford, H., Law, D. H. C., Liu, W., et al. (2026). *arXiv:2604.05839*. https://doi.org/10.48550/arxiv.2604.05839
 - Route: Scite + WebFetch. Depth: abstract (WF). Preprint.
 - Finding: a VLM critic on rendered pages guides revisions, with gains up to 17.8% over three cycles on WebDev Arena requests. LoRA distilled about 25% of the loop's gains.
 - Informs: render, critique, revise loops; cycle count.
+- **Round 2 full-text reading** (Sonnet/xhigh reader, 2026-11-01; `reading-notes/D2-vision-guided-refinement.md`). Depth: full text. 17.8% is best-of-{initial, cycles 1–3} chosen and scored by the same VLM judge for the weakest generator; a fixed 3-cycle loop gives +5.7 to +8.7%. 63–80% of the cycle-3 gain arrives in cycle 1 while tokens grow ~linearly. No visual-vs-text critique ablation. Workshop paper (ICLR 2026 RSI workshop). Static single page: does not speak to runtime/frame feedback.
 
 **D3. UI2Code^N.** Yang, Z., Hong, W., et al. (2025). *arXiv:2511.08195*. https://doi.org/10.48550/arxiv.2511.08195
 - Route: Scite. Depth: abstract. Finding: argues single-turn UI-to-code underuses iterative visual feedback; an interactive paradigm with a trained VLM and test-time scaling over multi-turn feedback. Informs: multi-turn visual refinement.
@@ -290,6 +316,7 @@ Date: 2026-11-01 (HKT). Scoping review for the Gaia agent-interface design, not 
 - Route: Scite + WebFetch. Depth: abstract (WF).
 - Finding: 97.1% of 856 tools across 103 servers have at least one description smell. Augmenting descriptions raised task success by a median of 5.85 pp. It also increased execution steps by 67.46%, and performance fell in 16.67% of cases.
 - Informs: tool-description quality is measurable, but "more description" has costs.
+- **Round 2 full-text reading** (Sonnet/xhigh reader, 2026-11-01; `reading-notes/E3-mcp-tool-descriptions.md`). Depth: arXiv v3 full text (52 pp.); TOSEM version not read. TOSEM venue confirmed via Crossref only. 5.85 pp and 67.46% are medians over four model-level changes; only Qwen3-Next has paired baseline/augmented runs (steps −26%). No single best set of description components; dropping Examples did not significantly hurt.
 
 **E4. MCP landscape and security.** Hou, X., Zhao, Y., Wang, S., et al. (2025/2026). *ACM TOSEM 35*(10). https://doi.org/10.1145/3796519 (arXiv:2503.23278)
 - Route: Scite. Depth: abstract only; the full text is institutional/closed. Paywalled-but-important.
@@ -308,6 +335,7 @@ Date: 2026-11-01 (HKT). Scoping review for the Gaia agent-interface design, not 
 - Route: Scite + WebFetch. Depth: abstract (WF). Preprint.
 - Finding: statepoints (snapshot, rollback, fork) across local and remote state. Authors report up to 15x task quality gains and 3% overhead for recovery.
 - Informs: undo/branching for agent edits.
+- **Round 2 full-text reading** (Sonnet/xhigh reader, 2026-11-01; `reading-notes/F1-planarian.md`). Depth: full text (14 pp.). '15×' is Mario only; the other two games gain 1.4×, and a no-rollback control already captures part of the gain. 1–3% overhead is for replayed traces; remote-state rollback covers SQL only. Design-relevant: keep the record of failed attempts across a rollback rather than rewinding the agent's context.
 
 **F2. Fault-tolerant sandboxing.** Yan, B. (2025). *arXiv:2512.12806*. https://doi.org/10.48550/arxiv.2512.12806
 - Route: Scite + WebFetch. Depth: abstract (WF). Preprint.
@@ -392,18 +420,59 @@ game-editor REPL, consistent with the Scite branch.
 
 ---
 
+## Quote verification (round 2, Opus)
+
+Sample: every verbatim quote in two notes, A1 (7 quotes) and C14 (7). Method: re-downloaded the arXiv PDFs (A1 v1
+and v2, C14), ran `pdftotext`, normalised whitespace, ligatures and dashes, then did an exact substring search.
+
+| Note | Quotes | Exact match | Genuine across a column break | Not found |
+|---|---|---|---|---|
+| A1 | 7 | 7 | 0 | 0 |
+| C14 | 7 | 5 | 2 | 0 |
+
+- **C14:** the two non-exact quotes are present in full, interleaved with text from the neighbouring column
+  (two-column layout).
+- **A1, quote 2 locator:** the note labels it v2. It matches v1 exactly and appears in v2 split by the same layout
+  effect, so the locator stands.
+- **Scope:** this checks quotation fidelity only. As research-workflow-evaluation found, a quote check does not
+  catch claim errors. The other 11 notes are unverified at quote level.
+
 ## Synthesis: design implications (evidence-graded)
 
-**Execution feedback.** Where the oracle is real execution, loops help (C3, C8, C11). Gains concentrate in the first two or three rounds and mostly fix runtime errors, not logic errors (C14, C15). Self-review without grounding is unreliable or harmful (C4, C6, C13; C5 supports external feedback). Implication: end every design step with an external observation (eval result, world diff, screenshot), cap iterations, and keep a best-so-far checkpoint (A10). Evidence is mostly Python benchmarks. F#/Nu is untested, and repair in lower-resource languages is inconsistent (C16, C17).
+**Execution feedback.** Where the oracle is real execution, loops help (C3, C8, C11). Round-2 reading and the
+Consensus branch converge on four points:
+- Most of the gain comes in the first one to three rounds (C14 full text, D2, H4, H5, H6).
+- Refine only when an explicit check fails; refining code that already passes breaks 14–62% of it (C15).
+- Concrete failure text beats a bare fail flag (C14, H9).
+- Roll back non-improving attempts, but keep the record of what failed (F1, H7, A10). Gains concentrate in the first two or three rounds and mostly fix runtime errors, not logic errors (C14, C15). Self-review without grounding is unreliable or harmful (C4, C6, C13; C5 supports external feedback). Implication: end every design step with an external observation (eval result, world diff, screenshot), cap iterations, and keep a best-so-far checkpoint (A10). Evidence is mostly Python benchmarks. F#/Nu is untested, and repair in lower-resource languages is inconsistent (C16, C17).
 
-**Visual feedback.** Best direct evidence: GameDevBench (A1), where image/video feedback raised success for almost all models; for Claude Sonnet 4.5 the gain came from runtime video, not the editor-screenshot MCP (spot-check). Support: A2, D1, D2, D4. Gains are real but modest (D1), and screenshot-only control is hard (D7, D8). Implication: use screenshots as one verification channel paired with structured world state, not the only one. No study ablates screenshots against structured inspection in a live editor.
+**Visual feedback.** Full-text reading sharpens this conclusion:
+- **Runtime evidence beats editor screenshots.** In GameDevBench (A1), runtime *video* carried the gain, not
+  editor screenshots. In v1 for Sonnet 4.5: video only +14.4 points, screenshot only 0.0, both +12.9. In v2,
+  "both" is below video-only for every model with isolated arms.
+- **Screenshots help find bugs more than fix them.** In VF-Coder (D1), screenshots mainly drove exploration that
+  found bugs (+2.85 points). Showing the fixer the failing screenshot added only +0.65.
+- **Agents rarely look unless pushed, and write success is not correctness.** Agents rarely look at the running
+  game unless pushed, and a successful write does not imply correct gameplay (A2, A6).
+- **Replay catches what builds miss.** In A10, replay-based verification caught 76.2% of failed edits; build-only
+  checks caught 0%.
+- **Render-critique gains come early.** In D2, render-critique gains concentrate in cycle 1.
+
+Screenshot-only control remains hard (D7, D8). Implication for Gaia:
+- Prefer runtime evidence: frame sequences after advancing time (`gaia_frames`), replayable input (`gaia_input`,
+  next) and state assertions (`gaia_assert`, next).
+- Use editor screenshots for exploration and detection rather than as the main verification channel.
+
+No study ablates screenshots against structured inspection in a live editor; design.md §7 proposes that ablation.
 
 **REPL granularity and liveness.** No LLM-agent-in-game-editor-REPL study was found; REPL-Plan and the Lisp REPL (B12, B13) are planning or design-level. Debugger-granularity evidence (C12) favours function-level summarised traces over line stepping. Live-game work (B3, B6, B8, B10) says edit semantics must be explicit (temporary vs persisted state; snapshot/replay). Agent latency can erode liveness (B2). Implication: small eval calls for probes, larger scripted transactions for edits.
 
-**Tool interface (ACI).** C7, E2, E3, E5 and A6 converge: few task-shaped tools, structured results, actionable errors, concise descriptions, and images as first-class MCP content (E1). Longer descriptions cost steps (E3). A successful write does not imply correct gameplay (A6). Only SWE-agent is peer-reviewed; the rest are preprints or practitioner pieces.
+**Tool interface (ACI).** Inspection granularity matters more than raw access. In ADI (C12, full text), a
+function-level dynamic-analysis tool added +8.8 pp at +$0.26 per task, where a plain debugger added +0.8 pp at
++$0.60. E3 (full text) found no single best tool-description template. C7, E2, E3, E5 and A6 converge: few task-shaped tools, structured results, actionable errors, concise descriptions, and images as first-class MCP content (E1). Longer descriptions cost steps (E3). A successful write does not imply correct gameplay (A6). Only SWE-agent is peer-reviewed; the rest are preprints or practitioner pieces.
 
 **Safety and undo.** Snapshot/rollback and transactional execution are supported by early preprints (F1, F2). Workspace safety is poor even for frontier models (F3). Game-specific precedents: B6, B7, B8, B11. The MCP spec recommends a human in the loop (E1). Implication: wrap each design transaction in a world snapshot plus a replayable script. Evidence that this improves design quality is thin.
 
 **Evaluation.** Benchmarks use deterministic tests (A4, A6), judges (A2, A8) or state injection (A9). Documented hazards: overfitting to tests (A10), unvalidated evaluators (A4), cross-turn regression (A5), network leakage (A4), and LLM-free grading excluding creative tasks (A6). Human evidence is weakest (B1, A16 are small studies; no working-designer study of agent-in-editor design). Implication: combine state assertions, independently-informed judges and a small within-subject study (time to goal, rollbacks, perceived control, attention load).
 
-**Thin or missing.** Consensus was unavailable. Nothing was found on F#/Nu/Gaia specifically. Most sources are 2026 arXiv preprints not credibility-checked. WebFetch entries are paraphrases. `citation_graph` and Scite pagination were not used (open frontier).
+**Thin or missing.** Consensus ran only in round 2, with three abstract-depth queries. B2's full text could not be retrieved. Nothing was found on F#/Nu/Gaia specifically. Most sources are 2026 arXiv preprints not credibility-checked. WebFetch entries are paraphrases. `citation_graph` and Scite pagination were not used (open frontier).

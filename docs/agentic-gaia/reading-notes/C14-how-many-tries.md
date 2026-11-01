@@ -1,0 +1,61 @@
+# C14. How Many Tries Does It Take? Iterative Self-Repair in LLM Code Generation Across Model Scales and Benchmarks: reading note
+
+## Citation
+Arimbur, J. J. (2026). *How Many Tries Does It Take? Iterative Self-Repair in LLM Code Generation Across Model Scales and Benchmarks.* arXiv:2604.10508 [cs.SE; cs.AI]. https://doi.org/10.48550/arxiv.2604.10508 . Sole author, "Independent Researcher". Venue claim: none (arXiv comments: "11 pages, 7 figures, 8 tables"). Code: https://github.com/Johin2/iterative-code-repair (not visited).
+
+## Versions
+- Latest arXiv version: v1 only (submitted 12 Apr 2026, 07:51 UTC; abs page checked 2026-11-01).
+- Version read: v1, 11 pp.
+- Check date: 2026-11-01.
+- Reading note in `~/workspace/research-workflow-evaluation`: none (grep for the arXiv ID and title found nothing).
+
+## Access and read depth
+Open access (arXiv). Read depth: full text, all 11 pp. (body, Tables I-VIII, Figs 1-7 read from the extraction; references skimmed). Figures were not viewed as images; the per-category counts in Fig. 4 (and Fig. 3) are garbled in the extraction and are not used. Protocol label: `indexed_body_complete`. Quotes were checked against the extracted text; two quotes that run across a two-column break were checked line by line by hand.
+
+## What the paper is
+A descriptive benchmark study of the simplest self-repair loop: generate (R0), run the tests in a sandbox (15 s timeout), and on failure give the model {problem, its previous code, the Python error message/traceback} and ask for a corrected function; repeat up to R4 (Sec. III.A, p. 2). "Up to five attempts" = the initial attempt plus **four** repair rounds. Seven models (Llama 3.1 8B, Llama 3.3 70B, Llama 4 Scout 17B-active/16 experts, Llama 4 Maverick 17B-active/128 experts, Qwen3 32B with thinking disabled, Gemini 2.5 Flash, Gemini 2.5 Pro), accessed via the Groq free tier and Vertex AI, greedy decoding (T = 0.0), minimal system prompt, no few-shot (Sec. IV). Benchmarks: HumanEval (164 problems) and MBPP Sanitized (257 problems). Metric: cumulative pass@1 by round; gain Delta = R4 - R0 in percentage points.
+
+## Key results (with locators)
+1. **Universal gain (Tables I-II, p. 4; Table III, p. 5).** HumanEval Delta: 8B +9.8 (67.1 -> 76.8), 70B +10.4 (82.9 -> 93.3), Scout +14.0 (75.6 -> 89.6), Maverick +6.7 (87.2 -> 93.9), Qwen3-32B +4.9 (87.8 -> 92.7), Flash +9.8 (86.6 -> 96.3), Pro +17.1 (73.2 -> 90.2). MBPP Delta: 8B +16.0, 70B +23.0, Scout +17.9, Maverick +20.6, Qwen3 +17.5, Flash +30.0 (63.8 -> 93.8), Pro +25.7. Gains are larger on MBPP for every model (lower baselines, shorter problems; Table III). Higher baseline, smaller gain among the open models (Qwen3 +4.9 vs Scout +14.0); Flash is the stated exception.
+2. **Diminishing returns (Sec. V.F, Fig. 5, Tables I, II, V; p. 6).** R1 gives the largest single-round gain for all models (HumanEval R0 -> R1: Pro +9.8 pp; Scout and Flash +9.1; Qwen3 +2.4). R2 still meaningful; R3 and R4 minimal; for Qwen3, Maverick and Flash "R4 yields no additional improvement over R3". Authors: R2 captures 76-95% of the total gain (Sec. VI.E.2, p. 9). Reader's check from Tables I-II: share of the R4-R0 gain already reached by R2 is 77-93% on HumanEval and 81-95% on MBPP (consistent). R1 alone on HumanEval is roughly half to two-thirds of the gain for most models and 93% for Flash (reader's calculation).
+3. **Per-round "first solved" counts (Table V, p. 6; HumanEval).** Problems first solved at R1 / R2 / R3 / R4 / never: 8B 10/4/1/1/38; 70B 11/2/3/1/11; Scout 15/4/3/1/17; Maverick 7/2/2/0/10; Qwen3 4/3/1/0/12; Flash 15/0/1/0/6; Pro 16/6/5/1/16. "Repair success" (share of initially failed problems eventually fixed): Flash 72.7%, Pro 63.6%, 70B 60.7%, Scout 57.5%, Maverick 52.4%, Qwen3 40.0%, 8B 29.6% (correlates with capability).
+4. **Error type (Sec. V.D-E, Figs 3-4, p. 5).** Assertion errors (code runs, wrong output) dominate initial failures for every model. Repair rates by type (pooled over models, HumanEval): name errors ~77%, syntax ~66%, assertion ~45% (hardest). On MBPP assertion errors are repaired at ~63%. Authors' explanation: a name error gives specific diagnostic information; an assertion failure "provides minimal diagnostic information about what the code computed incorrectly or why".
+5. **Token cost (Table IV, p. 6).** Total prompt+completion tokens on HumanEval (excluding Gemini thinking tokens, which would raise Flash to ~489K and Pro to ~994K): 8B 195K, 70B 112K, Scout 155K, Maverick 93K, Qwen3 102K, Flash 121K, Pro 162K; tokens per pp of gain 9.5K (Pro) to 20.8K (Qwen3).
+6. **Repair vs independent resampling (Sec. V.I, Table VII, Fig. 7, pp. 7-8; HumanEval, four models only).** Self-repair (greedy, up to 5 attempts with feedback) vs resampling pass@5 (T = 0.8): 8B 76.8 vs 79.9 (195K vs 219K tokens); 70B 93.3 vs 90.9 (112K vs 231K); Scout 89.6 vs 86.0 (155K vs 255K); Qwen3 92.7 vs 92.7 (102K vs 223K). Self-repair used fewer tokens in all four (11% fewer for 8B up to 54% fewer for Qwen3). Confound stated by the author: feedback vs decoding temperature is not separated (no stochastic-repair arm).
+7. **Prompt ablation (Sec. V.H, Table VI, Fig. 6, pp. 6-7; HumanEval, up to R2, 4 models).** Minimal (error only), explain-then-fix, chain-of-thought repair. R2 cumulative pass@1 with CoT: 8B 77.4, 70B 96.3, Scout 89.6 (no Minimal run, interrupted by rate limits), Qwen3 97.0. CoT Delta minus minimal Delta: +1.8 pp (8B), +5.5 (70B), +3.6 (Qwen3). The R0 value differs across runs of the same model (70B R0 84.1 / 82.9 / 81.1; its R2 ranges 87.8% to 96.3% across strategies), which the author attributes to API non-determinism; so a few-pp differences are within run-to-run noise.
+8. **Thinking mode (Sec. VII, p. 10).** Qwen3 with thinking enabled: final 89.0% vs 92.7% without; bigger repair gain (+14.0 vs +4.9) but R0 falls to 75.0% (vs 87.8%) because reasoning traces break code extraction; 18 problems fail from API errors or extraction. Gemini 2.5 Pro (reasoning native) ends below Flash for the same reason (Sec. V.A).
+9. **Harder benchmark, exploratory (Sec. VI.D, Table VIII, p. 9).** LiveCodeBench, 50 problems (18 easy, 23 medium, 9 hard), 4 models: 8B 10 -> 12, Scout 6 -> 14, Qwen3 8 -> 10, Flash 0 -> 16 (all solved problems came from repair rounds). Each problem is 2 pp, so differences under about 4 pp are not interpretable.
+10. **Failure modes (Sec. VI.C, p. 9).** Success after three consecutive assertion failures (8B, HumanEval/26); error-type mutation across rounds (Scout, HumanEval/77: type error -> assertion -> type error -> pass); "error thrashing" (Maverick, HumanEval/32: assertion -> name error -> assertion -> assertion -> timeout); "universally hard" problems (HumanEval/132, /145) that defeat all models in all rounds.
+11. **Authors guidelines (Sec. VI.E, p. 9).** Always include at least one repair round; two rounds capture most gains; route by error type (for assertion-dominated failures consider sampling multiple independent solutions); CoT repair prompts for >= 32B models.
+
+## Verbatim quotes
+1. (p. 6, Sec. V.F) "for most applications, two repair rounds capture the bulk of the benefit, and additional rounds offer diminishing marginal returns relative to their computational cost."
+2. (p. 5, Sec. V.E) "Assertion errors are the hardest to repair, with success rates around 45%."
+3. (p. 5, Sec. V.E) "The error message provides minimal diagnostic information about what the code computed incorrectly or why, requiring the model to re-examine its logic."
+4. (p. 7, Sec. V.I) "Self-repair is always more token-efficient."
+5. (p. 8, Sec. V.I) "a hybrid approach (repairing diagnosable errors and resampling for assertion errors) may be optimal for weaker models."
+6. (p. 9, Sec. VI.C) "On HumanEval/32, Maverick exhibited error thrashing"
+7. (p. 9, Sec. VII) "Our use of temperature = 0.0 ensures deterministic, reproducible results but eliminates sampling variance, precluding confidence intervals or statistical significance tests."
+
+## Corrections to the current literature-review.md entry (C14)
+Entry: "feeding errors back up to 5 times gains +4.9 to +17.1 pp (HumanEval) and +16 to +30 pp (MBPP), mostly in the first two rounds. Logic (assertion) errors are the hardest, at about 45% repaired." Route: Scite. Depth: abstract. Preprint.
+- **"up to 5 times" is imprecise:** the protocol is up to five *attempts* = initial generation plus up to four repair rounds (R1-R4). The review's "first two rounds" correctly means R1-R2.
+- **"about 45% repaired" is HumanEval pooled over models.** On MBPP the assertion-error repair rate is about 63%. It is a rate over assertion-type failures at the first attempt, not the overall repair rate.
+- **Nuance for the "diminishing returns" claim:** a round-count that "captures most of the benefit" is measured with a trivially cheap, stateless loop (re-generate the whole function from the raw error) on short Python functions with exact unit tests. It says nothing about the gain of a second round on open-ended tasks.
+- **Missing:** greedy decoding, one run per cell, no confidence intervals (one problem = 0.6 pp on HumanEval); the same model's R0 drifted by up to 3 pp across runs on Groq; Groq-served weights not verified; HumanEval/MBPP are easy and likely contaminated.
+- **Missing:** self-repair beats equal-attempt resampling on tokens for the four tested models (and on pass rate for the three stronger ones), the 8B model being the exception; the author suggests repairing diagnosable errors and resampling for assertion-type failures.
+- **Missing:** thinking/reasoning models degrade because long reasoning traces break code extraction (Gemini 2.5 Pro ends below Flash; Qwen3 thinking mode lowers final pass rate), an output-format failure mode relevant to tool-result parsing.
+- Authorship: independent researcher, no affiliation; the entry's "Preprint" label is correct.
+
+## Design relevance
+- **Round budget:** budget two repair rounds per design step as the default and raise it only when a round is cheap (as here); the first repair round gives about half to two-thirds of the total gain and rounds 3-4 often add nothing. Add a stop rule: if the same error class repeats (assertion -> assertion) after two rounds, change tactic (restore snapshot and retry from scratch, or ask for a different probe) rather than loop; this matches the "error thrashing" pattern observed (HumanEval/32).
+- **Feedback type matters more than round count:** failures that carry a specific message (name error, syntax error, a type/compile error from the F# REPL) are repaired ~66-77% of the time; failures that only say "wrong result" ~45%. For Gaia this argues for surfacing F# compiler/type diagnostics and structured eval exceptions verbatim and unsummarised, and for turning "does the game behave correctly" into explicit assertions on world state (so a wrong result becomes a named, specific failure, not a bare mismatch).
+- **Resample vs repair:** when feedback is not diagnostic, a fresh attempt from a restored snapshot may beat further repair for weaker models; this supports pairing the repair loop with snapshot/rollback (F1) so "restart from the last good world" is one cheap call.
+- **Reasoning-mode outputs can break parsers:** keep tool results and tool-call arguments free of long free-text blocks that the model must wrap in markers; strict, short structured inputs reduce extraction failures.
+- **Do not transfer the absolute numbers:** they come from Python function synthesis with exact unit tests; there is no F#/Nu or game-state evidence in this paper.
+
+## Limits / credibility
+- Preprint, single author, no peer review stated; credibility-gate label: `context_or_prior_art_only`.
+- Benchmarks are short single-function Python tasks with exact tests (HumanEval, MBPP Sanitized test split of 257), likely contaminated; one run per cell at greedy decoding; some cells are run-to-run non-reproducible (API-served weights).
+- The independent-researcher compute budget limited coverage: resampling comparison on 4 of 7 models and on HumanEval only; prompt ablation on 4 of 7 models and to R2 only, with Scout's Minimal run missing.
+- The author declares no conflict of interest; free API credits acknowledged from Groq and Google Cloud.
