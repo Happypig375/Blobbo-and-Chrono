@@ -27,7 +27,8 @@ Linux is Xvfb + Mesa lavapipe today; an in-engine Vulkan readback is the next st
         └───────────── JSON lines over $XDG_RUNTIME_DIR/nu-gaia-agent.sock (0600) ─┘
                                         │
  Gaia process ──────────────────────────▼───────────────────────────────────────────
-  AgentBridge (background threads): accept, parse, enqueue, await reply (120 s cap)
+  AgentBridge (background threads): accept, parse, enqueue, await reply (timeout_s, default 120 s; withdraw
+  on timeout); ping + liveness answered here without the editor thread
   editor thread, once per frame in imGuiProcess → agentProcess:
      drain queue → evalInteractive / tryUndo / setTimeAdvancing / tryReloadCode / inspect / symbol …
      deferred replies keyed by editor frame (advance N, wait N)

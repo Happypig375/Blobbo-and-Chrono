@@ -121,7 +121,10 @@ JSON-lines protocol lets B (CLI) and D (MCP) share it, so "both" costs little.
 - *Timeouts*: the transport times out a request after 120 s, but a non-terminating eval keeps the editor thread
   blocked; FSI cancellation does not interrupt running user code on .NET. The practical guard is a supervisor
   that kills and relaunches Gaia (state persists in the project files and Gaia's state file), plus an agent rule
-  of small evals. A watchdog could also be added (an eval that runs past N seconds marks the session as poisoned).
+  of small evals. *Round 2:* this is now built. The editor thread writes a heartbeat; `ping` is answered off the
+  editor thread; a timed-out request is withdrawn so it never runs late; requests fail fast after 10 s without a
+  frame; `gaia_restart` relaunches Gaia (it must SIGKILL, because SDL turns SIGTERM into an ignored quit event).
+  See design.md §5.4.
 - *Exceptions after the eval* (e.g. a bad subscription installed by eval) are already caught by Gaia's
   `runWithCleanUpAndErrorProtection`, which rewinds one snapshot and halts (`Gaia.fs`, §1).
 - *Human visibility*: agent evals appear in the Interactive window output and as "Evaluate F# Expression" entries
@@ -173,7 +176,8 @@ here; the key claim was then verified in the live session.
   (`img/gaia-headless-editor.png`). The machine has an RTX 4090 D, but NVIDIA's Vulkan driver cannot present to
   an Xvfb surface, and a real NVIDIA X server needs root, so software Vulkan is the no-sudo route. It is
   adequate for 2D and small 3D scenes; expect low frame rates for heavy 3D. It is CPU-hungry: the idle editor
-  used ~7 cores (701% CPU), likely because Gaia renders every frame unpaced (`FramePacing = false`).
+  used ~7 cores (701% CPU), likely because Gaia renders every frame unpaced (`FramePacing = false`). With
+  `LP_NUM_THREADS=4` (now the launcher default) it used about 3.7 cores (366%).
 - **Capture [verified].** The spike grabs the Xvfb framebuffer with Pillow's XCB `ImageGrab` after letting two
   frames render (`wait_frames`), in ~0.2 s for 1920x1080. "game" view toggles Gaia's capture mode so only the
   viewport is shown. Frame sequences: `gaia_frames` alternates `advance k` with captures and returns one
