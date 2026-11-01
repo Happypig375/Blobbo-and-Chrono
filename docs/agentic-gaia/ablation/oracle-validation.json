@@ -1,0 +1,86 @@
+[
+ {
+  "task": "rows",
+  "pristine": {
+   "passed": false,
+   "stage": "oracle",
+   "detail": "bricks+broken=30 rows=6 gaps=[16.0] topEdge=152.0"
+  },
+  "reference": {
+   "passed": true,
+   "stage": "oracle",
+   "detail": "bricks+broken=35 rows=7 gaps=[16.0] topEdge=168.0"
+  },
+  "valid": true
+ },
+ {
+  "task": "speed",
+  "pristine": {
+   "passed": false,
+   "stage": "oracle",
+   "detail": "passed=False failedAt=1 speed=150.0f  "
+  },
+  "reference": {
+   "passed": true,
+   "stage": "oracle",
+   "detail": "passed=True failedAt=None speed=225.0000153f  "
+  },
+  "valid": true
+ },
+ {
+  "task": "autopilot",
+  "pristine": {
+   "passed": false,
+   "stage": "oracle",
+   "detail": "passed=False failedAt=92 (lives,score)=(4, 0)"
+  },
+  "reference": {
+   "passed": true,
+   "stage": "oracle",
+   "detail": "passed=True failedAt=None (lives,score)=(5, 400); passed=True failedAt=None (lives,score)=(5, 600); score=600"
+  },
+  "valid": true
+ },
+ {
+  "task": "rainbow",
+  "pristine": {
+   "passed": false,
+   "stage": "oracle",
+   "detail": "rows=6 y=64.0:redX(n=5,h=218) y=80.0:orangeX(n=5,h=36) y=96.0:yellowX(n=5,h=300) y=112.0:greenX(n=5,h=245) y=128.0:blueX(n=5,h=338) y=144.0:violetX(n=5,h=357)"
+  },
+  "reference": {
+   "passed": true,
+   "stage": "oracle",
+   "detail": "rows=6 y=64.0:redok(n=1,h=0) y=80.0:orangeok(n=1,h=30) y=96.0:yellowok(n=1,h=60) y=112.0:greenok(n=1,h=120) y=128.0:blueok(n=1,h=228) y=144.0:violetok(n=1,h=273)"
+  },
+  "valid": true
+ },
+ {
+  "task": "columns",
+  "pristine": {
+   "passed": false,
+   "stage": "oracle",
+   "detail": "rows=6 bricks+broken=30 y=64.0: n=5 x=[-128.0, -64.0, 0.0, 64.0, 128.0] w=[64.0] y=80.0: n=5 x=[-128.0, -64.0, 0.0, 64.0, 128.0] w=[64.0] y=96.0: n=5 x=[-128.0, -64.0, 0.0, 64.0, 128.0] w=[64.0]"
+  },
+  "reference": {
+   "passed": true,
+   "stage": "oracle",
+   "detail": "rows=6 bricks+broken=36"
+  },
+  "valid": true
+ },
+ {
+  "task": "ball2",
+  "pristine": {
+   "passed": false,
+   "stage": "oracle",
+   "detail": "passed=False failedAt=1 balls=[|(\"Ball\", <3.6616042, 36.048325, 0>, 150.0f)|]  "
+  },
+  "reference": {
+   "passed": true,
+   "stage": "oracle",
+   "detail": "passed=True failedAt=None balls=[|(\"Ball\", <4.549399, 36.357277, 0>, 150.0f);\n  (\"Ball2\", <42.614067, 36.719845, 0>, 150.0f)|]  "
+  },
+  "valid": true
+ }
+]
