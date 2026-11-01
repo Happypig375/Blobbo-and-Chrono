@@ -4426,9 +4426,107 @@ DockSpace           ID=0x7C6B3D9B Window=0xA87D555D Pos=0,0 Size=1920,1080 Split
         let diagnostics = checkResults.Diagnostics |> Array.map EvalDiagnostic.make
         ("overloads", box overloads) :: ("diagnostics", box diagnostics) :: symbolFields
 
+    /// Encode tightly packed RGBA8 rows as an RGB PNG (alpha dropped so that captures never come out transparent).
+    let private agentEncodePng (width : int) (height : int) (rgba : byte array) =
+        let crcTable =
+            Array.init 256 (fun n ->
+                let mutable c = uint32 n
+                for _ in 0 .. 7 do c <- if c &&& 1u <> 0u then 0xEDB88320u ^^^ (c >>> 1) else c >>> 1
+                c)
+        let crc (bytes : byte array) =
+            let mutable c = 0xFFFFFFFFu
+            for b in bytes do c <- crcTable[int ((c ^^^ uint32 b) &&& 0xFFu)] ^^^ (c >>> 8)
+            c ^^^ 0xFFFFFFFFu
+        let bigEndian (value : uint32) = [|byte (value >>> 24); byte (value >>> 16); byte (value >>> 8); byte value|]
+        use output = new MemoryStream ()
+        let writeChunk (kind : string) (data : byte array) =
+            let kindAndData = Array.append (Encoding.ASCII.GetBytes kind) data
+            output.Write (bigEndian (uint32 data.Length), 0, 4)
+            output.Write (kindAndData, 0, kindAndData.Length)
+            output.Write (bigEndian (crc kindAndData), 0, 4)
+        output.Write ([|0x89uy; 0x50uy; 0x4Euy; 0x47uy; 0x0Duy; 0x0Auy; 0x1Auy; 0x0Auy|], 0, 8)
+        writeChunk "IHDR" (Array.concat [bigEndian (uint32 width); bigEndian (uint32 height); [|8uy; 2uy; 0uy; 0uy; 0uy|]])
+        let raw = Array.zeroCreate<byte> (height * (1 + width * 3))
+        for y in 0 .. dec height do
+            let rowStart = y * (1 + width * 3) // filter byte 0 (none) then RGB triples
+            for x in 0 .. dec width do
+                let source = (y * width + x) * 4
+                let target = rowStart + 1 + x * 3
+                raw[target] <- rgba[source]
+                raw[target + 1] <- rgba[source + 1]
+                raw[target + 2] <- rgba[source + 2]
+        use compressed = new MemoryStream ()
+        do (use zlib = new Compression.ZLibStream (compressed, Compression.CompressionLevel.Fastest, true)
+            zlib.Write (raw, 0, raw.Length))
+        writeChunk "IDAT" (compressed.ToArray ())
+        writeChunk "IEND" [||]
+        output.ToArray ()
+
+    /// Every simulant's properties as symbolic strings, keyed by simulant path (for checkpoints and diffs).
+    let private agentPropertyMap (world : World) =
+        let map = Dictionary<string, Dictionary<string, string>> ()
+        let add (simulant : Simulant) =
+            let properties = Dictionary<string, string> ()
+            for property in agentInspect simulant world do
+                properties[property["name"] :?> string] <- property["value"] :?> string
+            map[string simulant] <- properties
+        add Nu.Game.Handle
+        for screen in World.getScreens world do
+            add screen
+            for group in World.getGroups screen world do
+                add group
+                for entity in World.getEntitiesDepthFirst group world do add entity
+        map
+
+    /// Named checkpoints outside the linear undo stack: the world state plus its property map.
+    let private AgentCheckpoints = Dictionary<string, WorldState * Dictionary<string, Dictionary<string, string>>> ()
+    let private AgentCheckpointMax = 16
+
+    let private agentDiff (before : Dictionary<string, Dictionary<string, string>>) (after : Dictionary<string, Dictionary<string, string>>) (limit : int) =
+        let added = [for path in after.Keys do if not (before.ContainsKey path) then yield path]
+        let removed = [for path in before.Keys do if not (after.ContainsKey path) then yield path]
+        let changed = List<IDictionary<string, obj>> ()
+        let mutable changedTotal = 0
+        for entry in after do
+            match before.TryGetValue entry.Key with
+            | (true, propertiesBefore) ->
+                for property in entry.Value do
+                    let valueBefore = match propertiesBefore.TryGetValue property.Key with | (true, value) -> value | _ -> null
+                    if valueBefore <> property.Value then
+                        changedTotal <- inc changedTotal
+                        if changed.Count < limit then
+                            changed.Add (dict ["path", box entry.Key; "property", box property.Key; "before", box valueBefore; "after", box property.Value])
+            | _ -> ()
+        [("added", box added)
+         ("removed", box removed)
+         ("changed", box changed)
+         ("changedTotal", box changedTotal)
+         ("truncated", box (changedTotal > changed.Count))]
+
+    /// Compile an F# expression over 'world' once, as a function value the editor can call every frame.
+    let private agentCompileWorldFunction<'a> (body : string) (resultType : string) =
+        ensureInteractiveInitialized ()
+        // a named function with the body indented under it, so multi-line bodies keep F#'s offside rule
+        let indented = body.Replace("\r\n", "\n").Split '\n' |> Array.map (fun line -> "    " + line) |> String.concat "\n"
+        let code = "let __agentWorldFunction (world : Nu.World) : " + resultType + " =\n" + indented + "\n"
+        let (definition, definitionDiagnostics) = FsiSession.EvalInteractionNonThrowing code
+        let (result, diagnostics) =
+            match definition with
+            | Choice1Of2 _ -> FsiSession.EvalExpressionNonThrowing "__agentWorldFunction"
+            | Choice2Of2 exn -> (Choice2Of2 exn, definitionDiagnostics)
+        FsiErrorStream.GetStringBuilder().Clear() |> ignore<StringBuilder>
+        FsiOutStream.GetStringBuilder().Clear() |> ignore<StringBuilder>
+        match result with
+        | Choice1Of2 (Some value) ->
+            match value.ReflectionValue with
+            | :? (World -> 'a) as func -> Right func
+            | other -> Left ("Expression compiled to an unexpected type: " + (if isNull other then "null" else other.GetType().Name), diagnostics)
+        | Choice1Of2 None -> Left ("Expression produced no value.", diagnostics)
+        | Choice2Of2 exn -> Left (exn.Message, diagnostics)
+
     let private agentProcessRequest (request : AgentRequest) (world : World) =
         match request.Op with
-        | op when RecoverableExceptionOpt.IsSome && not (List.contains op ["status"; "log"; "hierarchy"; "inspect"; "symbol"; "resolve_exception"]) ->
+        | op when RecoverableExceptionOpt.IsSome && not (List.contains op ["status"; "log"; "hierarchy"; "inspect"; "symbol"; "diff"; "capture"; "resolve_exception"]) ->
             request.Reply.TrySetResult (AgentBridge.error request.Id "Gaia's 'Unhandled Exception!' dialog is open; read status.pendingException, then call resolve_exception with choice hard_rewind (undo the last edit) or ignore.") |> ignore<bool>
         | "resolve_exception" ->
             match (RecoverableExceptionOpt, agentArgString "choice" request) with
@@ -4441,8 +4539,8 @@ DockSpace           ID=0x7C6B3D9B Window=0xA87D555D Pos=0,0 Size=1920,1080 Split
                 RecoverableExceptionOpt <- None
                 agentReply request (agentStatus world)
             | (Some _, _) -> request.Reply.TrySetResult (AgentBridge.error request.Id "resolve_exception requires args.choice = hard_rewind | ignore") |> ignore<bool>
-        | "advance" | "set_advancing" when AgentTimeControlBusy ->
-            request.Reply.TrySetResult (AgentBridge.error request.Id "Another advance/set_advancing is still in flight; wait for its reply.") |> ignore<bool>
+        | "advance" | "set_advancing" | "assert" when AgentTimeControlBusy ->
+            request.Reply.TrySetResult (AgentBridge.error request.Id "Another advance/set_advancing/assert is still in flight; wait for its reply.") |> ignore<bool>
         | "status" ->
             agentReply request (agentStatus world)
         | "eval" ->
@@ -4514,6 +4612,117 @@ DockSpace           ID=0x7C6B3D9B Window=0xA87D555D Pos=0,0 Size=1920,1080 Split
             | Some simulant when World.getExists simulant world ->
                 agentReply request [("path", box (string simulant)); ("properties", box (agentInspect simulant world))]
             | _ -> request.Reply.TrySetResult (AgentBridge.error request.Id ("No such simulant: " + path)) |> ignore<bool>
+        | "capture" ->
+            // read the rendered frame back from the GPU (no X server involved) after letting 'settle' frames render
+            let settle = Math.Clamp (agentArgInt "settle" 2 request, 0, 60)
+            let rec poll (task : Threading.Tasks.Task<Nu.Vulkan.CapturedFrame>) deadline (world : World) =
+                if task.IsCompletedSuccessfully then
+                    let frame = task.Result
+                    let png = agentEncodePng frame.Width frame.Height frame.Pixels
+                    agentReply request
+                        ([("png", box (Convert.ToBase64String png))
+                          ("width", box frame.Width)
+                          ("height", box frame.Height)] @ agentStatus world)
+                elif task.IsCompleted then
+                    let message = match task.Exception with null -> "cancelled" | exn -> exn.InnerException.Message
+                    request.Reply.TrySetResult (AgentBridge.error request.Id ("Frame capture failed: " + message)) |> ignore<bool>
+                elif AgentFrame >= deadline then
+                    request.Reply.TrySetResult (AgentBridge.error request.Id "Frame capture did not complete within 120 frames (is the window minimized?).") |> ignore<bool>
+                else AgentDeferred <- (AgentFrame + 1L, poll task deadline) :: AgentDeferred
+            let start (world : World) = poll (Nu.Vulkan.FrameCapture.request ()) (AgentFrame + 120L) world
+            if settle = 0 then start world
+            else AgentDeferred <- (AgentFrame + int64 settle, start) :: AgentDeferred
+        | "checkpoint" ->
+            let names () = List.ofSeq AgentCheckpoints.Keys
+            match agentArgString "name" request with
+            | Some name when name.Length > 0 && name.Length <= 64 ->
+                if agentArgString "delete" request = Some "true" then
+                    let deleted = AgentCheckpoints.Remove name
+                    agentReply request [("deleted", box deleted); ("checkpoints", box (names ()))]
+                elif agentArgString "restore" request = Some "true" then
+                    match AgentCheckpoints.TryGetValue name with
+                    | (true, (state, _)) when not (World.getImperative world) ->
+                        snapshot RestorePoint world // the restore itself is undoable
+                        World.switch state world
+                        selectScreen false (World.getSelectedScreen world)
+                        if not (SelectedGroup.GetExists world) || not (SelectedGroup.GetSelected world) then
+                            selectGroup false (Seq.head (World.getGroups SelectedScreen world))
+                        match SelectedEntityOpt with
+                        | Some entity when not (entity.GetExists world) || entity.Group <> SelectedGroup -> selectEntityOpt None world
+                        | Some _ | None -> ()
+                        agentReply request (("restored", box name) :: agentStatus world)
+                    | (true, _) -> request.Reply.TrySetResult (AgentBridge.error request.Id "Checkpoints cannot be restored in imperative mode.") |> ignore<bool>
+                    | (false, _) -> request.Reply.TrySetResult (AgentBridge.error request.Id ("No such checkpoint: " + name + "; existing: " + String.Join (", ", names ()))) |> ignore<bool>
+                elif not (AgentCheckpoints.ContainsKey name) && AgentCheckpoints.Count >= AgentCheckpointMax then
+                    request.Reply.TrySetResult (AgentBridge.error request.Id ("At most " + string AgentCheckpointMax + " checkpoints; delete one first.")) |> ignore<bool>
+                else
+                    let properties = agentPropertyMap world
+                    AgentCheckpoints[name] <- (world.CurrentState, properties)
+                    agentReply request [("checkpoint", box name); ("simulants", box properties.Count); ("checkpoints", box (names ()))]
+            | _ -> request.Reply.TrySetResult (AgentBridge.error request.Id "checkpoint requires args.name (1-64 characters)") |> ignore<bool>
+        | "diff" ->
+            let limit = Math.Clamp (agentArgInt "limit" 200 request, 1, 2000)
+            match agentArgString "from" request with
+            | Some name ->
+                match AgentCheckpoints.TryGetValue name with
+                | (true, (_, before)) -> agentReply request (("from", box name) :: agentDiff before (agentPropertyMap world) limit)
+                | (false, _) -> request.Reply.TrySetResult (AgentBridge.error request.Id ("No such checkpoint: " + name)) |> ignore<bool>
+            | None -> request.Reply.TrySetResult (AgentBridge.error request.Id "diff requires args.from (a checkpoint name)") |> ignore<bool>
+        | "assert" ->
+            // check an F# boolean over 'world' once per frame for N frames (advancing game time when N > 1)
+            let compileFailure (message : string) (diagnostics : FSharp.Compiler.Diagnostics.FSharpDiagnostic array) =
+                agentReply request
+                    ([("passed", box false)
+                      ("kind", box "compile_error")
+                      ("message", box message)
+                      ("diagnostics", box (Array.map EvalDiagnostic.make diagnostics))] @ agentStatus world)
+            match agentArgString "predicate" request with
+            | None -> request.Reply.TrySetResult (AgentBridge.error request.Id "assert requires args.predicate (an F# bool expression over 'world')") |> ignore<bool>
+            | Some predicate ->
+                match agentCompileWorldFunction<bool> predicate "bool" with
+                | Left (message, diagnostics) -> compileFailure message diagnostics
+                | Right check ->
+                    let probeResult =
+                        match agentArgString "probe" request with
+                        | Some probe ->
+                            match agentCompileWorldFunction<obj> ("box (" + probe + ")") "obj" with
+                            | Right probe -> Right (Some probe)
+                            | Left failure -> Left failure
+                        | None -> Right None
+                    match probeResult with
+                    | Left (message, diagnostics) -> compileFailure ("probe: " + message) diagnostics
+                    | Right probeOpt ->
+                        let frames = Math.Clamp (agentArgInt "frames" 1 request, 1, 600)
+                        let advance = frames > 1 && agentArgString "advance" request <> Some "false"
+                        let wasAdvancing = world.TimeAdvancing
+                        let started = ref false // time is started only after the first check passes
+                        if advance then AgentTimeControlBusy <- true
+                        let probeValue world =
+                            match probeOpt with
+                            | Some probe -> try box (sprintf "%A" (probe world)) with exn -> box ("<probe failed: " + exn.Message + ">")
+                            | None -> null
+                        let finish (fields : (string * obj) list) (world : World) =
+                            if started.Value then World.setTimeAdvancing false world
+                            // NOTE: halting is resolved at the next frame boundary, so reply one frame later (as advance does).
+                            AgentDeferred <-
+                                (AgentFrame + 1L, fun world ->
+                                    if advance then AgentTimeControlBusy <- false
+                                    agentReply request (fields @ agentStatus world)) :: AgentDeferred
+                        let rec step index (world : World) =
+                            match (try Choice1Of2 (check world) with exn -> Choice2Of2 exn) with
+                            | Choice1Of2 true when index >= frames ->
+                                finish [("passed", box true); ("checkedFrames", box index); ("probe", probeValue world)] world
+                            | Choice1Of2 true ->
+                                if advance && not wasAdvancing && not started.Value then
+                                    snapshot Advance world // undoable, like advance
+                                    World.setTimeAdvancing true world
+                                    started.Value <- true
+                                AgentDeferred <- (AgentFrame + 1L, step (inc index)) :: AgentDeferred
+                            | Choice1Of2 false ->
+                                finish [("passed", box false); ("failedAtFrame", box index); ("checkedFrames", box index); ("updateTimeAtFailure", box world.UpdateTime); ("probe", probeValue world)] world
+                            | Choice2Of2 exn ->
+                                finish [("passed", box false); ("failedAtFrame", box index); ("checkedFrames", box index); ("exception", box (scstring exn)); ("probe", probeValue world)] world
+                        step 1 world
         | op ->
             request.Reply.TrySetResult (AgentBridge.error request.Id ("Unknown op: " + op)) |> ignore<bool>
 

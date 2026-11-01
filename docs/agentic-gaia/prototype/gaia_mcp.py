@@ -27,6 +27,16 @@ LOG_DIR = os.environ.get("GAIA_LOG_DIR") or os.path.join(private_runtime_dir(), 
 if not os.environ.get("XAUTHORITY") and os.path.exists(os.path.join(LOG_DIR, "xauth")):
     os.environ["XAUTHORITY"] = os.path.join(LOG_DIR, "xauth")  # cookie written by run_gaia_headless.sh
 LAUNCHER = os.path.join(os.path.dirname(os.path.abspath(__file__)), "run_gaia_headless.sh")
+# engine: read the rendered frame back from Vulkan (exact, no X); x11: grab the X display and crop to the window
+CAPTURE = os.environ.get("NU_GAIA_CAPTURE", "engine")
+# Tool sets for ablation runs (design.md section 7): each level adds one feedback channel to the previous one.
+TOOLSET_LEVELS = {
+    "eval": ["gaia_status", "gaia_eval", "gaia_ping", "gaia_resolve_exception", "gaia_restart", "gaia_undo",
+             "gaia_redo", "gaia_advance", "gaia_reload_code", "gaia_log"],
+    "inspect": ["gaia_hierarchy", "gaia_inspect", "gaia_symbol", "nu_docs", "gaia_checkpoint", "gaia_diff", "gaia_assert"],
+    "screenshot": ["gaia_screenshot"],
+    "frames": ["gaia_frames"],
+}
 
 TOOLS = [
     {
@@ -155,6 +165,50 @@ TOOLS = [
         "inputSchema": {"type": "object", "properties": {"name": {"type": "string"}}, "required": ["name"]},
     },
     {
+        "name": "gaia_checkpoint",
+        "description": (
+            "Save a named checkpoint of the whole world (kept outside the undo stack; at most 16), restore one "
+            "(restore=true; the restore itself is undoable), or delete one (delete=true). Use before risky edits, "
+            "and with gaia_diff to see exactly what an edit or a run of game time changed."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {"name": {"type": "string", "maxLength": 64}, "restore": {"type": "boolean"}, "delete": {"type": "boolean"}},
+            "required": ["name"],
+        },
+    },
+    {
+        "name": "gaia_diff",
+        "description": (
+            "Compare the current world with a checkpoint: simulants added and removed, and every changed property "
+            "with its value before and after (symbolic text). `limit` caps the changed list (default 200)."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {"from": {"type": "string"}, "limit": {"type": "integer", "minimum": 1, "maximum": 2000}},
+            "required": ["from"],
+        },
+    },
+    {
+        "name": "gaia_assert",
+        "description": (
+            "Check an F# bool expression over `world` once per frame for `frames` frames (game time advances when "
+            "frames > 1; undoable). Stops at the first false or exception and reports that frame. `probe` is an "
+            "optional F# expression of any type, printed at the end or at the failure (e.g. a position). Example: "
+            "predicate `(Simulants.Gameplay / \"Scene\" / \"Ball\").GetPosition world |> fun p -> p.Y > -300.0f`."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "predicate": {"type": "string"},
+                "frames": {"type": "integer", "minimum": 1, "maximum": 600},
+                "probe": {"type": "string"},
+                "advance": {"type": "boolean"},
+            },
+            "required": ["predicate"],
+        },
+    },
+    {
         "name": "nu_docs",
         "description": "Search Nu API XML documentation (member ids and summaries) by regex/keywords. Returns up to `limit` members.",
         "inputSchema": {
@@ -165,6 +219,21 @@ TOOLS = [
     },
 ]
 
+
+def _toolset():
+    """NU_GAIA_TOOLSET = eval | inspect | screenshot | frames | all (default): the tools an ablation condition sees."""
+    level = os.environ.get("NU_GAIA_TOOLSET", "all")
+    if level == "all":
+        return [tool["name"] for tool in TOOLS]
+    names, order = [], list(TOOLSET_LEVELS)
+    if level not in order:
+        raise SystemExit(f"NU_GAIA_TOOLSET must be one of {order + ['all']}")
+    for key in order[: order.index(level) + 1]:
+        names += TOOLSET_LEVELS[key]
+    return names
+
+
+ENABLED = set(_toolset())
 _bridge = GaiaBridge()
 _docs = None
 
@@ -187,12 +256,26 @@ def _call(op, **args):
     return reply
 
 
+def _engine_capture(max_width):
+    """Read the next rendered frame back from Gaia's Vulkan renderer (exact pixels; no X server needed)."""
+    from PIL import Image
+
+    reply = _call("capture", settle=2)
+    image = Image.open(io.BytesIO(base64.b64decode(reply["png"]))).convert("RGB")
+    if max_width and image.width > max_width:
+        image = image.resize((max_width, round(image.height * max_width / image.width)))
+    return image
+
+
 def _capture(view, max_width):
     if view == "game":
         _call("view_mode", mode="capture")
     try:
-        status = _call("wait_frames", frames=2)
-        image = screenshot(max_width=max_width, window=status.get("window"))  # crop to Gaia's window
+        if CAPTURE == "engine":
+            image = _engine_capture(max_width)
+        else:
+            status = _call("wait_frames", frames=2)
+            image = screenshot(max_width=max_width, window=status.get("window"))  # crop to Gaia's window
     except Exception:
         if view == "game":
             try:
@@ -263,6 +346,23 @@ def _load_docs():
 
 
 def call_tool(name, args):
+    if name not in ENABLED:
+        return _text(f"unknown tool {name}", is_error=True)
+    if name == "gaia_checkpoint":
+        return _text(_call("checkpoint", name=args["name"], restore=bool(args.get("restore")), delete=bool(args.get("delete"))))
+    if name == "gaia_diff":
+        reply = _call("diff", **{"from": args["from"], "limit": int(args.get("limit", 200))})
+        return _text({k: reply.get(k) for k in ("from", "added", "removed", "changed", "changedTotal", "truncated")})
+    if name == "gaia_assert":
+        call = {"predicate": args["predicate"], "frames": int(args.get("frames", 1))}
+        if args.get("probe"):
+            call["probe"] = args["probe"]
+        if args.get("advance") is False:
+            call["advance"] = False
+        reply = _bridge.request("assert", timeout_s=float(args.get("timeout_s") or 60.0), **call)
+        keys = ("passed", "kind", "message", "diagnostics", "checkedFrames", "failedAtFrame", "updateTimeAtFailure",
+                "exception", "probe", "frame", "updateTime", "error", "timedOut")
+        return _text({k: reply.get(k) for k in keys if reply.get(k) is not None}, is_error=not reply.get("ok") or reply.get("kind") == "compile_error")
     if name == "gaia_status":
         return _text(_call("status"))
     if name == "gaia_eval":
@@ -352,7 +452,7 @@ def handle(msg):
             "serverInfo": {"name": "nu-gaia", "version": "0.1.0-spike"},
         }
     elif method == "tools/list":
-        result = {"tools": TOOLS}
+        result = {"tools": [tool for tool in TOOLS if tool["name"] in ENABLED]}
     elif method == "tools/call":
         params = msg.get("params", {})
         try:

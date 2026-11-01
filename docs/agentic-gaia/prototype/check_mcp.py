@@ -81,7 +81,7 @@ check("initialize", init["result"]["serverInfo"]["name"] == "nu-gaia")
 server.stdin.write(json.dumps({"jsonrpc": "2.0", "method": "notifications/initialized"}) + "\n")
 server.stdin.flush()
 tools = rpc("tools/list")["result"]["tools"]
-check("tools/list", len(tools) >= 16, f"{len(tools)} tools")
+check("tools/list", len(tools) == 19, f"{len(tools)} tools")
 
 status = json.loads(text_of(tool("gaia_status")))
 check("status: project loaded, time halted", status["projectDllPath"].endswith("Breakout ImSim.dll") and not status["advancing"])
@@ -149,6 +149,62 @@ check("gaia_symbol: F# signature + Nu.xml doc + declaration", "Group" in ov.get(
 
 r = tool("nu_docs", query="createEntity", limit=5)
 check("nu_docs finds createEntity", "createEntity" in text_of(r), text_of(r).splitlines()[0][:100] if text_of(r) else "")
+
+# --- round 3: in-engine frame readback, checkpoints, diffs, asserts, tool sets
+sys.path.insert(0, HERE)
+from gaia_bridge import GaiaBridge, screenshot  # noqa: E402
+from PIL import Image, ImageChops  # noqa: E402
+
+side = GaiaBridge(path=env["NU_GAIA_AGENT_SOCKET"])
+t0 = time.time()
+cap = side.request("capture", settle=2)
+engine = Image.open(io.BytesIO(base64.b64decode(cap.get("png", "")))).convert("RGB") if cap.get("ok") else None
+seconds = time.time() - t0
+x11 = screenshot(display=env["DISPLAY"], window=side.request("wait_frames", frames=2).get("window")).convert("RGB")
+same = engine is not None and engine.size == x11.size and ImageChops.difference(engine, x11).getbbox() is None
+check("engine frame readback equals the X11 window grab", same, f"{engine.size if engine else cap.get('error')} in {seconds:.2f}s")
+if engine is not None:
+    engine.save(os.path.join(OUT, "5-engine-capture.png"))
+side.close()
+
+r = tool("gaia_eval", code="open Breakout\nGame.SetGameState Gameplay world")
+tool("gaia_advance", frames=150)
+selected = json.loads(text_of(tool("gaia_status")))["selectedScreen"]
+check("eval switches to the gameplay screen", not r["isError"] and selected == "Game/Gameplay", selected)
+r = json.loads(text_of(tool("gaia_checkpoint", name="c1")))
+check("checkpoint saved", r.get("checkpoint") == "c1" and r.get("simulants", 0) > 20, f"{r.get('simulants')} simulants")
+tool("gaia_advance", frames=30)
+r = json.loads(text_of(tool("gaia_diff", **{"from": "c1"})))
+moved = [c for c in r.get("changed", []) if c["path"].endswith("/Ball") and c["property"] == "Position"]
+check("diff after 30 frames shows the ball's position change", moved and moved[0]["before"] != moved[0]["after"], json.dumps(moved)[:160])
+ball = '(Simulants.Gameplay / "Scene" / "Ball")'
+r = tool("gaia_assert", predicate=f"{ball}.GetExists world")
+check("assert passes on one frame", not r["isError"] and json.loads(text_of(r)).get("passed") is True)
+t0 = json.loads(text_of(tool("gaia_status")))["updateTime"]
+r = json.loads(text_of(tool("gaia_assert", predicate=f"({ball}.GetPosition world).Y > -1000.0f", frames=120, probe=f"{ball}.GetPosition world")))
+after = json.loads(text_of(tool("gaia_status")))
+check("assert over 120 frames advances time, passes, then halts", r.get("passed") is True and r.get("checkedFrames") == 120
+      and after["updateTime"] - t0 >= 110 and not after["advancing"], f"updateTime {t0} -> {after['updateTime']}, probe {r.get('probe')}")
+r = json.loads(text_of(tool("gaia_assert", predicate=f"({ball}.GetPosition world).Y > 10000.0f", frames=60, probe=f"{ball}.GetPosition world")))
+check("failing assert reports frame 1 and the probe, and leaves time halted", r.get("passed") is False and r.get("failedAtFrame") == 1
+      and r.get("probe") and not json.loads(text_of(tool("gaia_status")))["advancing"], json.dumps(r)[:160])
+r = tool("gaia_assert", predicate="world.NoSuchMember")
+check("assert compile error -> isError + diagnostics", r["isError"] and json.loads(text_of(r)).get("kind") == "compile_error")
+tool("gaia_checkpoint", name="c1", restore=True)
+r = json.loads(text_of(tool("gaia_diff", **{"from": "c1"})))
+check("restore brings the world back to the checkpoint (empty diff)", r.get("changedTotal") == 0 and not r.get("added") and not r.get("removed"))
+r = json.loads(text_of(tool("gaia_checkpoint", name="c1", delete=True)))
+check("checkpoint deleted", r.get("deleted") is True and r.get("checkpoints") == [])
+
+limited = subprocess.Popen([sys.executable, "-I", os.path.join(HERE, "gaia_mcp.py")], stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                           env=dict(env, NU_GAIA_TOOLSET="eval"), text=True)
+limited.stdin.write(json.dumps({"jsonrpc": "2.0", "id": 1, "method": "tools/list"}) + "\n"
+                    + json.dumps({"jsonrpc": "2.0", "id": 2, "method": "tools/call", "params": {"name": "gaia_screenshot", "arguments": {}}}) + "\n")
+limited.stdin.close()
+listed = json.loads(limited.stdout.readline())["result"]["tools"]
+refused = json.loads(limited.stdout.readline())["result"]
+limited.wait(timeout=10)
+check("tool set 'eval' hides inspection and vision tools", len(listed) == 10 and refused["isError"], f"{len(listed)} tools")
 
 # --- liveness: a non-terminating eval blocks the editor thread; the transport must say so and recover
 if os.environ.get("NU_GAIA_CHECK_HANG", "1") != "0":

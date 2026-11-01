@@ -27,7 +27,7 @@
     }
    }
   },
-  "seconds": 0.036
+  "seconds": 0.038
  },
  {
   "request": {
@@ -255,6 +255,74 @@
       }
      },
      {
+      "name": "gaia_checkpoint",
+      "description": "Save a named checkpoint of the whole world (kept outside the undo stack; at most 16), restore one (restore=true; the restore itself is undoable), or delete one (delete=true). Use before risky edits, and with gaia_diff to see exactly what an edit or a run of game time changed.",
+      "inputSchema": {
+       "type": "object",
+       "properties": {
+        "name": {
+         "type": "string",
+         "maxLength": 64
+        },
+        "restore": {
+         "type": "boolean"
+        },
+        "delete": {
+         "type": "boolean"
+        }
+       },
+       "required": [
+        "name"
+       ]
+      }
+     },
+     {
+      "name": "gaia_diff",
+      "description": "Compare the current world with a checkpoint: simulants added and removed, and every changed property with its value before and after (symbolic text). `limit` caps the changed list (default 200).",
+      "inputSchema": {
+       "type": "object",
+       "properties": {
+        "from": {
+         "type": "string"
+        },
+        "limit": {
+         "type": "integer",
+         "minimum": 1,
+         "maximum": 2000
+        }
+       },
+       "required": [
+        "from"
+       ]
+      }
+     },
+     {
+      "name": "gaia_assert",
+      "description": "Check an F# bool expression over `world` once per frame for `frames` frames (game time advances when frames > 1; undoable). Stops at the first false or exception and reports that frame. `probe` is an optional F# expression of any type, printed at the end or at the failure (e.g. a position). Example: predicate `(Simulants.Gameplay / \"Scene\" / \"Ball\").GetPosition world |> fun p -> p.Y > -300.0f`.",
+      "inputSchema": {
+       "type": "object",
+       "properties": {
+        "predicate": {
+         "type": "string"
+        },
+        "frames": {
+         "type": "integer",
+         "minimum": 1,
+         "maximum": 600
+        },
+        "probe": {
+         "type": "string"
+        },
+        "advance": {
+         "type": "boolean"
+        }
+       },
+       "required": [
+        "predicate"
+       ]
+      }
+     },
+     {
       "name": "nu_docs",
       "description": "Search Nu API XML documentation (member ids and summaries) by regex/keywords. Returns up to `limit` members.",
       "inputSchema": {
@@ -296,13 +364,13 @@
     "content": [
      {
       "type": "text",
-      "text": "{\n \"id\": \"1\",\n \"ok\": true,\n \"frame\": 2,\n \"updateTime\": 0,\n \"advancing\": false,\n \"imperative\": false,\n \"projectDllPath\": \"/home/happypig375/workspace/nu-gaia-agentic/Projects/Breakout ImSim/bin/Debug/net10.0/Breakout ImSim.dll\",\n \"selectedScreen\": \"Game/Splash\",\n \"selectedGroup\": \"Game/Splash/SlideGroup\",\n \"selectedEntity\": null,\n \"undoDepth\": 0,\n \"logSeq\": 1,\n \"pendingException\": null,\n \"window\": {\n  \"x\": 320,\n  \"y\": 180,\n  \"width\": 1280,\n  \"height\": 720\n }\n}"
+      "text": "{\n \"id\": \"1\",\n \"ok\": true,\n \"frame\": 262,\n \"updateTime\": 0,\n \"advancing\": false,\n \"imperative\": false,\n \"projectDllPath\": \"/home/happypig375/workspace/nu-gaia-agentic/Projects/Breakout ImSim/bin/Debug/net10.0/Breakout ImSim.dll\",\n \"selectedScreen\": \"Game/Splash\",\n \"selectedGroup\": \"Game/Splash/SlideGroup\",\n \"selectedEntity\": null,\n \"undoDepth\": 0,\n \"logSeq\": 1,\n \"pendingException\": null,\n \"window\": {\n  \"x\": 320,\n  \"y\": 180,\n  \"width\": 1280,\n  \"height\": 720\n }\n}"
      }
     ],
     "isError": false
    }
   },
-  "seconds": 0.523
+  "seconds": 0.097
  },
  {
   "request": {
@@ -323,13 +391,13 @@
     "content": [
      {
       "type": "text",
-      "text": "{\n \"kind\": \"ok\",\n \"output\": \"val it: int = 5\",\n \"frame\": 3,\n \"undoDepth\": 1\n}"
+      "text": "{\n \"kind\": \"ok\",\n \"output\": \"val it: int = 5\",\n \"frame\": 266,\n \"undoDepth\": 1\n}"
      }
     ],
     "isError": false
    }
   },
-  "seconds": 2.651
+  "seconds": 2.415
  },
  {
   "request": {
@@ -350,13 +418,13 @@
     "content": [
      {
       "type": "text",
-      "text": "{\n \"kind\": \"compile_error\",\n \"diagnostics\": [\n  {\n   \"Severity\": \"Error\",\n   \"Code\": \"FS0001\",\n   \"File\": \"input.fsx\",\n   \"StartLine\": 1,\n   \"StartColumn\": 16,\n   \"EndLine\": 1,\n   \"EndColumn\": 22,\n   \"Message\": \"This expression was expected to have type\\n    'int'    \\nbut here has type\\n    'string'    \"\n  }\n ],\n \"frame\": 5,\n \"undoDepth\": 2\n}"
+      "text": "{\n \"kind\": \"compile_error\",\n \"diagnostics\": [\n  {\n   \"Severity\": \"Error\",\n   \"Code\": \"FS0001\",\n   \"File\": \"input.fsx\",\n   \"StartLine\": 1,\n   \"StartColumn\": 16,\n   \"EndLine\": 1,\n   \"EndColumn\": 22,\n   \"Message\": \"This expression was expected to have type\\n    'int'    \\nbut here has type\\n    'string'    \"\n  }\n ],\n \"frame\": 267,\n \"undoDepth\": 2\n}"
      }
     ],
     "isError": true
    }
   },
-  "seconds": 0.091
+  "seconds": 0.072
  },
  {
   "request": {
@@ -377,13 +445,13 @@
     "content": [
      {
       "type": "text",
-      "text": "{\n \"kind\": \"runtime_error\",\n \"exception\": \"\\\"System.Exception: boom\\n   at <StartupCode$FSI_0007>.$FSI_0007.main@() in /home/happypig375/workspace/nu-gaia-agentic/Projects/Breakout ImSim/bin/Debug/net10.0/input.fsx:line 1\\n   at System.Reflection.MethodBaseInvoker.InterpretedInvoke_Method(Object obj, IntPtr* args)\\n   at System.Reflection.RuntimeMethodInfo.Invoke(Object obj, BindingFlags invokeAttr, Binder binder, Object[] parameters, CultureInfo culture)\\\"\",\n \"frame\": 7,\n \"undoDepth\": 3\n}"
+      "text": "{\n \"kind\": \"runtime_error\",\n \"exception\": \"\\\"System.Exception: boom\\n   at <StartupCode$FSI_0007>.$FSI_0007.main@() in /home/happypig375/workspace/nu-gaia-agentic/Projects/Breakout ImSim/bin/Debug/net10.0/input.fsx:line 1\\n   at System.RuntimeMethodHandle.InvokeMethod(ObjectHandleOnStack target, Void** arguments, ObjectHandleOnStack sig, BOOL isConstructor, ObjectHandleOnStack result)\\n   at System.RuntimeMethodHandle.InvokeMethod(ObjectHandleOnStack target, Void** arguments, ObjectHandleOnStack sig, BOOL isConstructor, ObjectHandleOnStack result)\\n   at System.Reflection.MethodBaseInvoker.InterpretedInvoke_Method(Object obj, IntPtr* args)\\n   at System.Reflection.RuntimeMethodInfo.Invoke(Object obj, BindingFlags invokeAttr, Binder binder, Object[] parameters, CultureInfo culture)\\\"\",\n \"frame\": 268,\n \"undoDepth\": 3\n}"
      }
     ],
     "isError": true
    }
   },
-  "seconds": 0.096
+  "seconds": 0.091
  },
  {
   "request": {
@@ -408,7 +476,7 @@
     "isError": false
    }
   },
-  "seconds": 0.027
+  "seconds": 0.006
  },
  {
   "request": {
@@ -435,7 +503,7 @@
     "isError": false
    }
   },
-  "seconds": 0.024
+  "seconds": 0.027
  },
  {
   "request": {
@@ -462,13 +530,13 @@
      },
      {
       "type": "text",
-      "text": "saved /tmp/claude-1375/-home-happypig375-workspace-nu-gaia-agentic/a7f90063-455f-4f9e-a42c-7e41cc5213da/scratchpad/check6/shot-26.png; frame=26 updateTime=0"
+      "text": "saved /tmp/claude-1375/-home-happypig375-workspace-nu-gaia-agentic/a7f90063-455f-4f9e-a42c-7e41cc5213da/scratchpad/check3/shot-282.png; frame=282 updateTime=0"
      }
     ],
     "isError": false
    }
   },
-  "seconds": 0.241
+  "seconds": 0.293
  },
  {
   "request": {
@@ -487,13 +555,13 @@
     "content": [
      {
       "type": "text",
-      "text": "{\n \"id\": \"11\",\n \"ok\": true,\n \"frame\": 37,\n \"updateTime\": 0,\n \"advancing\": false,\n \"imperative\": false,\n \"projectDllPath\": \"/home/happypig375/workspace/nu-gaia-agentic/Projects/Breakout ImSim/bin/Debug/net10.0/Breakout ImSim.dll\",\n \"selectedScreen\": \"Game/Splash\",\n \"selectedGroup\": \"Game/Splash/SlideGroup\",\n \"selectedEntity\": null,\n \"undoDepth\": 3,\n \"logSeq\": 1,\n \"pendingException\": null,\n \"window\": {\n  \"x\": 320,\n  \"y\": 180,\n  \"width\": 1280,\n  \"height\": 720\n }\n}"
+      "text": "{\n \"id\": \"11\",\n \"ok\": true,\n \"frame\": 290,\n \"updateTime\": 0,\n \"advancing\": false,\n \"imperative\": false,\n \"projectDllPath\": \"/home/happypig375/workspace/nu-gaia-agentic/Projects/Breakout ImSim/bin/Debug/net10.0/Breakout ImSim.dll\",\n \"selectedScreen\": \"Game/Splash\",\n \"selectedGroup\": \"Game/Splash/SlideGroup\",\n \"selectedEntity\": null,\n \"undoDepth\": 3,\n \"logSeq\": 1,\n \"pendingException\": null,\n \"window\": {\n  \"x\": 320,\n  \"y\": 180,\n  \"width\": 1280,\n  \"height\": 720\n }\n}"
      }
     ],
     "isError": false
    }
   },
-  "seconds": 0.006
+  "seconds": 0.009
  },
  {
   "request": {
@@ -514,13 +582,13 @@
     "content": [
      {
       "type": "text",
-      "text": "{\n \"kind\": \"ok\",\n \"output\": \"val e: Entity = Game/Splash/SlideGroup/AgentBlock\\nval it: string = \\\"Game/Splash/SlideGroup/AgentBlock\\\"\\n\\n\",\n \"frame\": 38,\n \"undoDepth\": 4\n}"
+      "text": "{\n \"kind\": \"ok\",\n \"output\": \"val e: Entity = Game/Splash/SlideGroup/AgentBlock\\nval it: string = \\\"Game/Splash/SlideGroup/AgentBlock\\\"\\n\\n\",\n \"frame\": 291,\n \"undoDepth\": 4\n}"
      }
     ],
     "isError": false
    }
   },
-  "seconds": 0.271
+  "seconds": 0.257
  },
  {
   "request": {
@@ -547,13 +615,13 @@
      },
      {
       "type": "text",
-      "text": "saved /tmp/claude-1375/-home-happypig375-workspace-nu-gaia-agentic/a7f90063-455f-4f9e-a42c-7e41cc5213da/scratchpad/check6/shot-47.png; frame=47 updateTime=0"
+      "text": "saved /tmp/claude-1375/-home-happypig375-workspace-nu-gaia-agentic/a7f90063-455f-4f9e-a42c-7e41cc5213da/scratchpad/check3/shot-301.png; frame=301 updateTime=0"
      }
     ],
     "isError": false
    }
   },
-  "seconds": 0.226
+  "seconds": 0.271
  },
  {
   "request": {
@@ -572,13 +640,13 @@
     "content": [
      {
       "type": "text",
-      "text": "{\n \"id\": \"17\",\n \"ok\": true,\n \"undone\": true,\n \"frame\": 56,\n \"updateTime\": 0,\n \"advancing\": false,\n \"imperative\": false,\n \"projectDllPath\": \"/home/happypig375/workspace/nu-gaia-agentic/Projects/Breakout ImSim/bin/Debug/net10.0/Breakout ImSim.dll\",\n \"selectedScreen\": \"Game/Splash\",\n \"selectedGroup\": \"Game/Splash/SlideGroup\",\n \"selectedEntity\": null,\n \"undoDepth\": 3,\n \"logSeq\": 1,\n \"pendingException\": null,\n \"window\": {\n  \"x\": 320,\n  \"y\": 180,\n  \"width\": 1280,\n  \"height\": 720\n }\n}"
+      "text": "{\n \"id\": \"17\",\n \"ok\": true,\n \"undone\": true,\n \"frame\": 307,\n \"updateTime\": 0,\n \"advancing\": false,\n \"imperative\": false,\n \"projectDllPath\": \"/home/happypig375/workspace/nu-gaia-agentic/Projects/Breakout ImSim/bin/Debug/net10.0/Breakout ImSim.dll\",\n \"selectedScreen\": \"Game/Splash\",\n \"selectedGroup\": \"Game/Splash/SlideGroup\",\n \"selectedEntity\": null,\n \"undoDepth\": 3,\n \"logSeq\": 1,\n \"pendingException\": null,\n \"window\": {\n  \"x\": 320,\n  \"y\": 180,\n  \"width\": 1280,\n  \"height\": 720\n }\n}"
      }
     ],
     "isError": false
    }
   },
-  "seconds": 0.033
+  "seconds": 0.01
  },
  {
   "request": {
@@ -605,13 +673,13 @@
      },
      {
       "type": "text",
-      "text": "saved /tmp/claude-1375/-home-happypig375-workspace-nu-gaia-agentic/a7f90063-455f-4f9e-a42c-7e41cc5213da/scratchpad/check6/shot-65.png; frame=65 updateTime=0"
+      "text": "saved /tmp/claude-1375/-home-happypig375-workspace-nu-gaia-agentic/a7f90063-455f-4f9e-a42c-7e41cc5213da/scratchpad/check3/shot-316.png; frame=316 updateTime=0"
      }
     ],
     "isError": false
    }
   },
-  "seconds": 0.221
+  "seconds": 0.233
  },
  {
   "request": {
@@ -632,13 +700,13 @@
     "content": [
      {
       "type": "text",
-      "text": "{\n \"kind\": \"ok\",\n \"output\": \"val it: bool = false\\n\\n\",\n \"frame\": 73,\n \"undoDepth\": 4\n}"
+      "text": "{\n \"kind\": \"ok\",\n \"output\": \"val it: bool = false\\n\\n\",\n \"frame\": 323,\n \"undoDepth\": 4\n}"
      }
     ],
     "isError": false
    }
   },
-  "seconds": 0.035
+  "seconds": 0.044
  },
  {
   "request": {
@@ -657,7 +725,7 @@
     "content": [
      {
       "type": "text",
-      "text": "{\n \"id\": \"23\",\n \"ok\": true,\n \"frame\": 74,\n \"updateTime\": 0,\n \"advancing\": false,\n \"imperative\": false,\n \"projectDllPath\": \"/home/happypig375/workspace/nu-gaia-agentic/Projects/Breakout ImSim/bin/Debug/net10.0/Breakout ImSim.dll\",\n \"selectedScreen\": \"Game/Splash\",\n \"selectedGroup\": \"Game/Splash/SlideGroup\",\n \"selectedEntity\": null,\n \"undoDepth\": 4,\n \"logSeq\": 1,\n \"pendingException\": null,\n \"window\": {\n  \"x\": 320,\n  \"y\": 180,\n  \"width\": 1280,\n  \"height\": 720\n }\n}"
+      "text": "{\n \"id\": \"23\",\n \"ok\": true,\n \"frame\": 324,\n \"updateTime\": 0,\n \"advancing\": false,\n \"imperative\": false,\n \"projectDllPath\": \"/home/happypig375/workspace/nu-gaia-agentic/Projects/Breakout ImSim/bin/Debug/net10.0/Breakout ImSim.dll\",\n \"selectedScreen\": \"Game/Splash\",\n \"selectedGroup\": \"Game/Splash/SlideGroup\",\n \"selectedEntity\": null,\n \"undoDepth\": 4,\n \"logSeq\": 1,\n \"pendingException\": null,\n \"window\": {\n  \"x\": 320,\n  \"y\": 180,\n  \"width\": 1280,\n  \"height\": 720\n }\n}"
      }
     ],
     "isError": false
@@ -684,13 +752,13 @@
     "content": [
      {
       "type": "text",
-      "text": "{\n \"id\": \"24\",\n \"ok\": true,\n \"advancedFrames\": 30,\n \"frame\": 106,\n \"updateTime\": 30,\n \"advancing\": false,\n \"imperative\": false,\n \"projectDllPath\": \"/home/happypig375/workspace/nu-gaia-agentic/Projects/Breakout ImSim/bin/Debug/net10.0/Breakout ImSim.dll\",\n \"selectedScreen\": \"Game/Splash\",\n \"selectedGroup\": \"Game/Splash/SlideGroup\",\n \"selectedEntity\": null,\n \"undoDepth\": 5,\n \"logSeq\": 1,\n \"pendingException\": null,\n \"window\": {\n  \"x\": 320,\n  \"y\": 180,\n  \"width\": 1280,\n  \"height\": 720\n }\n}"
+      "text": "{\n \"id\": \"24\",\n \"ok\": true,\n \"advancedFrames\": 30,\n \"frame\": 356,\n \"updateTime\": 30,\n \"advancing\": false,\n \"imperative\": false,\n \"projectDllPath\": \"/home/happypig375/workspace/nu-gaia-agentic/Projects/Breakout ImSim/bin/Debug/net10.0/Breakout ImSim.dll\",\n \"selectedScreen\": \"Game/Splash\",\n \"selectedGroup\": \"Game/Splash/SlideGroup\",\n \"selectedEntity\": null,\n \"undoDepth\": 5,\n \"logSeq\": 1,\n \"pendingException\": null,\n \"window\": {\n  \"x\": 320,\n  \"y\": 180,\n  \"width\": 1280,\n  \"height\": 720\n }\n}"
      }
     ],
     "isError": false
    }
   },
-  "seconds": 0.532
+  "seconds": 0.594
  },
  {
   "request": {
@@ -718,13 +786,13 @@
      },
      {
       "type": "text",
-      "text": "4 frames, 15 apart; saved /tmp/claude-1375/-home-happypig375-workspace-nu-gaia-agentic/a7f90063-455f-4f9e-a42c-7e41cc5213da/scratchpad/check6/frames-190.png"
+      "text": "4 frames, 15 apart; saved /tmp/claude-1375/-home-happypig375-workspace-nu-gaia-agentic/a7f90063-455f-4f9e-a42c-7e41cc5213da/scratchpad/check3/frames-444.png"
      }
     ],
     "isError": false
    }
   },
-  "seconds": 1.632
+  "seconds": 1.666
  },
  {
   "request": {
@@ -743,13 +811,13 @@
     "content": [
      {
       "type": "text",
-      "text": "{\n \"id\": \"41\",\n \"ok\": true,\n \"frame\": 199,\n \"updateTime\": 75,\n \"advancing\": false,\n \"imperative\": false,\n \"projectDllPath\": \"/home/happypig375/workspace/nu-gaia-agentic/Projects/Breakout ImSim/bin/Debug/net10.0/Breakout ImSim.dll\",\n \"selectedScreen\": \"Game/Splash\",\n \"selectedGroup\": \"Game/Splash/SlideGroup\",\n \"selectedEntity\": null,\n \"undoDepth\": 8,\n \"logSeq\": 1,\n \"pendingException\": null,\n \"window\": {\n  \"x\": 320,\n  \"y\": 180,\n  \"width\": 1280,\n  \"height\": 720\n }\n}"
+      "text": "{\n \"id\": \"41\",\n \"ok\": true,\n \"frame\": 452,\n \"updateTime\": 75,\n \"advancing\": false,\n \"imperative\": false,\n \"projectDllPath\": \"/home/happypig375/workspace/nu-gaia-agentic/Projects/Breakout ImSim/bin/Debug/net10.0/Breakout ImSim.dll\",\n \"selectedScreen\": \"Game/Splash\",\n \"selectedGroup\": \"Game/Splash/SlideGroup\",\n \"selectedEntity\": null,\n \"undoDepth\": 8,\n \"logSeq\": 1,\n \"pendingException\": null,\n \"window\": {\n  \"x\": 320,\n  \"y\": 180,\n  \"width\": 1280,\n  \"height\": 720\n }\n}"
      }
     ],
     "isError": false
    }
   },
-  "seconds": 0.017
+  "seconds": 0.004
  },
  {
   "request": {
@@ -776,7 +844,7 @@
     "isError": false
    }
   },
-  "seconds": 0.371
+  "seconds": 0.28
  },
  {
   "request": {
@@ -795,7 +863,7 @@
     "content": [
      {
       "type": "text",
-      "text": "{\n \"id\": \"43\",\n \"ok\": true,\n \"frame\": 201,\n \"updateTime\": 75,\n \"advancing\": false,\n \"imperative\": false,\n \"projectDllPath\": \"/home/happypig375/workspace/nu-gaia-agentic/Projects/Breakout ImSim/bin/Debug/net10.0/Breakout ImSim.dll\",\n \"selectedScreen\": \"Game/Splash\",\n \"selectedGroup\": \"Game/Splash/SlideGroup\",\n \"selectedEntity\": null,\n \"undoDepth\": 8,\n \"logSeq\": 3,\n \"pendingException\": null,\n \"window\": {\n  \"x\": 320,\n  \"y\": 180,\n  \"width\": 1280,\n  \"height\": 720\n }\n}"
+      "text": "{\n \"id\": \"43\",\n \"ok\": true,\n \"frame\": 454,\n \"updateTime\": 75,\n \"advancing\": false,\n \"imperative\": false,\n \"projectDllPath\": \"/home/happypig375/workspace/nu-gaia-agentic/Projects/Breakout ImSim/bin/Debug/net10.0/Breakout ImSim.dll\",\n \"selectedScreen\": \"Game/Splash\",\n \"selectedGroup\": \"Game/Splash/SlideGroup\",\n \"selectedEntity\": null,\n \"undoDepth\": 8,\n \"logSeq\": 3,\n \"pendingException\": null,\n \"window\": {\n  \"x\": 320,\n  \"y\": 180,\n  \"width\": 1280,\n  \"height\": 720\n }\n}"
      }
     ],
     "isError": false
@@ -829,12 +897,442 @@
     "isError": false
    }
   },
-  "seconds": 0.06
+  "seconds": 0.066
  },
  {
   "request": {
    "jsonrpc": "2.0",
    "id": 23,
+   "method": "tools/call",
+   "params": {
+    "name": "gaia_eval",
+    "arguments": {
+     "code": "open Breakout\nGame.SetGameState Gameplay world"
+    }
+   }
+  },
+  "reply": {
+   "jsonrpc": "2.0",
+   "id": 23,
+   "result": {
+    "content": [
+     {
+      "type": "text",
+      "text": "{\n \"kind\": \"ok\",\n \"output\": \"val it: unit = ()\\n\\n\",\n \"frame\": 470,\n \"undoDepth\": 9\n}"
+     }
+    ],
+    "isError": false
+   }
+  },
+  "seconds": 0.023
+ },
+ {
+  "request": {
+   "jsonrpc": "2.0",
+   "id": 24,
+   "method": "tools/call",
+   "params": {
+    "name": "gaia_advance",
+    "arguments": {
+     "frames": 150
+    }
+   }
+  },
+  "reply": {
+   "jsonrpc": "2.0",
+   "id": 24,
+   "result": {
+    "content": [
+     {
+      "type": "text",
+      "text": "{\n \"id\": \"45\",\n \"ok\": true,\n \"advancedFrames\": 150,\n \"frame\": 622,\n \"updateTime\": 225,\n \"advancing\": false,\n \"imperative\": false,\n \"projectDllPath\": \"/home/happypig375/workspace/nu-gaia-agentic/Projects/Breakout ImSim/bin/Debug/net10.0/Breakout ImSim.dll\",\n \"selectedScreen\": \"Game/Gameplay\",\n \"selectedGroup\": \"Game/Gameplay/Scene\",\n \"selectedEntity\": null,\n \"undoDepth\": 10,\n \"logSeq\": 3,\n \"pendingException\": null,\n \"window\": {\n  \"x\": 320,\n  \"y\": 180,\n  \"width\": 1280,\n  \"height\": 720\n }\n}"
+     }
+    ],
+    "isError": false
+   }
+  },
+  "seconds": 42.096
+ },
+ {
+  "request": {
+   "jsonrpc": "2.0",
+   "id": 25,
+   "method": "tools/call",
+   "params": {
+    "name": "gaia_status",
+    "arguments": {}
+   }
+  },
+  "reply": {
+   "jsonrpc": "2.0",
+   "id": 25,
+   "result": {
+    "content": [
+     {
+      "type": "text",
+      "text": "{\n \"id\": \"46\",\n \"ok\": true,\n \"frame\": 623,\n \"updateTime\": 225,\n \"advancing\": false,\n \"imperative\": false,\n \"projectDllPath\": \"/home/happypig375/workspace/nu-gaia-agentic/Projects/Breakout ImSim/bin/Debug/net10.0/Breakout ImSim.dll\",\n \"selectedScreen\": \"Game/Gameplay\",\n \"selectedGroup\": \"Game/Gameplay/Scene\",\n \"selectedEntity\": null,\n \"undoDepth\": 10,\n \"logSeq\": 3,\n \"pendingException\": null,\n \"window\": {\n  \"x\": 320,\n  \"y\": 180,\n  \"width\": 1280,\n  \"height\": 720\n }\n}"
+     }
+    ],
+    "isError": false
+   }
+  },
+  "seconds": 0.234
+ },
+ {
+  "request": {
+   "jsonrpc": "2.0",
+   "id": 26,
+   "method": "tools/call",
+   "params": {
+    "name": "gaia_checkpoint",
+    "arguments": {
+     "name": "c1"
+    }
+   }
+  },
+  "reply": {
+   "jsonrpc": "2.0",
+   "id": 26,
+   "result": {
+    "content": [
+     {
+      "type": "text",
+      "text": "{\n \"id\": \"47\",\n \"ok\": true,\n \"checkpoint\": \"c1\",\n \"simulants\": 63,\n \"checkpoints\": [\n  \"c1\"\n ]\n}"
+     }
+    ],
+    "isError": false
+   }
+  },
+  "seconds": 0.275
+ },
+ {
+  "request": {
+   "jsonrpc": "2.0",
+   "id": 27,
+   "method": "tools/call",
+   "params": {
+    "name": "gaia_advance",
+    "arguments": {
+     "frames": 30
+    }
+   }
+  },
+  "reply": {
+   "jsonrpc": "2.0",
+   "id": 27,
+   "result": {
+    "content": [
+     {
+      "type": "text",
+      "text": "{\n \"id\": \"48\",\n \"ok\": true,\n \"advancedFrames\": 30,\n \"frame\": 656,\n \"updateTime\": 255,\n \"advancing\": false,\n \"imperative\": false,\n \"projectDllPath\": \"/home/happypig375/workspace/nu-gaia-agentic/Projects/Breakout ImSim/bin/Debug/net10.0/Breakout ImSim.dll\",\n \"selectedScreen\": \"Game/Gameplay\",\n \"selectedGroup\": \"Game/Gameplay/Scene\",\n \"selectedEntity\": null,\n \"undoDepth\": 11,\n \"logSeq\": 3,\n \"pendingException\": null,\n \"window\": {\n  \"x\": 320,\n  \"y\": 180,\n  \"width\": 1280,\n  \"height\": 720\n }\n}"
+     }
+    ],
+    "isError": false
+   }
+  },
+  "seconds": 6.927
+ },
+ {
+  "request": {
+   "jsonrpc": "2.0",
+   "id": 28,
+   "method": "tools/call",
+   "params": {
+    "name": "gaia_diff",
+    "arguments": {
+     "from": "c1"
+    }
+   }
+  },
+  "reply": {
+   "jsonrpc": "2.0",
+   "id": 28,
+   "result": {
+    "content": [
+     {
+      "type": "text",
+      "text": "{\n \"from\": \"c1\",\n \"added\": [],\n \"removed\": [],\n \"changed\": [\n  {\n   \"path\": \"Game/Gameplay/Scene/Ball\",\n   \"property\": \"Position\",\n   \"before\": \"[30.978863 -70.51821 0]\",\n   \"after\": \"[49.9455 -143.08034 0]\"\n  }\n ],\n \"changedTotal\": 1,\n \"truncated\": false\n}"
+     }
+    ],
+    "isError": false
+   }
+  },
+  "seconds": 0.238
+ },
+ {
+  "request": {
+   "jsonrpc": "2.0",
+   "id": 29,
+   "method": "tools/call",
+   "params": {
+    "name": "gaia_assert",
+    "arguments": {
+     "predicate": "(Simulants.Gameplay / \"Scene\" / \"Ball\").GetExists world"
+    }
+   }
+  },
+  "reply": {
+   "jsonrpc": "2.0",
+   "id": 29,
+   "result": {
+    "content": [
+     {
+      "type": "text",
+      "text": "{\n \"passed\": true,\n \"checkedFrames\": 1,\n \"frame\": 659,\n \"updateTime\": 255\n}"
+     }
+    ],
+    "isError": false
+   }
+  },
+  "seconds": 0.417
+ },
+ {
+  "request": {
+   "jsonrpc": "2.0",
+   "id": 30,
+   "method": "tools/call",
+   "params": {
+    "name": "gaia_status",
+    "arguments": {}
+   }
+  },
+  "reply": {
+   "jsonrpc": "2.0",
+   "id": 30,
+   "result": {
+    "content": [
+     {
+      "type": "text",
+      "text": "{\n \"id\": \"51\",\n \"ok\": true,\n \"frame\": 660,\n \"updateTime\": 255,\n \"advancing\": false,\n \"imperative\": false,\n \"projectDllPath\": \"/home/happypig375/workspace/nu-gaia-agentic/Projects/Breakout ImSim/bin/Debug/net10.0/Breakout ImSim.dll\",\n \"selectedScreen\": \"Game/Gameplay\",\n \"selectedGroup\": \"Game/Gameplay/Scene\",\n \"selectedEntity\": null,\n \"undoDepth\": 11,\n \"logSeq\": 3,\n \"pendingException\": null,\n \"window\": {\n  \"x\": 320,\n  \"y\": 180,\n  \"width\": 1280,\n  \"height\": 720\n }\n}"
+     }
+    ],
+    "isError": false
+   }
+  },
+  "seconds": 0.221
+ },
+ {
+  "request": {
+   "jsonrpc": "2.0",
+   "id": 31,
+   "method": "tools/call",
+   "params": {
+    "name": "gaia_assert",
+    "arguments": {
+     "predicate": "((Simulants.Gameplay / \"Scene\" / \"Ball\").GetPosition world).Y > -1000.0f",
+     "frames": 120,
+     "probe": "(Simulants.Gameplay / \"Scene\" / \"Ball\").GetPosition world"
+    }
+   }
+  },
+  "reply": {
+   "jsonrpc": "2.0",
+   "id": 31,
+   "result": {
+    "content": [
+     {
+      "type": "text",
+      "text": "{\n \"passed\": true,\n \"checkedFrames\": 120,\n \"probe\": \"<-2.8839762, 30.739283, 0>\",\n \"frame\": 781,\n \"updateTime\": 374\n}"
+     }
+    ],
+    "isError": false
+   }
+  },
+  "seconds": 25.097
+ },
+ {
+  "request": {
+   "jsonrpc": "2.0",
+   "id": 32,
+   "method": "tools/call",
+   "params": {
+    "name": "gaia_status",
+    "arguments": {}
+   }
+  },
+  "reply": {
+   "jsonrpc": "2.0",
+   "id": 32,
+   "result": {
+    "content": [
+     {
+      "type": "text",
+      "text": "{\n \"id\": \"53\",\n \"ok\": true,\n \"frame\": 782,\n \"updateTime\": 374,\n \"advancing\": false,\n \"imperative\": false,\n \"projectDllPath\": \"/home/happypig375/workspace/nu-gaia-agentic/Projects/Breakout ImSim/bin/Debug/net10.0/Breakout ImSim.dll\",\n \"selectedScreen\": \"Game/Gameplay\",\n \"selectedGroup\": \"Game/Gameplay/Scene\",\n \"selectedEntity\": null,\n \"undoDepth\": 12,\n \"logSeq\": 3,\n \"pendingException\": null,\n \"window\": {\n  \"x\": 320,\n  \"y\": 180,\n  \"width\": 1280,\n  \"height\": 720\n }\n}"
+     }
+    ],
+    "isError": false
+   }
+  },
+  "seconds": 0.22
+ },
+ {
+  "request": {
+   "jsonrpc": "2.0",
+   "id": 33,
+   "method": "tools/call",
+   "params": {
+    "name": "gaia_assert",
+    "arguments": {
+     "predicate": "((Simulants.Gameplay / \"Scene\" / \"Ball\").GetPosition world).Y > 10000.0f",
+     "frames": 60,
+     "probe": "(Simulants.Gameplay / \"Scene\" / \"Ball\").GetPosition world"
+    }
+   }
+  },
+  "reply": {
+   "jsonrpc": "2.0",
+   "id": 33,
+   "result": {
+    "content": [
+     {
+      "type": "text",
+      "text": "{\n \"passed\": false,\n \"checkedFrames\": 1,\n \"failedAtFrame\": 1,\n \"updateTimeAtFailure\": 374,\n \"probe\": \"<-2.8839762, 30.739283, 0>\",\n \"frame\": 784,\n \"updateTime\": 374\n}"
+     }
+    ],
+    "isError": false
+   }
+  },
+  "seconds": 0.455
+ },
+ {
+  "request": {
+   "jsonrpc": "2.0",
+   "id": 34,
+   "method": "tools/call",
+   "params": {
+    "name": "gaia_status",
+    "arguments": {}
+   }
+  },
+  "reply": {
+   "jsonrpc": "2.0",
+   "id": 34,
+   "result": {
+    "content": [
+     {
+      "type": "text",
+      "text": "{\n \"id\": \"55\",\n \"ok\": true,\n \"frame\": 785,\n \"updateTime\": 374,\n \"advancing\": false,\n \"imperative\": false,\n \"projectDllPath\": \"/home/happypig375/workspace/nu-gaia-agentic/Projects/Breakout ImSim/bin/Debug/net10.0/Breakout ImSim.dll\",\n \"selectedScreen\": \"Game/Gameplay\",\n \"selectedGroup\": \"Game/Gameplay/Scene\",\n \"selectedEntity\": null,\n \"undoDepth\": 12,\n \"logSeq\": 3,\n \"pendingException\": null,\n \"window\": {\n  \"x\": 320,\n  \"y\": 180,\n  \"width\": 1280,\n  \"height\": 720\n }\n}"
+     }
+    ],
+    "isError": false
+   }
+  },
+  "seconds": 0.233
+ },
+ {
+  "request": {
+   "jsonrpc": "2.0",
+   "id": 35,
+   "method": "tools/call",
+   "params": {
+    "name": "gaia_assert",
+    "arguments": {
+     "predicate": "world.NoSuchMember"
+    }
+   }
+  },
+  "reply": {
+   "jsonrpc": "2.0",
+   "id": 35,
+   "result": {
+    "content": [
+     {
+      "type": "text",
+      "text": "{\n \"passed\": false,\n \"kind\": \"compile_error\",\n \"message\": \"Operation could not be completed due to earlier error\",\n \"diagnostics\": [\n  {\n   \"Severity\": \"Error\",\n   \"Code\": \"FS0039\",\n   \"File\": \"input.fsx\",\n   \"StartLine\": 2,\n   \"StartColumn\": 10,\n   \"EndLine\": 2,\n   \"EndColumn\": 22,\n   \"Message\": \"The type 'World' does not define the field, constructor or member 'NoSuchMember'.\"\n  }\n ],\n \"frame\": 786,\n \"updateTime\": 374\n}"
+     }
+    ],
+    "isError": true
+   }
+  },
+  "seconds": 0.27
+ },
+ {
+  "request": {
+   "jsonrpc": "2.0",
+   "id": 36,
+   "method": "tools/call",
+   "params": {
+    "name": "gaia_checkpoint",
+    "arguments": {
+     "name": "c1",
+     "restore": true
+    }
+   }
+  },
+  "reply": {
+   "jsonrpc": "2.0",
+   "id": 36,
+   "result": {
+    "content": [
+     {
+      "type": "text",
+      "text": "{\n \"id\": \"57\",\n \"ok\": true,\n \"restored\": \"c1\",\n \"frame\": 787,\n \"updateTime\": 225,\n \"advancing\": false,\n \"imperative\": false,\n \"projectDllPath\": \"/home/happypig375/workspace/nu-gaia-agentic/Projects/Breakout ImSim/bin/Debug/net10.0/Breakout ImSim.dll\",\n \"selectedScreen\": \"Game/Gameplay\",\n \"selectedGroup\": \"Game/Gameplay/Scene\",\n \"selectedEntity\": null,\n \"undoDepth\": 13,\n \"logSeq\": 3,\n \"pendingException\": null,\n \"window\": {\n  \"x\": 320,\n  \"y\": 180,\n  \"width\": 1280,\n  \"height\": 720\n }\n}"
+     }
+    ],
+    "isError": false
+   }
+  },
+  "seconds": 0.229
+ },
+ {
+  "request": {
+   "jsonrpc": "2.0",
+   "id": 37,
+   "method": "tools/call",
+   "params": {
+    "name": "gaia_diff",
+    "arguments": {
+     "from": "c1"
+    }
+   }
+  },
+  "reply": {
+   "jsonrpc": "2.0",
+   "id": 37,
+   "result": {
+    "content": [
+     {
+      "type": "text",
+      "text": "{\n \"from\": \"c1\",\n \"added\": [],\n \"removed\": [],\n \"changed\": [],\n \"changedTotal\": 0,\n \"truncated\": false\n}"
+     }
+    ],
+    "isError": false
+   }
+  },
+  "seconds": 0.258
+ },
+ {
+  "request": {
+   "jsonrpc": "2.0",
+   "id": 38,
+   "method": "tools/call",
+   "params": {
+    "name": "gaia_checkpoint",
+    "arguments": {
+     "name": "c1",
+     "delete": true
+    }
+   }
+  },
+  "reply": {
+   "jsonrpc": "2.0",
+   "id": 38,
+   "result": {
+    "content": [
+     {
+      "type": "text",
+      "text": "{\n \"id\": \"59\",\n \"ok\": true,\n \"deleted\": true,\n \"checkpoints\": []\n}"
+     }
+    ],
+    "isError": false
+   }
+  },
+  "seconds": 0.234
+ },
+ {
+  "request": {
+   "jsonrpc": "2.0",
+   "id": 39,
    "method": "tools/call",
    "params": {
     "name": "gaia_eval",
@@ -846,23 +1344,23 @@
   },
   "reply": {
    "jsonrpc": "2.0",
-   "id": 23,
+   "id": 39,
    "result": {
     "content": [
      {
       "type": "text",
-      "text": "{\n \"frame\": 205,\n \"error\": \"Timed out after 3 s. The request had already started on the editor thread and cannot be cancelled; its effects may still apply when it finishes (check status/undo later).\",\n \"timedOut\": true,\n \"busyOp\": \"eval\",\n \"busyMs\": 2983\n}"
+      "text": "{\n \"frame\": 790,\n \"error\": \"Timed out after 3 s. The request had already started on the editor thread and cannot be cancelled; its effects may still apply when it finishes (check status/undo later).\",\n \"timedOut\": true,\n \"busyOp\": \"eval\",\n \"busyMs\": 2803\n}"
      }
     ],
     "isError": true
    }
   },
-  "seconds": 3.004
+  "seconds": 3.003
  },
  {
   "request": {
    "jsonrpc": "2.0",
-   "id": 24,
+   "id": 40,
    "method": "tools/call",
    "params": {
     "name": "gaia_ping",
@@ -871,23 +1369,23 @@
   },
   "reply": {
    "jsonrpc": "2.0",
-   "id": 24,
+   "id": 40,
    "result": {
     "content": [
      {
       "type": "text",
-      "text": "{\n \"id\": \"1\",\n \"ok\": true,\n \"frame\": 205,\n \"msSinceFrame\": 4990,\n \"busyOp\": \"eval\",\n \"busyId\": \"44\",\n \"busyMs\": 4990,\n \"queued\": 1,\n \"inFlight\": 0,\n \"unresponsive\": false,\n \"pendingException\": null\n}"
+      "text": "{\n \"id\": \"1\",\n \"ok\": true,\n \"frame\": 790,\n \"msSinceFrame\": 4807,\n \"busyOp\": \"eval\",\n \"busyId\": \"60\",\n \"busyMs\": 4807,\n \"queued\": 1,\n \"inFlight\": 0,\n \"unresponsive\": false,\n \"pendingException\": null\n}"
      }
     ],
     "isError": false
    }
   },
-  "seconds": 0.002
+  "seconds": 0.001
  },
  {
   "request": {
    "jsonrpc": "2.0",
-   "id": 25,
+   "id": 41,
    "method": "tools/call",
    "params": {
     "name": "gaia_ping",
@@ -896,23 +1394,23 @@
   },
   "reply": {
    "jsonrpc": "2.0",
-   "id": 25,
+   "id": 41,
    "result": {
     "content": [
      {
       "type": "text",
-      "text": "{\n \"id\": \"1\",\n \"ok\": true,\n \"frame\": 205,\n \"msSinceFrame\": 13000,\n \"busyOp\": \"eval\",\n \"busyId\": \"44\",\n \"busyMs\": 13000,\n \"queued\": 1,\n \"inFlight\": 0,\n \"unresponsive\": true,\n \"pendingException\": null\n}"
+      "text": "{\n \"id\": \"1\",\n \"ok\": true,\n \"frame\": 790,\n \"msSinceFrame\": 12817,\n \"busyOp\": \"eval\",\n \"busyId\": \"60\",\n \"busyMs\": 12817,\n \"queued\": 1,\n \"inFlight\": 0,\n \"unresponsive\": true,\n \"pendingException\": null\n}"
      }
     ],
     "isError": true
    }
   },
-  "seconds": 0.002
+  "seconds": 0.001
  },
  {
   "request": {
    "jsonrpc": "2.0",
-   "id": 26,
+   "id": 42,
    "method": "tools/call",
    "params": {
     "name": "gaia_status",
@@ -921,23 +1419,23 @@
   },
   "reply": {
    "jsonrpc": "2.0",
-   "id": 26,
+   "id": 42,
    "result": {
     "content": [
      {
       "type": "text",
-      "text": "RuntimeError: Editor thread unresponsive for 13003 ms (running op 'eval' id 44 for 13003 ms); request NOT queued. A non-terminating eval cannot be cancelled in-process: poll ping, or restart Gaia."
+      "text": "RuntimeError: Editor thread unresponsive for 12819 ms (running op 'eval' id 60 for 12819 ms); request NOT queued. A non-terminating eval cannot be cancelled in-process: poll ping, or restart Gaia."
      }
     ],
     "isError": true
    }
   },
-  "seconds": 0.003
+  "seconds": 0.002
  },
  {
   "request": {
    "jsonrpc": "2.0",
-   "id": 27,
+   "id": 43,
    "method": "tools/call",
    "params": {
     "name": "gaia_restart",
@@ -948,23 +1446,23 @@
   },
   "reply": {
    "jsonrpc": "2.0",
-   "id": 27,
+   "id": 43,
    "result": {
     "content": [
      {
       "type": "text",
-      "text": "{\n \"stopped\": 3105467,\n \"launcher\": \"Gaia pid 3106693 on :91 (XAUTHORITY=/run/user/1375/nu-gaia-logs/xauth); bridge /run/user/1375/nu-gaia-agent.sock; log /run/user/1375/nu-gaia-logs/gaia.log\",\n \"status\": {\n  \"id\": \"46\",\n  \"ok\": true,\n  \"frame\": 2,\n  \"updateTime\": 0,\n  \"advancing\": false,\n  \"imperative\": false,\n  \"projectDllPath\": \"/home/happypig375/workspace/nu-gaia-agentic/Projects/Breakout ImSim/bin/Debug/net10.0/Breakout ImSim.dll\",\n  \"selectedScreen\": \"Game/Splash\",\n  \"selectedGroup\": \"Game/Splash/SlideGroup\",\n  \"selectedEntity\": null,\n  \"undoDepth\": 0,\n  \"logSeq\": 1,\n  \"pendingException\": null,\n  \"window\": {\n   \"x\": 320,\n   \"y\": 180,\n   \"width\": 1280,\n   \"height\": 720\n  }\n }\n}"
+      "text": "{\n \"stopped\": 3945540,\n \"launcher\": \"Gaia pid 3956590 on :91 (XAUTHORITY=/run/user/1375/nu-gaia-logs/xauth); bridge /run/user/1375/nu-gaia-agent.sock; log /run/user/1375/nu-gaia-logs/gaia.log\",\n \"status\": {\n  \"id\": \"62\",\n  \"ok\": true,\n  \"frame\": 2,\n  \"updateTime\": 0,\n  \"advancing\": false,\n  \"imperative\": false,\n  \"projectDllPath\": \"/home/happypig375/workspace/nu-gaia-agentic/Projects/Breakout ImSim/bin/Debug/net10.0/Breakout ImSim.dll\",\n  \"selectedScreen\": \"Game/Splash\",\n  \"selectedGroup\": \"Game/Splash/SlideGroup\",\n  \"selectedEntity\": null,\n  \"undoDepth\": 0,\n  \"logSeq\": 1,\n  \"pendingException\": null,\n  \"window\": {\n   \"x\": 320,\n   \"y\": 180,\n   \"width\": 1280,\n   \"height\": 720\n  }\n }\n}"
      }
     ],
     "isError": false
    }
   },
-  "seconds": 15.976
+  "seconds": 17.97
  },
  {
   "request": {
    "jsonrpc": "2.0",
-   "id": 28,
+   "id": 44,
    "method": "tools/call",
    "params": {
     "name": "gaia_symbol",
@@ -975,7 +1473,7 @@
   },
   "reply": {
    "jsonrpc": "2.0",
-   "id": 28,
+   "id": 44,
    "result": {
     "content": [
      {
@@ -986,12 +1484,12 @@
     "isError": false
    }
   },
-  "seconds": 2.665
+  "seconds": 2.77
  },
  {
   "request": {
    "jsonrpc": "2.0",
-   "id": 29,
+   "id": 45,
    "method": "tools/call",
    "params": {
     "name": "gaia_status",
@@ -1000,23 +1498,23 @@
   },
   "reply": {
    "jsonrpc": "2.0",
-   "id": 29,
+   "id": 45,
    "result": {
     "content": [
      {
       "type": "text",
-      "text": "{\n \"id\": \"48\",\n \"ok\": true,\n \"frame\": 5,\n \"updateTime\": 0,\n \"advancing\": false,\n \"imperative\": false,\n \"projectDllPath\": \"/home/happypig375/workspace/nu-gaia-agentic/Projects/Breakout ImSim/bin/Debug/net10.0/Breakout ImSim.dll\",\n \"selectedScreen\": \"Game/Splash\",\n \"selectedGroup\": \"Game/Splash/SlideGroup\",\n \"selectedEntity\": null,\n \"undoDepth\": 0,\n \"logSeq\": 3,\n \"pendingException\": null,\n \"window\": {\n  \"x\": 320,\n  \"y\": 180,\n  \"width\": 1280,\n  \"height\": 720\n }\n}"
+      "text": "{\n \"id\": \"64\",\n \"ok\": true,\n \"frame\": 5,\n \"updateTime\": 0,\n \"advancing\": false,\n \"imperative\": false,\n \"projectDllPath\": \"/home/happypig375/workspace/nu-gaia-agentic/Projects/Breakout ImSim/bin/Debug/net10.0/Breakout ImSim.dll\",\n \"selectedScreen\": \"Game/Splash\",\n \"selectedGroup\": \"Game/Splash/SlideGroup\",\n \"selectedEntity\": null,\n \"undoDepth\": 0,\n \"logSeq\": 3,\n \"pendingException\": null,\n \"window\": {\n  \"x\": 320,\n  \"y\": 180,\n  \"width\": 1280,\n  \"height\": 720\n }\n}"
      }
     ],
     "isError": false
    }
   },
-  "seconds": 0.023
+  "seconds": 0.022
  },
  {
   "request": {
    "jsonrpc": "2.0",
-   "id": 30,
+   "id": 46,
    "method": "tools/call",
    "params": {
     "name": "gaia_eval",
@@ -1027,7 +1525,7 @@
   },
   "reply": {
    "jsonrpc": "2.0",
-   "id": 30,
+   "id": 46,
    "result": {
     "content": [
      {
@@ -1038,6 +1536,6 @@
     "isError": false
    }
   },
-  "seconds": 0.309
+  "seconds": 0.328
  }
 ]
