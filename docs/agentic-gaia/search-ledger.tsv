@@ -1,0 +1,17 @@
+date	connector	query	page	limit_or_page_size	result_count	saved_file_inspected	branch	state	note
+2026-11-01	scite	LLM game dev / game generation	1	8-15	396	n/a (inline)	A	pending/deprioritized	subagent; exact query strings not retained, topic labels only
+2026-11-01	scite	PCG + LLM	1	8-15	116	n/a	A	pending/deprioritized	subagent
+2026-11-01	scite	engine + MCP/screenshot	1	8-15	1211	n/a	A/D/E	pending/deprioritized	subagent
+2026-11-01	scite	live/exploratory programming + LLM	1	8-15	39	n/a	B	pending/deprioritized	subagent
+2026-11-01	scite	execution feedback / self-repair	1	8-15	1013	n/a	C	pending/deprioritized	subagent
+2026-11-01	scite	visual feedback + code	1	8-15	241	n/a	D	pending/deprioritized	subagent
+2026-11-01	scite	MCP tool design	1	8-15	1453	n/a	E	pending/deprioritized	subagent
+2026-11-01	scite	human-AI co-creation games	1	8-15	87	n/a	A/B	pending/deprioritized	subagent
+2026-11-01	scite	REPL/code interpreter agents	1	8-15	320	n/a	B/C	pending/deprioritized	subagent
+2026-11-01	scite	agent safety/rollback	1	8-15	964	n/a	F	pending/deprioritized	subagent
+2026-11-01	scite	LLM-as-judge + games	1	8-15	1106	n/a	G	pending/deprioritized	subagent
+2026-11-01	scite	low-resource PL code gen	1	8-15	~16.8M	n/a	C	pending/deprioritized	unfiltered; noise
+2026-11-01	consensus	(attempt)	0	-	0	n/a	-	blocked	quota exhausted: "resets on November 1st"
+2026-11-01	consensus	large language model agents game development engine editor visual feedback screenshots	0	default	20	inline (full page shown)	A/D	page-0 screened	round 2 (quota reset); Opus
+2026-11-01	consensus	live programming REPL interactive evaluation with large language model coding agents	0	default	19	inline (full page shown)	B	page-0 screened	round 2; mostly code-gen benchmarks, few REPL hits
+2026-11-01	consensus	iterative code repair with execution feedback number of rounds LLM self-debugging effectiveness	0	default	20	inline (full page shown)	C	page-0 screened	round 2

@@ -10,7 +10,10 @@ import io
 import json
 import os
 import re
+import signal
+import subprocess
 import sys
+import time
 import xml.etree.ElementTree as ET
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -19,6 +22,8 @@ from gaia_bridge import GaiaBridge, screenshot  # noqa: E402
 PROTOCOL_VERSION = "2025-06-18"
 SHOT_DIR = os.environ.get("NU_GAIA_SHOT_DIR", os.path.join(os.environ.get("XDG_RUNTIME_DIR", "/tmp"), "nu-gaia-shots"))
 NU_XML = os.environ.get("NU_XML_DOC")  # path to Nu.xml (generated next to Nu.dll)
+LOG_DIR = os.environ.get("GAIA_LOG_DIR", os.path.join(os.environ.get("XDG_RUNTIME_DIR", "/tmp"), "nu-gaia-logs"))
+LAUNCHER = os.path.join(os.path.dirname(os.path.abspath(__file__)), "run_gaia_headless.sh")
 
 TOOLS = [
     {
@@ -33,9 +38,31 @@ TOOLS = [
             "are opened). `world`, `SelectedScreen`, `SelectedGroup`, `SelectedEntity` are bound when mentioned. "
             "Each eval snapshots the world first, so gaia_undo reverts its world changes (not files or FSI definitions). "
             "Returns kind ok|compile_error|runtime_error, FSI output, and diagnostics with line/column. "
-            "Keep snippets small; a non-terminating eval freezes the editor."
+            "Keep snippets small; a non-terminating eval freezes the editor (then use gaia_ping to confirm and "
+            "gaia_restart to recover). timeout_s (default 120) bounds the wait; a timed-out eval cannot be cancelled."
         ),
-        "inputSchema": {"type": "object", "properties": {"code": {"type": "string"}}, "required": ["code"]},
+        "inputSchema": {
+            "type": "object",
+            "properties": {"code": {"type": "string"}, "timeout_s": {"type": "number", "minimum": 1, "maximum": 600}},
+            "required": ["code"],
+        },
+    },
+    {
+        "name": "gaia_ping",
+        "description": (
+            "Liveness check answered off the editor thread (works while it is blocked): last frame, ms since that "
+            "frame, the op currently running and for how long, queue length, unresponsive flag."
+        ),
+        "inputSchema": {"type": "object", "properties": {}},
+    },
+    {
+        "name": "gaia_restart",
+        "description": (
+            "Kill and relaunch the headless Gaia this server started (same project). Use only when gaia_ping shows "
+            "the editor unresponsive, e.g. after a non-terminating eval. Unsaved world state, undo history and FSI "
+            "definitions are lost; project files on disk are untouched."
+        ),
+        "inputSchema": {"type": "object", "properties": {"confirm": {"type": "boolean", "const": True}}, "required": ["confirm"]},
     },
     {
         "name": "gaia_undo",
@@ -148,8 +175,8 @@ def _capture(view, max_width):
     if view == "game":
         _call("view_mode", mode="capture")
     try:
-        _call("wait_frames", frames=2)
-        return screenshot(max_width=max_width)
+        status = _call("wait_frames", frames=2)
+        return screenshot(max_width=max_width, window=status.get("window"))  # crop to Gaia's window
     finally:
         if view == "game":
             _call("view_mode", mode="normal")
@@ -160,6 +187,37 @@ def _save(image, stem):
     path = os.path.join(SHOT_DIR, stem + ".png")
     image.save(path)
     return path
+
+
+def _restart():
+    """Supervisor action: stop the Gaia process recorded by run_gaia_headless.sh and relaunch it on the same project.
+    Only a process whose command line is Nu.Gaia.dll is signalled (guards against a recycled pid)."""
+    pid_path = os.path.join(LOG_DIR, "gaia.pid")
+    project_path = os.path.join(LOG_DIR, "gaia.project")
+    stopped = None
+    _bridge.close()
+    if os.path.exists(pid_path):
+        pid = int(open(pid_path).read().strip())
+        try:
+            cmdline = open(f"/proc/{pid}/cmdline", "rb").read()
+        except OSError:
+            cmdline = b""
+        if b"Nu.Gaia.dll" in cmdline:
+            os.kill(pid, signal.SIGTERM)
+            for _ in range(50):
+                if not os.path.exists(f"/proc/{pid}"):
+                    break
+                time.sleep(0.1)
+            else:
+                os.kill(pid, signal.SIGKILL)
+            stopped = pid
+    cmd = [LAUNCHER]
+    if os.path.exists(project_path):
+        cmd.append(open(project_path).read().strip())
+    done = subprocess.run(cmd, capture_output=True, text=True, timeout=240)
+    if done.returncode != 0:
+        raise RuntimeError(f"relaunch failed ({done.returncode}): {done.stderr.strip()[-500:]}")
+    return {"stopped": stopped, "launcher": done.stdout.strip(), "status": _call("status")}
 
 
 def _load_docs():
@@ -177,10 +235,19 @@ def call_tool(name, args):
     if name == "gaia_status":
         return _text(_call("status"))
     if name == "gaia_eval":
-        reply = _bridge.request("eval", code=args["code"])
+        timeout_s = args.get("timeout_s")
+        reply = _bridge.request("eval", timeout_s=float(timeout_s) if timeout_s else None, code=args["code"])
         failed = not reply.get("ok") or reply.get("kind") != "ok"
-        keep = {k: reply.get(k) for k in ("kind", "output", "warnings", "exception", "diagnostics", "frame", "undoDepth", "error") if reply.get(k)}
+        keys = ("kind", "output", "warnings", "exception", "diagnostics", "frame", "undoDepth", "error", "timedOut", "withdrawn", "busyOp", "busyMs")
+        keep = {k: reply.get(k) for k in keys if reply.get(k)}
         return _text(keep, is_error=failed)
+    if name == "gaia_ping":
+        reply = _bridge.request("ping")
+        return _text(reply, is_error=bool(reply.get("unresponsive")))
+    if name == "gaia_restart":
+        if args.get("confirm") is not True:
+            return _text("gaia_restart requires confirm=true", is_error=True)
+        return _text(_restart())
     if name in ("gaia_undo", "gaia_redo"):
         return _text(_call(name[5:]))
     if name == "gaia_advance":

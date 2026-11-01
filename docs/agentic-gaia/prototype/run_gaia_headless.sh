@@ -14,7 +14,8 @@ LOG_DIR="${GAIA_LOG_DIR:-${XDG_RUNTIME_DIR:-/tmp}/nu-gaia-logs}"
 mkdir -p -m 700 "$LOG_DIR"
 
 case "${GAIA_VULKAN:-lavapipe}" in
-  lavapipe) export VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/lvp_icd.x86_64.json ;;
+  lavapipe) export VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/lvp_icd.x86_64.json
+            export LP_NUM_THREADS="${LP_NUM_THREADS:-4}" ;;  # bound software-rasteriser threads (shared server)
   nvidia)   export VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/nvidia_icd.json ;;
   *) ;;
 esac
@@ -22,7 +23,7 @@ esac
 # 1. display: reuse if a server already owns it, else start a private Xvfb (never touch :0/:77/:78/:99)
 n="${DISPLAY#:}"
 if [ ! -S "/tmp/.X11-unix/X$n" ]; then
-  nohup Xvfb "$DISPLAY" -screen 0 1920x1080x24 -nolisten tcp >"$LOG_DIR/xvfb.log" 2>&1 &
+  nohup Xvfb "$DISPLAY" -screen 0 1920x1080x24 -nolisten tcp </dev/null >"$LOG_DIR/xvfb.log" 2>&1 &
   for _ in $(seq 50); do [ -S "/tmp/.X11-unix/X$n" ] && break; sleep 0.1; done
 fi
 
@@ -50,8 +51,9 @@ EOF
 # 3. launch Gaia (niced; shared server) and wait for the bridge socket
 rm -f "$NU_GAIA_AGENT_SOCKET"
 cd "$GAIA_BIN"
-nohup nice -n 5 dotnet Nu.Gaia.dll >"$LOG_DIR/gaia.log" 2>&1 &
+nohup nice -n 5 dotnet Nu.Gaia.dll </dev/null >"$LOG_DIR/gaia.log" 2>&1 &
 echo $! >"$LOG_DIR/gaia.pid"
+printf "%s\n" "$PROJECT_DLL" >"$LOG_DIR/gaia.project"  # lets gaia_restart relaunch the same project
 for _ in $(seq 240); do [ -S "$NU_GAIA_AGENT_SOCKET" ] && break; sleep 0.5; done
 if [ -S "$NU_GAIA_AGENT_SOCKET" ]; then
   echo "Gaia pid $(cat "$LOG_DIR/gaia.pid") on $DISPLAY; bridge $NU_GAIA_AGENT_SOCKET; log $LOG_DIR/gaia.log"

@@ -3,6 +3,8 @@
 
 Prerequisite: run_gaia_headless.sh has started Gaia (Breakout ImSim project) on a private Xvfb display.
 Usage: python3 -I check_mcp.py [OUT_DIR]   (writes before/after/frames PNGs and a JSON transcript to OUT_DIR)
+The last block hangs the editor on purpose (non-terminating eval), checks liveness/withdrawal/fast-fail, then
+restarts Gaia via gaia_restart. Set NU_GAIA_CHECK_HANG=0 to skip it.
 Exit status 0 only if every check passes.
 """
 import base64
@@ -79,7 +81,7 @@ check("initialize", init["result"]["serverInfo"]["name"] == "nu-gaia")
 server.stdin.write(json.dumps({"jsonrpc": "2.0", "method": "notifications/initialized"}) + "\n")
 server.stdin.flush()
 tools = rpc("tools/list")["result"]["tools"]
-check("tools/list", len(tools) >= 13, f"{len(tools)} tools")
+check("tools/list", len(tools) >= 15, f"{len(tools)} tools")
 
 status = json.loads(text_of(tool("gaia_status")))
 check("status: project loaded, time halted", status["projectDllPath"].endswith("Breakout ImSim.dll") and not status["advancing"])
@@ -104,6 +106,9 @@ check("inspect Play button has Text, Position", {"Text", "Position"} <= names, f
 
 # --- design iteration with visual feedback: add a big coloured block in the selected group, look, undo, look
 before = image_of(tool("gaia_screenshot", view="game", max_width=960), "1-before.png")
+win = json.loads(text_of(tool("gaia_status"))).get("window") or {}
+want_h = round(win.get("height", 0) * 960 / max(1, win.get("width", 1)))
+check("screenshot cropped to Gaia window (no root margin)", win and before.size == (960, want_h), f"window {win}, image {before.size}")
 code = (
     'let e = World.createEntity<StaticSpriteDispatcher> None DefaultOverlay (Some [|"AgentBlock"|]) SelectedGroup world\n'
     "e.SetSize (v3 400.0f 300.0f 0.0f) world\n"
@@ -133,13 +138,43 @@ r = tool("gaia_frames", count=4, every=15, view="game")
 image_of(r, "4-frames.png")
 check("frame sequence contact sheet", not r["isError"])
 
+depth0 = json.loads(text_of(tool("gaia_status")))["undoDepth"]
 r = json.loads(text_of(tool("gaia_symbol", name="World.createEntity")))
+check("symbol adds no undo entry", json.loads(text_of(tool("gaia_status")))["undoDepth"] == depth0)
 ov = (r.get("overloads") or [{}])[0]
 check("gaia_symbol: F# signature + Nu.xml doc + declaration", "Group" in ov.get("signature", "") and "Create an entity" in ov.get("doc", "")
       and (r.get("declaration") or "").endswith(".fs:2398"), f"{r.get('declaration')}")
 
 r = tool("nu_docs", query="createEntity", limit=5)
 check("nu_docs finds createEntity", "createEntity" in text_of(r), text_of(r).splitlines()[0][:100] if text_of(r) else "")
+
+# --- liveness: a non-terminating eval blocks the editor thread; the transport must say so and recover
+if os.environ.get("NU_GAIA_CHECK_HANG", "1") != "0":
+    sys.path.insert(0, HERE)
+    from gaia_bridge import GaiaBridge
+
+    r = tool("gaia_eval", code="while true do ()", timeout_s=3)
+    body = json.loads(text_of(r))
+    check("hung eval: times out after timeout_s, reported as started (not withdrawn)", r["isError"] and body.get("timedOut") and not body.get("withdrawn"), json.dumps(body)[:160])
+    side = GaiaBridge(path=env["NU_GAIA_AGENT_SOCKET"])
+    t0 = time.time()
+    queued = side.request("status", timeout_s=2)
+    check("request queued behind the hang is withdrawn on timeout (never runs late)", queued.get("timedOut") and queued.get("withdrawn") is True, f"{time.time() - t0:.1f}s")
+    side.close()
+    p = json.loads(text_of(tool("gaia_ping")))
+    check("ping answers while blocked and names the running op", p.get("ok") and p.get("busyOp") == "eval", json.dumps(p)[:160])
+    time.sleep(8)
+    p = json.loads(text_of(tool("gaia_ping")))
+    check("ping flags unresponsive after threshold", p.get("unresponsive") is True, f"msSinceFrame={p.get('msSinceFrame')}")
+    t0 = time.time()
+    r = tool("gaia_status")
+    check("new requests fail fast while unresponsive", r["isError"] and "unresponsive" in text_of(r) and time.time() - t0 < 2, f"{time.time() - t0:.2f}s")
+    t0 = time.time()
+    r = tool("gaia_restart", confirm=True)
+    check("gaia_restart recovers a fresh editor", not r["isError"] and json.loads(text_of(r))["status"]["undoDepth"] == 0, f"{time.time() - t0:.0f}s")
+    r = json.loads(text_of(tool("gaia_symbol", name="World.createEntity")))
+    check("first symbol call on a fresh session: docs resolved, no undo entry",
+          "Create an entity" in ((r.get("overloads") or [{}])[0].get("doc") or "") and json.loads(text_of(tool("gaia_status")))["undoDepth"] == 0)
 
 server.stdin.close()
 server.wait(timeout=10)

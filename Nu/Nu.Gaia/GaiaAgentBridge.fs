@@ -53,11 +53,13 @@ type EvalOutcome =
         { Kind = "none"; Output = ""; Warnings = ""; Exception = ""; Diagnostics = [||] }
 
 /// A request from an external agent, completed on the editor thread.
+/// State is 0 = queued, 1 = claimed by the editor thread, 2 = withdrawn by the transport after a client timeout.
 type AgentRequest =
     { Id : string
       Op : string
       Args : JsonElement
-      Reply : TaskCompletionSource<string> }
+      Reply : TaskCompletionSource<string>
+      State : int ref }
 
 [<RequireQualifiedAccess>]
 module AgentBridge =
@@ -65,13 +67,59 @@ module AgentBridge =
     /// Environment variable naming the Unix domain socket path. The bridge is off unless it is set.
     let [<Literal>] SocketEnvVar = "NU_GAIA_AGENT_SOCKET"
 
-    /// Upper bound on how long a connection waits for the editor thread to answer one request.
+    /// Default upper bound on how long a connection waits for the editor thread to answer one request.
+    /// A request may lower or raise it with a top-level "timeout_s" (1..600).
     let ReplyTimeout = TimeSpan.FromSeconds 120.0
+
+    /// If the editor thread has produced no frame for this long, new requests fail fast instead of queueing.
+    /// (A legitimately long op such as reload_code also trips this; the error names the op that is running.)
+    let UnresponsiveThreshold = TimeSpan.FromSeconds 10.0
+
+    /// Requests beyond this many waiting are refused.
+    let MaxQueued = 64
 
     /// Requests waiting for the editor thread.
     let Requests = ConcurrentQueue<AgentRequest> ()
 
     let mutable private ListenerOpt = Option<Socket>.None
+
+    // liveness, written by the editor thread and read by connection threads (all under Gate)
+    let private Gate = obj ()
+    let private Clock = Diagnostics.Stopwatch.StartNew ()
+    let mutable private LastFrame = 0L
+    let mutable private LastFrameMs = 0L
+    let mutable private BusyId = ""
+    let mutable private BusyOp = ""
+    let mutable private BusySinceMs = 0L
+
+    /// Record that the editor thread completed a frame. Editor thread only.
+    let heartbeat (frame : int64) =
+        lock Gate (fun () -> LastFrame <- frame; LastFrameMs <- Clock.ElapsedMilliseconds)
+
+    /// Atomically claim a queued request for execution; false if the transport already withdrew it. Editor thread only.
+    let tryClaim (request : AgentRequest) =
+        Interlocked.CompareExchange (&request.State.contents, 1, 0) = 0
+
+    /// Mark a request as running on the editor thread. Editor thread only.
+    let beginRequest (request : AgentRequest) =
+        lock Gate (fun () -> BusyId <- request.Id; BusyOp <- request.Op; BusySinceMs <- Clock.ElapsedMilliseconds)
+
+    /// Mark the editor thread idle again. Editor thread only.
+    let endRequest () =
+        lock Gate (fun () -> BusyId <- ""; BusyOp <- "")
+
+    /// Liveness as seen from a connection thread, without touching the editor thread.
+    let private liveness () =
+        lock Gate (fun () ->
+            let now = Clock.ElapsedMilliseconds
+            let sinceFrameMs = if LastFrame = 0L then 0L else now - LastFrameMs
+            let busyMs = if BusyOp = "" then 0L else now - BusySinceMs
+            {| Frame = LastFrame
+               SinceFrameMs = sinceFrameMs
+               BusyId = BusyId
+               BusyOp = BusyOp
+               BusyMs = busyMs
+               Unresponsive = LastFrame > 0L && float sinceFrameMs > UnresponsiveThreshold.TotalMilliseconds |})
 
     /// Serialize a reply object to a single JSON line.
     let toJson (value : obj) =
@@ -80,6 +128,62 @@ module AgentBridge =
     /// Make an error reply.
     let error (id : string) (message : string) =
         toJson (dict ["id", box id; "ok", box false; "error", box message])
+
+    let private livenessFields (id : string) ok =
+        let live = liveness ()
+        let fields = Collections.Generic.Dictionary<string, obj> ()
+        fields["id"] <- box id
+        fields["ok"] <- box ok
+        fields["frame"] <- box live.Frame
+        fields["msSinceFrame"] <- box live.SinceFrameMs
+        fields["busyOp"] <- box live.BusyOp
+        fields["busyId"] <- box live.BusyId
+        fields["busyMs"] <- box live.BusyMs
+        fields["queued"] <- box Requests.Count
+        fields["unresponsive"] <- box live.Unresponsive
+        fields
+
+    let private unresponsiveError (id : string) =
+        let live = liveness ()
+        let fields = livenessFields id false
+        fields["error"] <-
+            "Editor thread unresponsive for " + string live.SinceFrameMs + " ms" +
+            (if live.BusyOp <> "" then " (running op '" + live.BusyOp + "' id " + live.BusyId + " for " + string live.BusyMs + " ms)" else "") +
+            "; request NOT queued. A non-terminating eval cannot be cancelled in-process: poll ping, or restart Gaia."
+        toJson fields
+
+    let private handleRequest (line : string) =
+        use doc = JsonDocument.Parse line
+        let root = doc.RootElement
+        let id = match root.TryGetProperty "id" with | (true, v) -> v.ToString () | _ -> ""
+        let op = match root.TryGetProperty "op" with | (true, v) when v.ValueKind = JsonValueKind.String -> v.GetString () | _ -> ""
+        let timeout =
+            match root.TryGetProperty "timeout_s" with
+            | (true, v) when v.ValueKind = JsonValueKind.Number -> TimeSpan.FromSeconds (Math.Clamp (v.GetDouble (), 1.0, 600.0))
+            | _ -> ReplyTimeout
+        if op = "ping" then
+            // answered here, never queued: works while the editor thread is blocked
+            toJson (livenessFields id true)
+        elif (liveness ()).Unresponsive then unresponsiveError id
+        elif Requests.Count >= MaxQueued then error id ("Too many queued requests (" + string MaxQueued + "); request not queued.")
+        else
+            let args = match root.TryGetProperty "args" with | (true, v) -> v.Clone () | _ -> JsonDocument.Parse("{}").RootElement.Clone ()
+            let tcs = TaskCompletionSource<string> TaskCreationOptions.RunContinuationsAsynchronously
+            let request = { Id = id; Op = op; Args = args; Reply = tcs; State = ref 0 }
+            Requests.Enqueue request
+            if tcs.Task.Wait timeout then tcs.Task.Result
+            else
+                // withdraw it so it can never run after the client gave up; if it already started, say so
+                let withdrawn = Interlocked.CompareExchange (&request.State.contents, 2, 0) = 0
+                tcs.TrySetCanceled () |> ignore<bool>
+                let fields = livenessFields id false
+                fields["timedOut"] <- box true
+                fields["withdrawn"] <- box withdrawn
+                fields["error"] <-
+                    "Timed out after " + string timeout.TotalSeconds + " s. " +
+                    (if withdrawn then "The request had not started and was withdrawn; it will not run."
+                     else "The request had already started on the editor thread and cannot be cancelled; its effects may still apply when it finishes (check status/undo later).")
+                toJson fields
 
     let private handleConnection (client : Socket) =
         task {
@@ -93,18 +197,10 @@ module AgentBridge =
                 if isNull line then running <- false
                 elif not (String.IsNullOrWhiteSpace line) then
                     let reply =
-                        try use doc = JsonDocument.Parse line
-                            let root = doc.RootElement
-                            let id = match root.TryGetProperty "id" with | (true, v) -> v.ToString () | _ -> ""
-                            let op = match root.TryGetProperty "op" with | (true, v) -> v.GetString () | _ -> ""
-                            let args = match root.TryGetProperty "args" with | (true, v) -> v.Clone () | _ -> JsonDocument.Parse("{}").RootElement.Clone ()
-                            let tcs = TaskCompletionSource<string> TaskCreationOptions.RunContinuationsAsynchronously
-                            Requests.Enqueue { Id = id; Op = op; Args = args; Reply = tcs }
-                            if tcs.Task.Wait ReplyTimeout
-                            then tcs.Task.Result
-                            else error id ("Timed out after " + string ReplyTimeout.TotalSeconds + " s waiting for the editor thread (is an eval still running?).")
+                        try handleRequest line
                         with exn -> error "" ("Bad request: " + exn.Message)
-                    do! writer.WriteLineAsync reply
+                    try do! writer.WriteLineAsync reply
+                    with _ -> running <- false // client went away
         } :> Task
 
     /// Start listening if the socket environment variable is set. Idempotent.

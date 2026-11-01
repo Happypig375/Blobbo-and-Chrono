@@ -3247,12 +3247,8 @@ DockSpace           ID=0x7C6B3D9B Window=0xA87D555D Pos=0,0 Size=1920,1080 Split
         // fin
         ImGui.End ()
 
-    /// Evaluate F# input in the interactive session on the editor thread, appending to the Interactive window's
-    /// output, and return a structured outcome (used by both the Interactive window and the agent bridge).
-    let private evalInteractive (inputStr : string) world : EvalOutcome =
-        let mutable outcome = EvalOutcome.empty
-        snapshot (Evaluate inputStr) world
-        let initialEval = InteractiveNeedsInitialization
+    /// Run the interactive session's #r/open prelude once. Takes no world snapshot.
+    let private ensureInteractiveInitialized () =
         if InteractiveNeedsInitialization then
 
             // run initialization script
@@ -3307,6 +3303,14 @@ DockSpace           ID=0x7C6B3D9B Window=0xA87D555D Pos=0,0 Size=1920,1080 Split
 
             // eval initialization finished
             InteractiveNeedsInitialization <- false
+
+    /// Evaluate F# input in the interactive session on the editor thread, appending to the Interactive window's
+    /// output, and return a structured outcome (used by both the Interactive window and the agent bridge).
+    let private evalInteractive (inputStr : string) world : EvalOutcome =
+        let mutable outcome = EvalOutcome.empty
+        snapshot (Evaluate inputStr) world
+        let initialEval = InteractiveNeedsInitialization
+        ensureInteractiveInitialized ()
 
         // attempt to run interactive input
         if inputStr.Contains (nameof TargetDir) then FsiSession.AddBoundValue (nameof TargetDir, TargetDir)
@@ -4298,7 +4302,12 @@ DockSpace           ID=0x7C6B3D9B Window=0xA87D555D Pos=0,0 Size=1920,1080 Split
          ("selectedGroup", box (string SelectedGroup))
          ("selectedEntity", box (match SelectedEntityOpt with Some entity -> string entity | None -> null))
          ("undoDepth", box Pasts.Length)
-         ("logSeq", box AgentLogSeq)]
+         ("logSeq", box AgentLogSeq)
+         // window rectangle in screen pixels, so external captures can crop to the window
+         ("window",
+            match (World.tryGetWindowPosition world, World.tryGetWindowSize world) with
+            | (Some position, Some size) -> box (dict ["x", position.X; "y", position.Y; "width", size.X; "height", size.Y])
+            | (_, _) -> null)]
 
     let private agentTryResolveSimulant (path : string) : Simulant option =
         // accepts paths as printed by the hierarchy op ("Game/Screen/Group/Entity...") or without the "Game/" root
@@ -4376,7 +4385,7 @@ DockSpace           ID=0x7C6B3D9B Window=0xA87D555D Pos=0,0 Size=1920,1080 Split
 
     /// Resolve a (possibly qualified) name in the live FSI session: F# signature(s), XML docs, declaration location.
     let private agentSymbol (name : string) world =
-        if InteractiveNeedsInitialization then evalInteractive "()" world |> ignore<EvalOutcome> // runs the session's #r/open prelude
+        ensureInteractiveInitialized () // the session's #r/open prelude; no snapshot, so no undo entry
         let lineText = name.Trim ()
         let names = lineText.Split '.' |> List.ofArray
         let col = lineText.Length
@@ -4489,13 +4498,18 @@ DockSpace           ID=0x7C6B3D9B Window=0xA87D555D Pos=0,0 Size=1920,1080 Split
     /// Drain agent requests and complete due deferred replies. Runs on the editor thread once per frame.
     let private agentProcess (world : World) =
         AgentFrame <- inc AgentFrame
+        AgentBridge.heartbeat AgentFrame
         let (due, pending) = List.partition (fun (target, _) -> target <= AgentFrame) AgentDeferred
         AgentDeferred <- pending
         for (_, complete) in List.rev due do complete world
         let mutable request = Unchecked.defaultof<AgentRequest>
         while AgentBridge.Requests.TryDequeue &request do
-            try agentProcessRequest request world
-            with exn -> request.Reply.TrySetResult (AgentBridge.error request.Id ("Request failed: " + scstring exn)) |> ignore<bool>
+            // a request whose client already timed out was withdrawn; never run it late
+            if AgentBridge.tryClaim request then
+                AgentBridge.beginRequest request
+                try try agentProcessRequest request world
+                    with exn -> request.Reply.TrySetResult (AgentBridge.error request.Id ("Request failed: " + scstring exn)) |> ignore<bool>
+                finally AgentBridge.endRequest ()
 
     let private imGuiProcess (world : World) =
 

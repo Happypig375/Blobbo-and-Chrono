@@ -44,27 +44,42 @@ class GaiaBridge:
                 self._sock = None
                 self._file = None
 
-    def request(self, op, **args):
+    def request(self, op, timeout_s=None, **args):
+        """Send one request and return its reply. `timeout_s` (1..600) bounds the server-side wait for the editor
+        thread; on expiry the server withdraws a not-yet-started request so it never runs late."""
         self._connect()
         msg = {"id": str(next(self._ids)), "op": op, "args": args}
+        if timeout_s is not None:
+            msg["timeout_s"] = timeout_s
+        self._sock.settimeout(max(self.timeout, (timeout_s or 0) + 30))
         try:
             self._file.write((json.dumps(msg) + "\n").encode("utf-8"))
             self._file.flush()
             line = self._file.readline()
         except (OSError, socket.timeout):
-            self.close()
+            self.close()  # never reuse a connection that may still deliver a stale reply
             raise
         if not line:
             self.close()
             raise ConnectionError("Gaia closed the bridge connection")
-        return json.loads(line)
+        reply = json.loads(line)
+        if reply.get("id") not in (msg["id"], ""):  # "" = unparseable request; anything else is a stale reply
+            self.close()
+            raise ConnectionError(f"reply id {reply.get('id')!r} does not match request id {msg['id']!r}")
+        return reply
 
 
-def screenshot(display=None, path=None, max_width=None):
-    """Grab the X display Gaia renders to (Xvfb in headless runs). Returns a PIL image (and saves it if path)."""
+def screenshot(display=None, path=None, max_width=None, window=None):
+    """Grab the X display Gaia renders to (Xvfb in headless runs). Returns a PIL image (and saves it if path).
+    `window` is the {"x","y","width","height"} rectangle from a bridge status reply; the grab is cropped to it."""
     from PIL import ImageGrab  # Pillow with XCB support
 
     image = ImageGrab.grab(xdisplay=display or os.environ.get("DISPLAY"))
+    if window and window.get("width", 0) > 0 and window.get("height", 0) > 0:
+        left, top = max(0, window["x"]), max(0, window["y"])
+        right, bottom = min(image.width, window["x"] + window["width"]), min(image.height, window["y"] + window["height"])
+        if right > left and bottom > top:
+            image = image.crop((left, top, right, bottom))
     if max_width and image.width > max_width:
         image = image.resize((max_width, round(image.height * max_width / image.width)))
     if path:
@@ -98,9 +113,9 @@ def repl(bridge):
                 break
             if line.startswith(":shot"):
                 parts = line.split(maxsplit=1)
-                bridge.request("wait_frames", frames=2)
+                status = bridge.request("wait_frames", frames=2)
                 out = parts[1] if len(parts) > 1 else "gaia-shot.png"
-                screenshot(path=out)
+                screenshot(path=out, window=status.get("window"))
                 print(f"saved {out}")
                 continue
             op, _, rest = line[1:].partition(" ")

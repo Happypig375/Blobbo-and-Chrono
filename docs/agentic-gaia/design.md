@@ -1,7 +1,7 @@
 # Agentic Gaia: recommended agent interface
 
 Inputs: `investigation.md` (findings 1–4, code references), `literature-review.md` (sources, read depth),
-prototype in `prototype/` (verified end to end, 17/17 checks). Literature references below use the review's ids
+prototype in `prototype/` (verified end to end, 26/26 checks after round-2 hardening). Literature references below use the review's ids
 (A1, C7 …); most are preprints, so they shape priorities rather than prove effects.
 
 ## 1. Recommendation in one paragraph
@@ -84,7 +84,9 @@ Tool names as an agent sees them. **Built** = in the spike and covered by `proto
 |---|---|---|---|
 | `gaia_undo` / `gaia_redo` | – | `undone`/`redone` + status | built |
 | `gaia_checkpoint` | `name` / `restore` | named snapshot outside the linear undo stack (best-so-far retention) | next |
-| `gaia_reset_session` | – | restart FSI (and, via the supervisor, Gaia) after a hung or poisoned eval | next |
+| `gaia_ping` | – | liveness answered off the editor thread: last frame, ms since it, running op and duration, queue length, `unresponsive` | built (round 2) |
+| `gaia_restart` | `confirm: true` | supervisor restart of the Gaia this server launched (pid checked against `Nu.Gaia.dll`), same project; world/undo/FSI state lost | built (round 2) |
+| `gaia_reset_session` | – | restart only FSI (keep the world) after a poisoned but not hung session | next |
 
 Schemas are in `prototype/gaia_mcp.py` (`TOOLS`). Tool descriptions are kept short and actionable, e.g. "Keep
 snippets small; a non-terminating eval freezes the editor", following the ACI and tool-description evidence (C7,
@@ -149,10 +151,19 @@ This matters because agent latency can bring back slow compile-and-run cycles (B
    - static mutable state
    - imperative-mode projects, where Gaia disables undo (the tool should refuse or warn there)
 3. **Containment of later failures**: Gaia already rewinds and halts on exceptions thrown inside the frame loop.
-4. **Liveness**: there is a per-request timeout in the transport. A hung eval blocks the editor thread and cannot
-   be cancelled in-process, so:
-   - a supervisor (the launcher) should restart Gaia;
-   - a next step is a watchdog that marks the session poisoned and surfaces `gaia_reset_session`.
+4. **Liveness** (hardened in round 2; verified by `check_mcp.py`). A non-terminating eval blocks the editor thread
+   and cannot be cancelled in-process (FCS runs the compiled code synchronously; .NET has no thread abort). So the
+   transport contains it instead of pretending to cancel it:
+   - Each request has a timeout (default 120 s; `timeout_s` 1–600 per request). On expiry the request is
+     **withdrawn** through an atomic queued→claimed/withdrawn handoff, so a request whose client gave up can never
+     run later. The reply says whether the request had already started, in which case its effects may still land.
+   - The editor thread writes a heartbeat every frame and records the op it is running. `ping` is answered on the
+     connection thread, so it works while the editor is blocked.
+   - After 10 s without a frame, new requests **fail fast** with an error naming the running op instead of
+     queueing behind it. A legitimately long op such as `reload_code` (~25 s) also trips this, and the error says so.
+   - Recovery is a supervisor restart (`gaia_restart`), which loses unsaved world state.
+   - The client checks that reply ids match request ids and drops a connection after any timeout, so a stale reply
+     is never read as the answer to a later request (research-workflow-evaluation lesson 3).
 5. **Isolation for untrusted or autonomous runs**:
    - Run Gaia in a container or VM with no network, on a git worktree of the project.
    - The agent's file edits are then git-revertible.
@@ -211,7 +222,7 @@ This matters because agent latency can bring back slow compile-and-run cycles (B
   ```bash
   nice dotnet build Nu/Nu.Gaia/Nu.Gaia.fsproj -c Debug        # builds engine + sample projects (~5 min first time)
   docs/agentic-gaia/prototype/run_gaia_headless.sh             # Xvfb :91 + lavapipe + Breakout ImSim + bridge
-  python3 -I docs/agentic-gaia/prototype/check_mcp.py OUT_DIR  # 17 checks; PNGs + transcript in OUT_DIR
+  python3 -I docs/agentic-gaia/prototype/check_mcp.py OUT_DIR  # 26 checks incl. hang + restart (NU_GAIA_CHECK_HANG=0 skips); PNGs + transcript
   claude mcp add gaia -- env NU_GAIA_AGENT_SOCKET=$XDG_RUNTIME_DIR/nu-gaia-agent.sock DISPLAY=:91 \
       NU_XML_DOC=$PWD/Nu/Nu/bin/Debug/net10.0/Nu.xml python3 $PWD/docs/agentic-gaia/prototype/gaia_mcp.py
   ```
@@ -228,14 +239,18 @@ This matters because agent latency can bring back slow compile-and-run cycles (B
   - MCP registration inside a real Claude Code session (the check drives the MCP server over stdio, as a client
     would).
 - **Spike-quality gaps**:
-  - Screenshots include the black root-window margin around the 1280x720 window.
-  - The first `symbol` call on a fresh session runs an `()` eval to initialise the session, which adds one undo
-    entry.
-  - The 120 s transport timeout does not stop the eval.
+  - Fixed in round 2: screenshots are cropped to the window rectangle that `status` reports (SDL position and
+    size), with no root-window margin. The first `symbol` call no longer adds an undo entry, because session
+    initialisation was factored out of `evalInteractive`. Hung evals are contained (§5.4) but still cannot be
+    cancelled.
+  - A request withdrawn on timeout stays in the queue (counted by `ping.queued`) until the editor thread drains
+    and skips it.
   - Python is used for the MCP side; F# or C# would remove the second runtime.
   - Cost on a shared server: the idle headless editor used about 7 CPU cores (`ps` showed 701% after 3.7 min),
-    likely because lavapipe renders every frame in software and Gaia runs with `FramePacing = false` (cause not isolated). Stop Gaia when the
-    agent is idle, or add frame pacing or a render-on-request mode for agent sessions.
+    likely because lavapipe renders every frame in software and Gaia runs with `FramePacing = false` (cause not
+    isolated). In round 2 the launcher sets `LP_NUM_THREADS=4`, and the idle cost fell to about 3.7 cores
+    (`top`: 366%). Stop Gaia when the agent is idle, or add frame pacing or a render-on-request mode for agent
+    sessions.
 
 ## 9. Next steps (in order)
 
@@ -245,7 +260,7 @@ This matters because agent latency can bring back slow compile-and-run cycles (B
    literature says matter most.
 3. **`gaia_save` and `gaia_set_property`**, using Gaia's existing converters. This makes the persistence
    boundary explicit.
-4. **Watchdog and supervisor restart; imperative-mode guard.**
+4. **Imperative-mode guard; FSI-only `gaia_reset_session`.** The watchdog and supervisor restart were done in round 2.
 5. **FCS entity index for `gaia_search_api`**; SourceLink fallback for NuGet installs.
 6. **Run the §7 ablation** on a handful of tasks before investing in polish.
 

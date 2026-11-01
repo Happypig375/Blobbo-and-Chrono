@@ -331,6 +331,58 @@ Date: 2026-11-01 (HKT). Scoping review for the Gaia agent-interface design, not 
 
 ---
 
+## H. Consensus branch (round 2, 2026-11-01; abstract depth)
+
+Three Consensus `search` calls (page 0, default page size; 20 + 19 + 20 records, all screened from the inline
+page; see `search-ledger.tsv`). Read depth for every entry below: **abstract (Consensus record, provider text)**,
+not full text; credibility `not_yet_assessed`. Records already in A–G (GameDevBench-adjacent GameXpert-Bench A5,
+CreativeGame A11, REPL-Plan B12, Self-Debug C3, Olausson C4, How many tries C14) were not re-listed.
+
+**H1. WebGen-Agent.** Lu, Z., et al. (2025). WebGen-Agent: Enhancing interactive website generation with multi-level feedback and step-level reinforcement learning. *arXiv:2509.22644*. https://doi.org/10.48550/arxiv.2509.22644
+- Finding (abstract): a VLM turns screenshots and GUI-agent testing into text feedback plus scores; "integrated with a backtracking and select-best mechanism"; Claude-3.5-Sonnet accuracy 26.4% → 51.9% on WebGen-Bench.
+- Informs: screenshot feedback works best as one scored signal with backtracking to the best-so-far state (our snapshot/undo).
+
+**H2. OpenGame / OpenGame-Bench.** Jiang, Y., et al. (2026). OpenGame: Open agentic coding for games. *arXiv:2604.18394*. https://doi.org/10.48550/arxiv.2604.18394
+- Finding (abstract): web-game agent with a "Debug Skill that maintains a living protocol of verified fixes"; evaluation scores Build Health, Visual Usability and Intent Alignment "via headless browser execution and VLM judging" on 150 prompts.
+- Informs: headless execution + VLM judging as an evaluation recipe; a persistent fix log is a cheap analogue for Gaia sessions.
+
+**H3. GameWorld.** Ouyang, M., et al. (2026). GameWorld: Towards standardized and verifiable evaluation of multimodal game agents. *arXiv:2604.07429*. https://doi.org/10.48550/arxiv.2604.07429
+- Finding (abstract): 34 browser games, 170 tasks with "state-verifiable metrics"; compares raw keyboard/mouse computer-use agents with a semantic action space.
+- Informs: state-verifiable checks over pixel judging; a semantic action layer (our typed tools) versus raw GUI control. Game *playing*, not design.
+
+**H4. Is three the magic number?** Kiecker, T., et al. (2026). Is three the magic number? An empirical evaluation of LLM-based repair loops. *ASE 2026* (per record). https://doi.org/10.1145/3832783.3834547
+- Finding (abstract): across code generation, test generation and translation, "the first three to four repair iterations account for most achievable gains"; repair behaviour depends more on "workflow orchestration and feedback design than by the underlying model".
+- Informs: an iteration cap of ~3–4 per design step, and treat the cap as an experimental variable (design.md §7). Peer-reviewed venue (unverified).
+
+**H5. FeedbackEval.** Dai, D., et al. (2025). FeedbackEval: A benchmark for evaluating LLMs in feedback-driven code repair tasks. *arXiv:2504.06939*. https://doi.org/10.48550/arxiv.2504.06939
+- Finding (abstract): mixed feedback best (63.6%), test feedback 57.9%, compiler feedback 49.2%; "marginal benefit diminishes after two or three iterations".
+- Informs: return several feedback kinds together (diagnostics + runtime result + state/visual), not compiler errors alone.
+
+**H6. Debugging Decay Index.** Adnan, M., et al. (2025). Measuring and mitigating debugging effectiveness decay in code language models. *Scientific Reports*. https://doi.org/10.1038/s41598-025-27846-5
+- Finding (abstract): "most models lose 60-80% of their debugging capability within just 2-3 attempts"; a "strategic fresh start" rescues effectiveness.
+- Informs: after a few failed rounds, roll back to the snapshot and restart the step rather than patch further. Peer-reviewed.
+
+**H7. TraceCoder.** Huang, J., et al. (2026). TraceCoder: A trace-driven multi-agent framework for automated debugging of LLM-generated code. *ICSE 2026*. https://doi.org/10.1145/3744916.3773187
+- Finding (abstract): runtime-trace probes plus a "Rollback Mechanism [that] enforces that each repair iteration constitutes a strict improvement"; up to 34.43% relative Pass@1 gain.
+- Informs: keep best-so-far and roll back non-improving edits (supports A10 and our undo design).
+
+**H8. InspectCoder.** Wang, Y., et al. (2026). InspectCoder: Dynamic analysis-driven self repair through interactive LLM-debugger collaboration. *PACMPL*. https://doi.org/10.1145/3798238 (preprint arXiv:2510.18327)
+- Finding (abstract): agent-controlled breakpoints and "incremental runtime experimentation within stateful debugger sessions"; 5.10–60.37% relative repair gains.
+- Informs: a stateful interactive session (like Gaia's live FSI) is a better repair substrate than fixed logs; complements C12.
+
+**H9. Inducing code change in self-debugging.** Kim, J. (2026). *AI* (MDPI) 7(10), 392. https://doi.org/10.3390/ai7100392
+- Finding (abstract): revision requests left 42.6% of failing programs unchanged; giving "the first reported failure instead of only a failure status increased repair by 12.93–13.43 points"; gains per turn decrease sharply.
+- Informs: return the concrete failure (exception text, diagnostic with location), never a bare fail flag. Same author as C13.
+
+**H10. A-ProS.** Tabassum, A., et al. (2026). A-ProS: Towards reliable autonomous programming through multi-model feedback. *ACM TOSEM*. https://doi.org/10.1145/3820891
+- Finding (abstract): "stateful refinement outperforms stateless approaches by 8.5–10.6 percentage points and reduces repeated failures by up to 3.5×".
+- Informs: keep per-session history (Gaia log, eval transcript) visible to the agent across rounds.
+
+Also seen, not listed (off-target for this design): ScreenAgent, CogAgent (GUI control models); LLM game-agent surveys
+(Hu et al. 2024; Gallotta et al. 2024, *IEEE ToG*, a possible background citation); V-GameGym; GameGPT; LiveCodeBench;
+code-generation benchmarks without an interactive loop. No Consensus hit addressed an LLM agent inside a
+game-editor REPL, consistent with the Scite branch.
+
 ## Paywalled or closed, important (not fetched)
 
 - Hou et al. MCP landscape (TOSEM): full text institutional.
