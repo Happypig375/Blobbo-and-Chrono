@@ -1,0 +1,27 @@
+--- a/Gameplay.fs
++++ b/Gameplay.fs
+@@ -100,7 +100,6 @@
+                 World.doBlockBody2d "Paddle"
+                     [Entity.Position .= PaddleOrigin
+                      Entity.Size .= v3 64.0f 16.0f 0.0f
+-                     Entity.Sensor .= true
+                      Entity.StaticImage .= Assets.Default.Paddle] world
+             let paddle = world.DeclaredEntity
+ 
+@@ -121,7 +120,7 @@
+                     [Entity.Position .= BallOrigin
+                      Entity.Size .= v3 8.0f 8.0f 0.0f
+                      Entity.BodyType .= Dynamic
+-                     Entity.LinearVelocity @= (v3 (0.5f - Gen.randomf) -1.0f 0.0f).Normalized * BallSpeed
++                     Entity.LinearVelocity .= (v3 (0.5f - Gen.randomf) -1.0f 0.0f).Normalized * BallSpeed
+                      Entity.AngularFactor .= v3Zero
+                      Entity.Gravity .= GravityIgnore
+                      Entity.CollisionDetection .= Continuous
+@@ -179,7 +178,6 @@
+                 World.doBlockBody2d brickName
+                     [Entity.Position .= brick.Position
+                      Entity.Size .= brick.Size
+-                     Entity.Sensor .= true
+                      Entity.Color @= brick.Color
+                      Entity.StaticImage .= Assets.Default.Brick] world |> ignore
+ 

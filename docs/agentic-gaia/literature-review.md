@@ -470,7 +470,7 @@ Screenshot-only control remains hard (D7, D8). Implication for Gaia:
   next) and state assertions (`gaia_assert`, next).
 - Use editor screenshots for exploration and detection rather than as the main verification channel.
 
-No published study ablates screenshots against structured inspection in a live editor. Our own small pilot (design.md §7a, `ablation/README.md`; Haiku 5.5, Breakout) found that adding channels did not raise success by itself, because the agent did not use them; one sentence asking it to check in the running game did (bounce bug 2/6 to 5/6, not significant at n = 6). This agrees with A2 and A6: agents rarely look unless pushed.
+No published study ablates screenshots against structured inspection in a live editor. Our own small pilot (design.md §7a, `ablation/README.md`; Haiku 5.5, Breakout) found that adding channels did not raise success by itself, because the agent did not use them; asking it to check in the running game did, whether the request was in the task or in the MCP server instructions (bounce bug 2/6 to 5/6 in each case; not significant at n = 6). This agrees with A2 and A6: agents rarely look unless pushed.
 
 **REPL granularity and liveness.** No LLM-agent-in-game-editor-REPL study was found; REPL-Plan and the Lisp REPL (B12, B13) are planning or design-level. Debugger-granularity evidence (C12) favours function-level summarised traces over line stepping. Live-game work (B3, B6, B8, B10) says edit semantics must be explicit (temporary vs persisted state; snapshot/replay). Agent latency can erode liveness (B2). Implication: small eval calls for probes, larger scripted transactions for edits.
 

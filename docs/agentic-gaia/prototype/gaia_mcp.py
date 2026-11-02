@@ -38,6 +38,27 @@ TOOLSET_LEVELS = {
     "frames": ["gaia_frames"],
 }
 
+# Sent as MCP server instructions; on by default, NU_GAIA_INSTRUCTIONS=0 turns them off (the ablation harness does so
+# except in its "+instructions" condition). The pilot in ../ablation showed that agents rarely check their changes
+# unless told to (bounce task: 2/6 without; 5/6 with these instructions).
+INSTRUCTIONS = (
+    "A live Gaia editor is running the project. Compiling is not checking: after changing the game, reload the code "
+    "(gaia_reload_code), then check in the running game that the change does what was asked, with a test that can "
+    "fail, such as gaia_assert over enough frames to see the behaviour. If the check fails, your idea of the cause may "
+    "be wrong; look again before changing more code."
+)
+# The same advice for tool sets without gaia_assert (NU_GAIA_TOOLSET=eval).
+INSTRUCTIONS_WITHOUT_ASSERT = INSTRUCTIONS.replace(
+    "such as gaia_assert over enough frames to see the behaviour",
+    "such as gaia_advance over enough frames followed by a gaia_eval that reads the state you expect")
+
+
+def _timeout_for_frames(args):
+    """Explicit timeout_s, else enough for slow software rendering: 30 s plus 0.5 s per frame (120..600 s)."""
+    if args.get("timeout_s"):
+        return float(args["timeout_s"])
+    return min(600.0, max(120.0, 30.0 + 0.5 * int(args.get("frames", 1))))
+
 TOOLS = [
     {
         "name": "gaia_status",
@@ -104,7 +125,7 @@ TOOLS = [
     {
         "name": "gaia_advance",
         "description": "Run game time for N editor frames, then halt again (snapshotted; undoable).",
-        "inputSchema": {"type": "object", "properties": {"frames": {"type": "integer", "minimum": 1, "maximum": 600}}, "required": ["frames"]},
+        "inputSchema": {"type": "object", "properties": {"frames": {"type": "integer", "minimum": 1, "maximum": 600}, "timeout_s": {"type": "number", "minimum": 1, "maximum": 600}}, "required": ["frames"]},
     },
     {
         "name": "gaia_hierarchy",
@@ -201,7 +222,8 @@ TOOLS = [
         "description": (
             "Check an F# bool expression over `world` once per frame for `frames` frames (game time advances when "
             "frames > 1; undoable). Stops at the first false or exception and reports that frame. `probe` is an "
-            "optional F# expression of any type, printed at the end or at the failure (e.g. a position). Example: "
+            "optional F# expression of any type, printed at the end or at the failure (e.g. a position). The predicate "
+            "must only read the world: changing it (e.g. moving an entity) disturbs the game and makes the check meaningless. Example: "
             "predicate `(Simulants.Gameplay / \"Scene\" / \"Ball\").GetPosition world |> fun p -> p.Y > -300.0f`."
         ),
         "inputSchema": {
@@ -211,6 +233,7 @@ TOOLS = [
                 "frames": {"type": "integer", "minimum": 1, "maximum": 600},
                 "probe": {"type": "string"},
                 "advance": {"type": "boolean"},
+                "timeout_s": {"type": "number", "minimum": 1, "maximum": 600},
             },
             "required": ["predicate"],
         },
@@ -366,7 +389,7 @@ def call_tool(name, args):
             call["probe"] = args["probe"]
         if args.get("advance") is False:
             call["advance"] = False
-        reply = _bridge.request("assert", timeout_s=float(args.get("timeout_s") or 60.0), **call)
+        reply = _bridge.request("assert", timeout_s=_timeout_for_frames(args), **call)
         keys = ("passed", "kind", "message", "diagnostics", "checkedFrames", "failedAtFrame", "updateTimeAtFailure",
                 "exception", "probe", "frame", "updateTime", "error", "timedOut")
         return _text({k: reply.get(k) for k in keys if reply.get(k) is not None}, is_error=not reply.get("ok") or reply.get("kind") == "compile_error")
@@ -394,7 +417,7 @@ def call_tool(name, args):
     if name in ("gaia_undo", "gaia_redo"):
         return _text(_call(name[5:]))
     if name == "gaia_advance":
-        return _text(_call("advance", frames=int(args["frames"])))
+        return _text(_call("advance", timeout_s=_timeout_for_frames(args), frames=int(args["frames"])))
     if name == "gaia_hierarchy":
         return _text(_call("hierarchy")["screens"])
     if name == "gaia_inspect":
@@ -458,6 +481,8 @@ def handle(msg):
             "capabilities": {"tools": {}},
             "serverInfo": {"name": "nu-gaia", "version": "0.1.0-spike"},
         }
+        if os.environ.get("NU_GAIA_INSTRUCTIONS", "1") != "0":
+            result["instructions"] = INSTRUCTIONS if "gaia_assert" in ENABLED else INSTRUCTIONS_WITHOUT_ASSERT
     elif method == "tools/list":
         result = {"tools": [tool for tool in TOOLS if tool["name"] in ENABLED]}
     elif method == "tools/call":

@@ -151,8 +151,9 @@ module Gaia =
     let private AgentLog = Queue<struct (int64 * string)> ()
     let mutable private AgentLogSeq = 0L
     let mutable private AgentFrame = 0L
-    let mutable private AgentDeferred = [] : (int64 * (World -> unit)) list
-    let mutable private AgentTimeControlBusy = false // one advance/set_advancing in flight at a time
+    /// Completions due at an editor frame: (frame, request it answers, whether it holds AgentTimeControlBusy, completion).
+    let mutable private AgentDeferred = [] : (int64 * AgentRequest * bool * (World -> unit)) list
+    let mutable private AgentTimeControlBusy = false // one advance/set_advancing/assert in flight at a time
     let mutable private ShowEntityContextMenu = false
     let mutable private ShowNewProjectDialog = false
     let mutable private ShowOpenProjectDialog = false
@@ -4282,6 +4283,11 @@ DockSpace           ID=0x7C6B3D9B Window=0xA87D555D Pos=0,0 Size=1920,1080 Split
         for (key, value) in fields do payload[key] <- value
         request.Reply.TrySetResult (AgentBridge.toJson payload) |> ignore<bool>
 
+    /// Run 'complete' at editor frame 'target' on behalf of 'request'. If it throws, the request gets an error reply,
+    /// and AgentTimeControlBusy is released only when this completion holds it ('ownsTimeControl').
+    let private agentDefer (target : int64) (request : AgentRequest) (ownsTimeControl : bool) (complete : World -> unit) =
+        AgentDeferred <- (target, request, ownsTimeControl, complete) :: AgentDeferred
+
     let private agentArgString (name : string) (request : AgentRequest) =
         match request.Args.ValueKind with
         | Text.Json.JsonValueKind.Object ->
@@ -4496,6 +4502,12 @@ DockSpace           ID=0x7C6B3D9B Window=0xA87D555D Pos=0,0 Size=1920,1080 Split
                         changedTotal <- inc changedTotal
                         if changed.Count < limit then
                             changed.Add (dict ["path", box entry.Key; "property", box property.Key; "before", box valueBefore; "after", box property.Value])
+                // properties the simulant had at the checkpoint but no longer has (e.g. after a dispatcher change)
+                for property in propertiesBefore do
+                    if not (entry.Value.ContainsKey property.Key) then
+                        changedTotal <- inc changedTotal
+                        if changed.Count < limit then
+                            changed.Add (dict ["path", box entry.Key; "property", box property.Key; "before", box property.Value; "after", null])
             | _ -> ()
         [("added", box added)
          ("removed", box removed)
@@ -4539,8 +4551,9 @@ DockSpace           ID=0x7C6B3D9B Window=0xA87D555D Pos=0,0 Size=1920,1080 Split
                 RecoverableExceptionOpt <- None
                 agentReply request (agentStatus world)
             | (Some _, _) -> request.Reply.TrySetResult (AgentBridge.error request.Id "resolve_exception requires args.choice = hard_rewind | ignore") |> ignore<bool>
-        | "advance" | "set_advancing" | "assert" when AgentTimeControlBusy ->
-            request.Reply.TrySetResult (AgentBridge.error request.Id "Another advance/set_advancing/assert is still in flight; wait for its reply.") |> ignore<bool>
+        | "advance" | "set_advancing" | "assert" | "undo" | "redo" | "reload_code" when AgentTimeControlBusy ->
+            // undo/redo/reload would swap the world under a running advance or assert and corrupt its result
+            request.Reply.TrySetResult (AgentBridge.error request.Id ("Cannot " + request.Op + " while an advance/set_advancing/assert is still in flight; wait for its reply.")) |> ignore<bool>
         | "status" ->
             agentReply request (agentStatus world)
         | "eval" ->
@@ -4569,22 +4582,23 @@ DockSpace           ID=0x7C6B3D9B Window=0xA87D555D Pos=0,0 Size=1920,1080 Split
                 snapshot Advance world
                 World.setTimeAdvancing true world
             let target = AgentFrame + int64 frames
-            AgentDeferred <-
-                (target, fun world ->
-                    // NOTE: halting is a request resolved at the next frame boundary, so reply one frame later.
-                    if not wasAdvancing then World.setTimeAdvancing false world
-                    AgentDeferred <- (AgentFrame + 1L, fun world -> AgentTimeControlBusy <- false; agentReply request (("advancedFrames", box frames) :: agentStatus world)) :: AgentDeferred) :: AgentDeferred
+            agentDefer target request true (fun world ->
+                // NOTE: halting is a request resolved at the next frame boundary, so reply one frame later.
+                if not wasAdvancing then World.setTimeAdvancing false world
+                agentDefer (AgentFrame + 1L) request true (fun world ->
+                    AgentTimeControlBusy <- false
+                    agentReply request (("advancedFrames", box frames) :: agentStatus world)))
         | "set_advancing" ->
             let on = agentArgString "on" request = Some "true"
             if world.TimeAdvancing <> on then
                 snapshot (if on then Advance else Halt) world
                 World.setTimeAdvancing on world
             AgentTimeControlBusy <- true
-            AgentDeferred <- (AgentFrame + 1L, fun world -> AgentTimeControlBusy <- false; agentReply request (agentStatus world)) :: AgentDeferred
+            agentDefer (AgentFrame + 1L) request true (fun world -> AgentTimeControlBusy <- false; agentReply request (agentStatus world))
         | "wait_frames" ->
             // let N editor frames render (time need not advance), e.g. before an external screenshot
             let frames = Math.Clamp (agentArgInt "frames" 2 request, 1, 600)
-            AgentDeferred <- (AgentFrame + int64 frames, fun world -> agentReply request (agentStatus world)) :: AgentDeferred
+            agentDefer (AgentFrame + int64 frames) request false (fun world -> agentReply request (agentStatus world))
         | "view_mode" ->
             let viewMode =
                 match agentArgString "mode" request with
@@ -4628,10 +4642,10 @@ DockSpace           ID=0x7C6B3D9B Window=0xA87D555D Pos=0,0 Size=1920,1080 Split
                     request.Reply.TrySetResult (AgentBridge.error request.Id ("Frame capture failed: " + message)) |> ignore<bool>
                 elif AgentFrame >= deadline then
                     request.Reply.TrySetResult (AgentBridge.error request.Id "Frame capture did not complete within 120 frames (is the window minimized?).") |> ignore<bool>
-                else AgentDeferred <- (AgentFrame + 1L, poll task deadline) :: AgentDeferred
+                else agentDefer (AgentFrame + 1L) request false (poll task deadline)
             let start (world : World) = poll (Nu.Vulkan.FrameCapture.request ()) (AgentFrame + 120L) world
             if settle = 0 then start world
-            else AgentDeferred <- (AgentFrame + int64 settle, start) :: AgentDeferred
+            else agentDefer (AgentFrame + int64 settle) request false start
         | "checkpoint" ->
             let names () = List.ofSeq AgentCheckpoints.Keys
             match agentArgString "name" request with
@@ -4641,15 +4655,22 @@ DockSpace           ID=0x7C6B3D9B Window=0xA87D555D Pos=0,0 Size=1920,1080 Split
                     agentReply request [("deleted", box deleted); ("checkpoints", box (names ()))]
                 elif agentArgString "restore" request = Some "true" then
                     match AgentCheckpoints.TryGetValue name with
+                    | _ when AgentTimeControlBusy ->
+                        request.Reply.TrySetResult (AgentBridge.error request.Id "Cannot restore a checkpoint while an advance/set_advancing/assert is still in flight; wait for its reply.") |> ignore<bool>
                     | (true, (state, _)) when not (World.getImperative world) ->
                         snapshot RestorePoint world // the restore itself is undoable
                         World.switch state world
+                        // the same editor clean-up as tryUndo after its switch
+                        focusPropertyOpt None world
                         selectScreen false (World.getSelectedScreen world)
                         if not (SelectedGroup.GetExists world) || not (SelectedGroup.GetSelected world) then
                             selectGroup false (Seq.head (World.getGroups SelectedScreen world))
                         match SelectedEntityOpt with
                         | Some entity when not (entity.GetExists world) || entity.Group <> SelectedGroup -> selectEntityOpt None world
                         | Some _ | None -> ()
+                        World.setEye2dCenter DesiredEye2dCenter world
+                        World.setEye3dCenter DesiredEye3dCenter world
+                        World.setEye3dRotation DesiredEye3dRotation world
                         agentReply request (("restored", box name) :: agentStatus world)
                     | (true, _) -> request.Reply.TrySetResult (AgentBridge.error request.Id "Checkpoints cannot be restored in imperative mode.") |> ignore<bool>
                     | (false, _) -> request.Reply.TrySetResult (AgentBridge.error request.Id ("No such checkpoint: " + name + "; existing: " + String.Join (", ", names ()))) |> ignore<bool>
@@ -4685,7 +4706,8 @@ DockSpace           ID=0x7C6B3D9B Window=0xA87D555D Pos=0,0 Size=1920,1080 Split
                     let probeResult =
                         match agentArgString "probe" request with
                         | Some probe ->
-                            match agentCompileWorldFunction<obj> ("box (" + probe + ")") "obj" with
+                            // newlines keep a trailing '// comment' in the probe from swallowing the closing parenthesis
+                            match agentCompileWorldFunction<obj> ("box (\n" + probe + "\n)") "obj" with
                             | Right probe -> Right (Some probe)
                             | Left failure -> Left failure
                         | None -> Right None
@@ -4699,15 +4721,17 @@ DockSpace           ID=0x7C6B3D9B Window=0xA87D555D Pos=0,0 Size=1920,1080 Split
                         if advance then AgentTimeControlBusy <- true
                         let probeValue world =
                             match probeOpt with
-                            | Some probe -> try box (sprintf "%A" (probe world)) with exn -> box ("<probe failed: " + exn.Message + ">")
+                            | Some probe ->
+                                try let text = sprintf "%A" (probe world)
+                                    box (if text.Length <= 4000 then text else text.Substring (0, 4000) + "... (" + string text.Length + " characters, truncated)")
+                                with exn -> box ("<probe failed: " + exn.Message + ">")
                             | None -> null
                         let finish (fields : (string * obj) list) (world : World) =
                             if started.Value then World.setTimeAdvancing false world
                             // NOTE: halting is resolved at the next frame boundary, so reply one frame later (as advance does).
-                            AgentDeferred <-
-                                (AgentFrame + 1L, fun world ->
-                                    if advance then AgentTimeControlBusy <- false
-                                    agentReply request (fields @ agentStatus world)) :: AgentDeferred
+                            agentDefer (AgentFrame + 1L) request advance (fun world ->
+                                if advance then AgentTimeControlBusy <- false
+                                agentReply request (fields @ agentStatus world))
                         let rec step index (world : World) =
                             match (try Choice1Of2 (check world) with exn -> Choice2Of2 exn) with
                             | Choice1Of2 true when index >= frames ->
@@ -4717,7 +4741,7 @@ DockSpace           ID=0x7C6B3D9B Window=0xA87D555D Pos=0,0 Size=1920,1080 Split
                                     snapshot Advance world // undoable, like advance
                                     World.setTimeAdvancing true world
                                     started.Value <- true
-                                AgentDeferred <- (AgentFrame + 1L, step (inc index)) :: AgentDeferred
+                                agentDefer (AgentFrame + 1L) request advance (step (inc index))
                             | Choice1Of2 false ->
                                 finish [("passed", box false); ("failedAtFrame", box index); ("checkedFrames", box index); ("updateTimeAtFailure", box world.UpdateTime); ("probe", probeValue world)] world
                             | Choice2Of2 exn ->
@@ -4730,14 +4754,17 @@ DockSpace           ID=0x7C6B3D9B Window=0xA87D555D Pos=0,0 Size=1920,1080 Split
     let private agentProcess (world : World) =
         AgentFrame <- inc AgentFrame
         AgentBridge.heartbeat AgentFrame (match RecoverableExceptionOpt with Some exn -> exn.GetType().Name + ": " + exn.Message | None -> "")
-        let (due, pending) = List.partition (fun (target, _) -> target <= AgentFrame) AgentDeferred
+        let (due, pending) = List.partition (fun (target, _, _, _) -> target <= AgentFrame) AgentDeferred
         AgentDeferred <- pending
-        for (_, complete) in List.rev due do
+        for (_, request, ownsTimeControl, complete) in List.rev due do
             // a failing completion must neither escape the frame nor stop the remaining ones (e.g. an advance's halt)
             try complete world
             with exn ->
-                AgentTimeControlBusy <- false // never leave time control locked by a failed completion
                 Log.error ("Agent bridge deferred completion failed: " + scstring exn)
+                // release time control only if this request held it, so another in-flight advance keeps its lock
+                if ownsTimeControl then AgentTimeControlBusy <- false
+                let message = "Request failed in a later frame (game time may still be advancing; check gaia_status): " + scstring exn
+                request.Reply.TrySetResult (AgentBridge.error request.Id message) |> ignore<bool>
         let mutable request = Unchecked.defaultof<AgentRequest>
         while AgentBridge.Requests.TryDequeue &request do
             // a request whose client already timed out was withdrawn; never run it late

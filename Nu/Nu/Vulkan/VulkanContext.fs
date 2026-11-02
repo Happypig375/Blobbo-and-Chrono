@@ -888,6 +888,23 @@ type [<ReferenceEquality>] VulkanContext =
                         region.imageSubresource <- Hl.makeSubresourceLayers 0 0 VkImageAspectFlags.Color
                         region.imageExtent <- VkExtent3D (width, height, 1)
                         DeviceApi.vkCmdCopyImageToBuffer (context.RenderCommandBuffer, resolveImage, TransferSrc.VkImageLayout, buffer, 1u, &&region)
+                        // make the copy visible to the host read after the fence (the spec's readback pattern)
+                        let mutable bufferBarrier = VkBufferMemoryBarrier ()
+                        bufferBarrier.srcAccessMask <- VkAccessFlags.TransferWrite
+                        bufferBarrier.dstAccessMask <- VkAccessFlags.HostRead
+                        bufferBarrier.srcQueueFamilyIndex <- Vulkan.VK_QUEUE_FAMILY_IGNORED
+                        bufferBarrier.dstQueueFamilyIndex <- Vulkan.VK_QUEUE_FAMILY_IGNORED
+                        bufferBarrier.buffer <- buffer
+                        bufferBarrier.offset <- 0UL
+                        bufferBarrier.size <- Vulkan.VK_WHOLE_SIZE
+                        DeviceApi.vkCmdPipelineBarrier
+                            (context.RenderCommandBuffer,
+                             VkPipelineStageFlags.Transfer,
+                             VkPipelineStageFlags.Host,
+                             VkDependencyFlags.None,
+                             0u, nullPtr,
+                             1u, &&bufferBarrier,
+                             0u, nullPtr)
                         Hl.recordTransitionLayout true 1 0 1 VkImageAspectFlags.Color TransferSrc ColorAttachmentWrite resolveImage context.RenderCommandBuffer
                         Some (request, buffer, allocation, NativePtr.toNativeInt (NativePtr.ofVoidPtr<byte> allocationInfo.pMappedData), width, height)
                     with exn ->

@@ -194,5 +194,6 @@ here; the key claim was then verified in the live session.
 - **Do agents use it? [pilot, round 3].** In a small comparison (design.md §7a, `ablation/README.md`), agents
   that had screenshot and frame tools almost never called them, and their success did not rise. What helped was
   telling them to check the change in the running game, after which they mostly used `gaia_assert` (state
-  checks) and only sometimes frames. Visual feedback is worth having, but it is not used unprompted.
+  checks) and only sometimes frames, whether the request came in the task or as MCP server instructions. Visual
+  feedback is worth having, but it is not used unprompted.
 - **Windows comparator.** Not needed, since Linux rendering worked; hkust-workspace was not touched.

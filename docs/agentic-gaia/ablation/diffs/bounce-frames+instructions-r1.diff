@@ -1,0 +1,47 @@
+--- a/Gameplay.fs
++++ b/Gameplay.fs
+@@ -80,19 +80,16 @@
+                 World.doBlockBody2d "LeftWall"
+                     [Entity.Position .= v3 -164.0f 0.0f 0.0f
+                      Entity.Size .= v3 8.0f 360.0f 0.0f
+-                     Entity.Sensor .= true
+                      Entity.StaticImage .= Assets.Default.Black] world
+             let (rightWallBodyId, _) =
+                 World.doBlockBody2d "RightWall"
+                     [Entity.Position .= v3 164.0f 0.0f 0.0f
+                      Entity.Size .= v3 8.0f 360.0f 0.0f
+-                     Entity.Sensor .= true
+                      Entity.StaticImage .= Assets.Default.Black] world
+             let (topWallBodyId, _) =
+                 World.doBlockBody2d "TopWall"
+                     [Entity.Position .= v3 0.0f 176.0f 0.0f
+                      Entity.Size .= v3 320.0f 8.0f 0.0f
+-                     Entity.Sensor .= true
+                      Entity.StaticImage .= Assets.Default.Black] world
+ 
+             // declare paddle
+@@ -100,7 +97,6 @@
+                 World.doBlockBody2d "Paddle"
+                     [Entity.Position .= PaddleOrigin
+                      Entity.Size .= v3 64.0f 16.0f 0.0f
+-                     Entity.Sensor .= true
+                      Entity.StaticImage .= Assets.Default.Paddle] world
+             let paddle = world.DeclaredEntity
+ 
+@@ -121,7 +117,7 @@
+                     [Entity.Position .= BallOrigin
+                      Entity.Size .= v3 8.0f 8.0f 0.0f
+                      Entity.BodyType .= Dynamic
+-                     Entity.LinearVelocity @= (v3 (0.5f - Gen.randomf) -1.0f 0.0f).Normalized * BallSpeed
++                     Entity.LinearVelocity .= (v3 (0.5f - Gen.randomf) -1.0f 0.0f).Normalized * BallSpeed
+                      Entity.AngularFactor .= v3Zero
+                      Entity.Gravity .= GravityIgnore
+                      Entity.CollisionDetection .= Continuous
+@@ -179,7 +175,6 @@
+                 World.doBlockBody2d brickName
+                     [Entity.Position .= brick.Position
+                      Entity.Size .= brick.Size
+-                     Entity.Sensor .= true
+                      Entity.Color @= brick.Color
+                      Entity.StaticImage .= Assets.Default.Brick] world |> ignore
+ 

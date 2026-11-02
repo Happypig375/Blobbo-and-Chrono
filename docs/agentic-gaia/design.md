@@ -258,9 +258,37 @@ These are that project's operational findings about agent harnesses, not literat
   perceived control, attention load (B1, A16). This is the weakest evidence area, so it is the most informative
   study to run.
 
+### 7a. Pilot result (round 3, 2 Nov 2026; details in `ablation/README.md`)
+A small pilot ran the five conditions above on 8 Breakout tasks with Claude Haiku 5.5 (75 runs including two follow-ups,
+under US$1 in total). Each result was checked automatically in a fresh editor.
+- **More tools alone did not raise success.** The six build tasks passed in every condition (too easy to show a
+  difference), and so did a planted gravity bug. On a harder planted bug ("the ball never bounces"), about half
+  the runs passed in every condition.
+- **The failures came from not checking.** Every failed run made the same wrong guess and stopped after a compile
+  check. Without being asked, agents used `gaia_reload_code` as a compiler and never called `gaia_assert`,
+  `gaia_screenshot` or `gaia_frames` on that bug. This matches the literature: agents rarely look unless pushed
+  (A2, A6).
+- **Asking them to check worked.** One extra sentence in the task ("check in the running game that the change
+  really works") raised the bounce task from 2 of 6 to 5 of 6, with `gaia_assert` used in every run. It cost about
+  3 times as much and took about 5 times as long (still under US$0.12 and 11 minutes per run). With 6 runs per arm
+  this is suggestive, not proven (one-sided Fisher's exact p = 0.12).
+- **Shipping the advice with the tools works as well.** The same advice sent as MCP server instructions (no change
+  to the task) also gave 5 of 6, at a little lower cost (US$0.038 and 5.8 minutes per run on average). One of the
+  six failed even though its own checks showed the bug was still there: it ran out of turns and reported success.
+- **Design consequences:**
+  - ship the "check, don't just compile" advice with the tools (done: MCP server instructions in `gaia_mcp.py`), not
+    only in each task;
+  - `gaia_assert` predicates must be read-only. One failed run wrote a predicate that moved the paddle every
+    frame, which disturbed the game it was testing. The tool description now says so; enforcing it is a next step;
+  - watching the game is not a test: one run "saw" the ball bounce in the live editor and stopped, but the fix was
+    wrong. A check that can fail (`gaia_assert`) is the signal to rely on;
+  - an agent that runs out of turns should report "not verified", not success; the editor (or the harness) should
+    keep the last check result so the human can see it;
+  - the next study needs harder build tasks, a stronger model as well as a cheap one, and more repeats.
+
 ## 8. Prototype status and reproduction
 
-- **Code changes** (branch `agentic-gaia`, local only):
+- **Code changes** (branch `agentic-gaia`, pushed only to the user's fork):
   - `Nu/Nu.Gaia/GaiaAgentBridge.fs`: the transport.
   - `Nu/Nu.Gaia/Gaia.fs`:
     - the eval body is factored into `evalInteractive`, which the Interactive window now also uses;
@@ -271,6 +299,7 @@ These are that project's operational findings about agent harnesses, not literat
   nice dotnet build Nu/Nu.Gaia/Nu.Gaia.fsproj -c Debug        # builds engine + sample projects (~5 min first time)
   docs/agentic-gaia/prototype/run_gaia_headless.sh             # Xvfb :91 + lavapipe + Breakout ImSim + bridge
   python3 -I docs/agentic-gaia/prototype/check_mcp.py OUT_DIR  # 39 checks incl. readback, checkpoint/diff/assert, hang + restart (NU_GAIA_CHECK_HANG=0 skips); PNGs + transcript
+  python3 -I docs/agentic-gaia/prototype/check_review_fixes.py  # 11 checks for the round-3 review fixes
   claude mcp add gaia -- env NU_GAIA_AGENT_SOCKET=$XDG_RUNTIME_DIR/nu-gaia-agent.sock DISPLAY=:91 \
       NU_XML_DOC=$PWD/Nu/Nu/bin/Debug/net10.0/Nu.xml python3 $PWD/docs/agentic-gaia/prototype/gaia_mcp.py
   ```
@@ -291,6 +320,17 @@ These are that project's operational findings about agent harnesses, not literat
     size), with no root-window margin. The first `symbol` call no longer adds an undo entry, because session
     initialisation was factored out of `evalInteractive`. Hung evals are contained (§5.4) but still cannot be
     cancelled.
+  - **Round-3 code review (2 Nov).** A separate AI reviewer read the round-3 changes (frame readback, PNG encoder,
+    checkpoint, diff, assert, MCP server). It found nothing that crashes the editor; the PNG encoder, capture
+    hand-off and fence use were judged correct. Fixed: a completion that fails in a later frame now answers its
+    request and releases time control only if it holds it; undo, redo, reload_code and checkpoint restore are
+    refused while an advance or assert runs; a host-read buffer barrier after the GPU copy; assert and advance
+    timeouts scale with the frame count; a probe may end in a `//` comment; long probe output is cut to 4,000
+    characters; diff reports properties that disappeared; restore does the same editor clean-up as undo; the
+    server instructions never name a tool the tool set hides. All 39 + 11 checks pass after the fixes. Not
+    fixed: the capture copies the viewport size, like the existing swapchain blit, and would read past the
+    resolve image if the two ever differed during a resize (judged low-risk; fixing it needs the image size
+    passed into `endFrame`).
   - A request withdrawn on timeout stays in the queue (counted by `ping.queued`) until the editor thread drains
     and skips it.
   - Python is used for the MCP side; F# or C# would remove the second runtime.
@@ -310,6 +350,11 @@ These are that project's operational findings about agent harnesses, not literat
    boundary explicit.
 4. **Imperative-mode guard; FSI-only `gaia_reset_session`.** The watchdog and supervisor restart were done in round 2.
 5. **FCS entity index for `gaia_search_api`**; SourceLink fallback for NuGet installs.
-6. **Run the §7 ablation** on a handful of tasks before investing in polish.
+6. **Done in round 3 (pilot of the §7 ablation)**: see §7a and `ablation/README.md`.
+7. **Read-only `gaia_assert`**: run the predicate on a checkpoint and restore it, or reject predicates that call
+   setters, so that a check cannot change the game it checks (pilot finding, §7a).
+8. **Faster or resumable long advances**: in one pilot run, stepping many frames under software rendering became
+   so slow that the agent spent its turns polling. Report progress and allow advancing without rendering.
 
-Upstreaming should only be considered if the user asks; this branch is local and no PR has been opened.
+Upstreaming: the user approved offering this to Nu only after the work is finished and reviewed. No PR or issue has
+been opened on bryanedds/Nu; the branch is pushed only to the user's fork.
