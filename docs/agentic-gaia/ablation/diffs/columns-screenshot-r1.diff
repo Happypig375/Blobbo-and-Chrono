@@ -1,0 +1,45 @@
+--- a/Gameplay.fs
++++ b/Gameplay.fs
+@@ -16,9 +16,9 @@
+       Size : Vector3
+       Color : Color }
+ 
+-    static member make position =
++    static member make position size =
+         { Position = position
+-          Size = v3 64.0f 16.0f 0.0f
++          Size = size
+           Color = color (Gen.randomf1 0.5f + 0.5f) (Gen.randomf1 0.5f + 0.5f) (Gen.randomf1 0.5f + 0.5f) 1.0f }
+ 
+ // this extends the Screen API to expose the user-defined properties.
+@@ -46,6 +46,11 @@
+     static let PaddleOrigin = v3 0.0f -160.0f 0.0f
+     static let BallOrigin = v3 0.0f 48.0f 0.0f
+     static let BallSpeed = 150.0f
++    static let BricksLeftEdge = -160.0f // inner edge of left wall
++    static let BricksRightEdge = 160.0f // inner edge of right wall
++    static let BrickColumns = 6
++    static let BrickRows = 6
++    static let BrickHeight = 16.0f
+ 
+     // here we define default property values
+     static member Properties =
+@@ -62,11 +67,15 @@
+ 
+             // process initialization
+             if FQueue.contains Select selectionResults then
++                let brickWidth = (BricksRightEdge - BricksLeftEdge) / single BrickColumns
++                let brickSize = v3 brickWidth BrickHeight 0.0f
+                 let bricks =
+                     Map.ofList
+-                        [for i in 0 .. dec 5 do
+-                            for j in 0 .. dec 6 do
+-                                (Gen.name, Brick.make (v3 (single i * 64.0f - 128.0f) (single j * 16.0f + 64.0f) 0.0f))]
++                        [for i in 0 .. dec BrickColumns do
++                            for j in 0 .. dec BrickRows do
++                                let x = BricksLeftEdge + brickWidth * (single i + 0.5f)
++                                let y = single j * BrickHeight + 64.0f
++                                (Gen.name, Brick.make (v3 x y 0.0f) brickSize)]
+                 screen.SetBricks bricks world
+                 screen.SetScore 0 world
+                 screen.SetLives 5 world

@@ -1,0 +1,12 @@
+--- a/Gameplay.fs
++++ b/Gameplay.fs
+@@ -115,6 +115,9 @@
+                 elif World.isKeyboardKeyDown KeyboardKey.Right world then
+                     paddle.SetPosition (paddlePosition.MapX (fun x -> min 128.0f (x + 4.0f))) world
+ 
++            // the ball must move at constant speed, so disable the global 2d gravity that would otherwise accelerate it downwards
++            World.setGravity2d v3Zero world
++
+             // declare ball
+             let (ballBodyId, ballResults) =
+                 World.doBallBody2d "Ball"

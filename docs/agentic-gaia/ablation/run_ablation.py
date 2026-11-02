@@ -27,6 +27,9 @@ from gaia_bridge import GaiaBridge, private_runtime_dir  # noqa: E402
 from tasks import TASKS, prompt  # noqa: E402
 
 CONDITIONS = ["blind", "eval", "inspect", "screenshot", "frames"]  # cumulative tool sets (gaia_mcp.TOOLSET_LEVELS)
+# "<tool set>+verify" (e.g. "frames+verify") adds one sentence to the prompt asking the agent to check its change in the
+# running game; "<tool set>+instructions" instead sends the MCP server instructions (gaia_mcp.INSTRUCTIONS), which ask
+# the same. Both are run only on demand (--conditions), not by default.
 RUNTIME = private_runtime_dir()
 LOG_DIR = os.path.join(RUNTIME, "nu-gaia-logs")
 SOCKET = os.path.join(RUNTIME, "nu-gaia-agent.sock")
@@ -78,10 +81,22 @@ def gaia_start(work):
 
 # --- sources ------------------------------------------------------------------------------------------------------
 
-def restore_sources(work):
+def starting_text(work, name, task_id):
+    """The file as the agent receives it: the original, with the task's seeded bug (if any) planted in Gameplay.fs."""
+    text = open(os.path.join(work, "pristine", name), encoding="utf-8-sig").read()
+    if task_id and name == "Gameplay.fs":
+        for old, new in TASKS[task_id].get("seed", []):
+            assert text.count(old) == 1, (task_id, old[:60])
+            text = text.replace(old, new)
+    return text
+
+
+def restore_sources(work, task_id=None):
     proj = project_dir(work)
     for name in SOURCE_FILES:
         shutil.copy2(os.path.join(work, "pristine", name), os.path.join(proj, name))
+        if task_id and name == "Gameplay.fs" and TASKS[task_id].get("seed"):
+            open(os.path.join(proj, name), "w", encoding="utf-8").write(starting_text(work, name, task_id))
     keep = set(json.load(open(os.path.join(work, "pristine", "toplevel.json"))))
     for name in os.listdir(proj):
         if name not in keep:  # files the agent created
@@ -89,11 +104,11 @@ def restore_sources(work):
             shutil.rmtree(path) if os.path.isdir(path) else os.remove(path)
 
 
-def source_diff(work):
+def source_diff(work, task_id):
     proj, out = project_dir(work), []
     keep = set(json.load(open(os.path.join(work, "pristine", "toplevel.json"))))
     for name in SOURCE_FILES:
-        before = open(os.path.join(work, "pristine", name), encoding="utf-8-sig").read().splitlines(keepends=True)
+        before = starting_text(work, name, task_id).splitlines(keepends=True)
         after = open(os.path.join(proj, name), encoding="utf-8-sig").read().splitlines(keepends=True)
         out += difflib.unified_diff(before, after, "a/" + name, "b/" + name)
     for name in sorted(set(os.listdir(proj)) - keep):
@@ -160,7 +175,9 @@ def mcp_config(path, condition):
         "DISPLAY": os.environ.get("GAIA_DISPLAY", ":91"),
         "XAUTHORITY": os.path.join(LOG_DIR, "xauth"),
         "NU_XML_DOC": NU_XML,
-        "NU_GAIA_TOOLSET": condition,
+        "NU_GAIA_TOOLSET": condition.split("+")[0],
+        # Server instructions (gaia_mcp.INSTRUCTIONS) are sent only in "+instructions" conditions; the main pilot ran without.
+        "NU_GAIA_INSTRUCTIONS": "1" if condition.endswith("+instructions") else "0",
         "NU_GAIA_SHOT_DIR": os.path.join(RUNTIME, "nu-gaia-ablation-shots"),
         "XDG_RUNTIME_DIR": RUNTIME,
         "PATH": os.environ["PATH"],
@@ -172,7 +189,7 @@ def mcp_config(path, condition):
 
 def run_agent(work, out, run_id, task_id, condition, model, budget):
     stream_path = os.path.join(out, "runs", run_id + ".jsonl")
-    cmd = ["claude", "-p", prompt(task_id), "--model", model, "--output-format", "stream-json", "--verbose",
+    cmd = ["claude", "-p", prompt(task_id, verify=condition.endswith("+verify")), "--model", model, "--output-format", "stream-json", "--verbose",
            "--max-turns", "60", "--max-budget-usd", str(budget), "--permission-mode", "acceptEdits",
            "--setting-sources", "project,local", "--no-session-persistence", "--strict-mcp-config",
            # only file tools (+ ToolSearch, which loads deferred MCP tools): no shell, web, subagents or messaging
@@ -221,6 +238,7 @@ def run_agent(work, out, run_id, task_id, condition, model, budget):
         "output_tokens": (result.get("usage") or {}).get("output_tokens"),
         "tool_calls": tools,
         "permission_denials": len(result.get("permission_denials") or []),
+        "api_error": result.get("api_error") if result.get("terminal_reason") == "api_error" else None,
     }
 
 
@@ -229,7 +247,7 @@ def run_agent(work, out, run_id, task_id, condition, model, budget):
 def validate(work, out, tasks):
     rows = []
     for task_id in tasks:
-        restore_sources(work)
+        restore_sources(work, task_id)
         base = oracle(work, task_id)
         apply_reference(work, task_id)
         ref = oracle(work, task_id)
@@ -258,7 +276,7 @@ def run(work, out, reps, model, tasks, conditions, budget):
         run_id = f"{task_id}-{condition}-r{rep}"
         if run_id in done:
             continue
-        restore_sources(work)
+        restore_sources(work, task_id)
         if condition == "blind":
             gaia_stop()
         else:
@@ -266,7 +284,11 @@ def run(work, out, reps, model, tasks, conditions, budget):
         started = time.strftime("%Y-%m-%d %H:%M:%S")
         agent = run_agent(work, out, run_id, task_id, condition, model, budget)
         gaia_stop()
-        diff = source_diff(work)
+        if agent["api_error"]:  # e.g. the account's usage limit: not an attempt, so record nothing and stop
+            restore_sources(work)
+            print(f"{run_id}: API error ({agent['api_error']}): {agent['final_text'][:200]}; stopping, rerun later", flush=True)
+            return
+        diff = source_diff(work, task_id)
         open(os.path.join(out, "runs", run_id + ".diff"), "w").write(diff)
         verdict = oracle(work, task_id)
         restore_sources(work)

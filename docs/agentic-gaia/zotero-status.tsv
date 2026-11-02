@@ -1,77 +1,77 @@
-entry	identifier	zotero_status	zotero_key	match_on	title	url
-A1	10.48550/arxiv.2602.11103	in Zotero	62B3T52G	doi		
-A2	10.48550/arxiv.2606.17861	not yet in Zotero				
-A3	10.48550/arxiv.2607.03525	in Zotero	RJ9GV3AP	doi		
-A4	10.48550/arxiv.2609.21562	in Zotero	XMYGZCHB	doi		
-A5	10.48550/arxiv.2608.21833	not yet in Zotero				
-A6	10.48550/arxiv.2609.23142	not yet in Zotero				
-A7	10.48550/arxiv.2603.07106	not yet in Zotero				
-A8	10.48550/arxiv.2605.28258	in Zotero	IIE3UT2H	doi		
-A9	10.48550/arxiv.2605.07442	not yet in Zotero				
-A10	10.48550/arxiv.2609.39045	not yet in Zotero				
-A11	10.48550/arxiv.2604.19926	not yet in Zotero				
-A12		not yet in Zotero			Using OpenGameEval to Benchmark Agentic AI Assistants for Roblox Studio	https://about.roblox.com/newsroom/2025/12/opengameeval-benchmark-agentic-ai-assistants-roblox-studio
-A13	10.1109/cog60054.2024.10645599	not yet in Zotero				
-A14	10.1609/aiide.v20i1.31877	not yet in Zotero				
-A15	10.1145/3723498.3723794	not yet in Zotero				
-A16	10.48550/arxiv.2607.10711	not yet in Zotero				
-A17	10.48550/arxiv.2603.27896	not yet in Zotero				
-B1	10.1145/3706598.3714154	not yet in Zotero				
-B2	10.1145/3801119.3801131	not yet in Zotero			Liveness in the Age of Agents: Are We Back to Compile-and-Run Cycles?	https://doi.org/10.1145/3801119.3801131
-B3	10.1109/vl/hcc51201.2021.9576454	in Zotero	WWPCM2VC	doi		
-B4		in Zotero	8RJSNJML	title (verified by hand)		
-B5	10.1109/cig.2019.8848092	in Zotero	Z98DZFSU	doi		
-B6	10.1109/cog47356.2020.9231863	in Zotero	C8K9CW2D	doi		
-B7	10.1109/ms.2011.87	in Zotero	88QVA7LU	doi		
-B8	10.1145/3337722.3337740	in Zotero	BDIULBB9	doi		
-B9	10.1145/3427763.3428312	in Zotero	WTCS6U8P	doi		
-B10	10.48550/arxiv.2603.18735	not yet in Zotero				
-B11	10.48550/arxiv.2512.13914	not yet in Zotero				
-B12	10.48550/arxiv.2411.13826	not yet in Zotero				
-B13	10.48550/arxiv.2506.10021	not yet in Zotero				
-B14	10.2139/ssrn.5362782	in Zotero	V5RFB2HU	doi		
-C1	10.48550/arxiv.2210.03629	not yet in Zotero		false title-prefix match rejected by hand		
-C2	10.48550/arxiv.2303.11366	not yet in Zotero				
-C3	10.48550/arxiv.2304.05128	not yet in Zotero		false title-prefix match rejected by hand		
-C4	10.48550/arxiv.2306.09896	not yet in Zotero				
-C5	10.48550/arxiv.2305.11738	not yet in Zotero		false title-prefix match rejected by hand		
-C6	10.48550/arxiv.2310.01798	in Zotero	AQR6JZT4	doi		
-C7	10.48550/arxiv.2405.15793	not yet in Zotero				
-C8	10.48550/arxiv.2402.01030	not yet in Zotero				
-C9	10.48550/arxiv.2407.16741	not yet in Zotero				
-C10	10.48550/arxiv.2310.06770	not yet in Zotero				
-C11	10.48550/arxiv.2305.16291	not yet in Zotero				
-C12	10.48550/arxiv.2604.24212	in Zotero	B6V8URKN	doi		
-C13	10.3390/ai7090353	not yet in Zotero				
-C14	10.48550/arxiv.2604.10508	not yet in Zotero				
-C15	10.48550/arxiv.2604.21950	not yet in Zotero				
-C16	10.18653/v1/2025.findings-naacl.190	not yet in Zotero			Investigating the Transferability of Code Repair for Low-Resource Programming Languages	https://aclanthology.org/2025.findings-naacl.190/
-C17	10.48550/arxiv.2308.09895	not yet in Zotero				
-D1	10.48550/arxiv.2604.19750	not yet in Zotero				
-D2	10.48550/arxiv.2604.05839	not yet in Zotero				
-D3	10.48550/arxiv.2511.08195	not yet in Zotero				
-D4	10.48550/arxiv.2602.12311	not yet in Zotero				
-D5	10.48550/arxiv.2401.13649	not yet in Zotero				
-D6	10.48550/arxiv.2403.03163	not yet in Zotero				
-D7	10.48550/arxiv.2404.07972	not yet in Zotero				
-D8	10.48550/arxiv.2307.13854	not yet in Zotero				
-E1		not yet in Zotero			Tools - Model Context Protocol (specification version 2025-06-18)	https://modelcontextprotocol.io/specification/2025-06-18/server/tools
-E2		not yet in Zotero			Writing effective tools for AI agents	https://www.anthropic.com/engineering/writing-tools-for-agents
-E3	10.48550/arxiv.2602.14878	not yet in Zotero				
-E4	10.1145/3796519	not yet in Zotero				
-E5	10.48550/arxiv.2602.20426	not yet in Zotero				
-F1	10.48550/arxiv.2609.35366	not yet in Zotero				
-F2	10.48550/arxiv.2512.12806	not yet in Zotero				
-F3	10.48550/arxiv.2606.01317	not yet in Zotero				
-G1	10.1016/j.xinn.2025.101253	not yet in Zotero		false title-prefix match rejected by hand		
-G2	10.48550/arxiv.2606.29957	in Zotero	VNKB29NI	doi		
-H1	10.48550/arxiv.2509.22644	not yet in Zotero				
-H2	10.48550/arxiv.2604.18394	not yet in Zotero				
-H3	10.48550/arxiv.2604.07429	not yet in Zotero				
-H4	10.1145/3832783.3834547	not yet in Zotero				
-H5	10.48550/arxiv.2504.06939	not yet in Zotero				
-H6	10.1038/s41598-025-27846-5	not yet in Zotero				
-H7	10.1145/3744916.3773187	not yet in Zotero				
-H8	10.1145/3798238	not yet in Zotero				
-H9	10.3390/ai7100392	not yet in Zotero				
-H10	10.1145/3820891	not yet in Zotero				
+entry	identifier	zotero_status	zotero_key	match_on	title	url	collection
+A1	10.48550/arxiv.2602.11103	in Zotero	62B3T52G	doi			ISE - Nu Innovation Research/08 Agentic game development
+A2	10.48550/arxiv.2606.17861	in Zotero	86ZCPQVM	doi			ISE - Nu Innovation Research/08 Agentic game development
+A3	10.48550/arxiv.2607.03525	in Zotero	RJ9GV3AP	doi			
+A4	10.48550/arxiv.2609.21562	in Zotero	XMYGZCHB	doi			
+A5	10.48550/arxiv.2608.21833	in Zotero	NVWGGG8X	doi			ISE - Nu Innovation Research/08 Agentic game development
+A6	10.48550/arxiv.2609.23142	in Zotero	2D3Z7WTS	doi			ISE - Nu Innovation Research/08 Agentic game development
+A7	10.48550/arxiv.2603.07106	in Zotero	HWVF2WBJ	doi			ISE - Nu Innovation Research/08 Agentic game development
+A8	10.48550/arxiv.2605.28258	in Zotero	28BG5ATZ	doi			ISE - Nu Innovation Research/08 Agentic game development
+A9	10.48550/arxiv.2605.07442	in Zotero	JARSBJ7G	doi			ISE - Nu Innovation Research/08 Agentic game development
+A10	10.48550/arxiv.2609.39045	in Zotero	8M8BRV6R	doi			ISE - Nu Innovation Research/08 Agentic game development
+A11	10.48550/arxiv.2604.19926	in Zotero	47M6MUPK	doi			ISE - Nu Innovation Research/08 Agentic game development
+A12		in Zotero	ZE9IAQ5W	title	Using OpenGameEval to Benchmark Agentic AI Assistants for Roblox Studio	https://about.roblox.com/newsroom/2025/12/opengameeval-benchmark-agentic-ai-assistants-roblox-studio	ISE - Nu Innovation Research/08 Agentic game development
+A13	10.1109/cog60054.2024.10645599	in Zotero	95JNT232	doi			ISE - Nu Innovation Research/08 Agentic game development
+A14	10.1609/aiide.v20i1.31877	in Zotero	CXTXPVAD	doi			ISE - Nu Innovation Research/08 Agentic game development
+A15	10.1145/3723498.3723794	in Zotero	IXV4MC9X	doi			ISE - Nu Innovation Research/08 Agentic game development
+A16	10.48550/arxiv.2607.10711	in Zotero	NJK8C87C	doi			ISE - Nu Innovation Research/08 Agentic game development
+A17	10.48550/arxiv.2603.27896	in Zotero	XXMKD73U	doi			ISE - Nu Innovation Research/08 Agentic game development
+B1	10.1145/3706598.3714154	in Zotero	EA5C39PM	doi			ISE - Nu Innovation Research/08 Agentic game development
+B2	10.1145/3801119.3801131	in Zotero	REUDGN5V	doi	Liveness in the Age of Agents: Are We Back to Compile-and-Run Cycles?	https://doi.org/10.1145/3801119.3801131	ISE - Nu Innovation Research/08 Agentic game development
+B3	10.1109/vl/hcc51201.2021.9576454	in Zotero	WWPCM2VC	doi			
+B4		in Zotero	8RJSNJML	title (verified by hand)			
+B5	10.1109/cig.2019.8848092	in Zotero	Z98DZFSU	doi			
+B6	10.1109/cog47356.2020.9231863	in Zotero	C8K9CW2D	doi			
+B7	10.1109/ms.2011.87	in Zotero	88QVA7LU	doi			
+B8	10.1145/3337722.3337740	in Zotero	BDIULBB9	doi			
+B9	10.1145/3427763.3428312	in Zotero	WTCS6U8P	doi			
+B10	10.48550/arxiv.2603.18735	in Zotero	J2HWCE9E	doi			ISE - Nu Innovation Research/08 Agentic game development
+B11	10.48550/arxiv.2512.13914	in Zotero	HBIQXVQE	doi			ISE - Nu Innovation Research/08 Agentic game development
+B12	10.48550/arxiv.2411.13826	in Zotero	CC9WNPIA	doi			ISE - Nu Innovation Research/08 Agentic game development
+B13	10.48550/arxiv.2506.10021	in Zotero	N49JRCGV	doi			ISE - Nu Innovation Research/08 Agentic game development
+B14	10.2139/ssrn.5362782	in Zotero	V5RFB2HU	doi			
+C1	10.48550/arxiv.2210.03629	in Zotero	KWE6RG2V	doi			ISE - Nu Innovation Research/08 Agentic game development
+C2	10.48550/arxiv.2303.11366	in Zotero	C6GSB4KU	doi			ISE - Nu Innovation Research/08 Agentic game development
+C3	10.48550/arxiv.2304.05128	in Zotero	5HQQA9MN	doi			ISE - Nu Innovation Research/08 Agentic game development
+C4	10.48550/arxiv.2306.09896	in Zotero	29E3EI9H	doi			ISE - Nu Innovation Research/08 Agentic game development
+C5	10.48550/arxiv.2305.11738	in Zotero	QXABQCTP	doi			ISE - Nu Innovation Research/08 Agentic game development
+C6	10.48550/arxiv.2310.01798	in Zotero	AQR6JZT4	doi			
+C7	10.48550/arxiv.2405.15793	in Zotero	WNWFG76J	doi			ISE - Nu Innovation Research/08 Agentic game development
+C8	10.48550/arxiv.2402.01030	in Zotero	6XCK6RNA	doi			ISE - Nu Innovation Research/08 Agentic game development
+C9	10.48550/arxiv.2407.16741	in Zotero	6GQTETPA	doi			ISE - Nu Innovation Research/08 Agentic game development
+C10	10.48550/arxiv.2310.06770	in Zotero	IRFSSG6U	doi			ISE - Nu Innovation Research/08 Agentic game development
+C11	10.48550/arxiv.2305.16291	in Zotero	S4EFBB3Q	doi			ISE - Nu Innovation Research/08 Agentic game development
+C12	10.48550/arxiv.2604.24212	in Zotero	B6V8URKN	doi			
+C13	10.3390/ai7090353	in Zotero	8N7DIWGB	doi			ISE - Nu Innovation Research/08 Agentic game development
+C14	10.48550/arxiv.2604.10508	in Zotero	QM9FJHCE	doi			ISE - Nu Innovation Research/08 Agentic game development
+C15	10.48550/arxiv.2604.21950	in Zotero	6T644BAF	doi			ISE - Nu Innovation Research/08 Agentic game development
+C16	10.18653/v1/2025.findings-naacl.190	in Zotero	HT5KCP5X	doi	Investigating the Transferability of Code Repair for Low-Resource Programming Languages	https://aclanthology.org/2025.findings-naacl.190/	ISE - Nu Innovation Research/08 Agentic game development
+C17	10.48550/arxiv.2308.09895	in Zotero	4BTGIZ3A	doi			ISE - Nu Innovation Research/08 Agentic game development
+D1	10.48550/arxiv.2604.19750	in Zotero	JA7M5NIR	doi			ISE - Nu Innovation Research/08 Agentic game development
+D2	10.48550/arxiv.2604.05839	in Zotero	SKFFWE2B	doi			ISE - Nu Innovation Research/08 Agentic game development
+D3	10.48550/arxiv.2511.08195	in Zotero	GEVZACK2	doi			ISE - Nu Innovation Research/08 Agentic game development
+D4	10.48550/arxiv.2602.12311	in Zotero	GS4A9ZR4	doi			ISE - Nu Innovation Research/08 Agentic game development
+D5	10.48550/arxiv.2401.13649	in Zotero	8KC8XM92	doi			ISE - Nu Innovation Research/08 Agentic game development
+D6	10.48550/arxiv.2403.03163	in Zotero	33Q55U2J	doi			ISE - Nu Innovation Research/08 Agentic game development
+D7	10.48550/arxiv.2404.07972	in Zotero	S9C783PS	doi			ISE - Nu Innovation Research/08 Agentic game development
+D8	10.48550/arxiv.2307.13854	in Zotero	6WXNGCCI	doi			ISE - Nu Innovation Research/08 Agentic game development
+E1		in Zotero	8QGC8PC2	title	Tools - Model Context Protocol (specification version 2025-06-18)	https://modelcontextprotocol.io/specification/2025-06-18/server/tools	ISE - Nu Innovation Research/08 Agentic game development
+E2		in Zotero	Q9AQVAMX	title	Writing effective tools for AI agents	https://www.anthropic.com/engineering/writing-tools-for-agents	ISE - Nu Innovation Research/08 Agentic game development
+E3	10.48550/arxiv.2602.14878	in Zotero	AXSSWXNV	doi			ISE - Nu Innovation Research/08 Agentic game development
+E4	10.1145/3796519	in Zotero	KAXNWERD	doi			ISE - Nu Innovation Research/08 Agentic game development
+E5	10.48550/arxiv.2602.20426	in Zotero	8X8WD7FS	doi			ISE - Nu Innovation Research/08 Agentic game development
+F1	10.48550/arxiv.2609.35366	in Zotero	HBCXPQNM	doi			ISE - Nu Innovation Research/08 Agentic game development
+F2	10.48550/arxiv.2512.12806	in Zotero	QZJG32DT	doi			ISE - Nu Innovation Research/08 Agentic game development
+F3	10.48550/arxiv.2606.01317	in Zotero	VP5S4U9P	doi			ISE - Nu Innovation Research/08 Agentic game development
+G1	10.1016/j.xinn.2025.101253	in Zotero	F939SFEX	doi			ISE - Nu Innovation Research/08 Agentic game development
+G2	10.48550/arxiv.2606.29957	in Zotero	VNKB29NI	doi			
+H1	10.48550/arxiv.2509.22644	in Zotero	82VU35ZW	doi			ISE - Nu Innovation Research/08 Agentic game development
+H2	10.48550/arxiv.2604.18394	in Zotero	RAKXTE33	doi			ISE - Nu Innovation Research/08 Agentic game development
+H3	10.48550/arxiv.2604.07429	in Zotero	ZQJJ9MXQ	doi			ISE - Nu Innovation Research/08 Agentic game development
+H4	10.1145/3832783.3834547	in Zotero	H37BXIJ9	doi			ISE - Nu Innovation Research/08 Agentic game development
+H5	10.48550/arxiv.2504.06939	in Zotero	XDTPZF3G	doi			ISE - Nu Innovation Research/08 Agentic game development
+H6	10.1038/s41598-025-27846-5	in Zotero	DJUJJKHD	doi			ISE - Nu Innovation Research/08 Agentic game development
+H7	10.1145/3744916.3773187	in Zotero	PQMCWBZI	doi			ISE - Nu Innovation Research/08 Agentic game development
+H8	10.1145/3798238	in Zotero	QXHXA393	doi			ISE - Nu Innovation Research/08 Agentic game development
+H9	10.3390/ai7100392	in Zotero	Q78ANNZF	doi			ISE - Nu Innovation Research/08 Agentic game development
+H10	10.1145/3820891	in Zotero	ZRGNME5M	doi			ISE - Nu Innovation Research/08 Agentic game development

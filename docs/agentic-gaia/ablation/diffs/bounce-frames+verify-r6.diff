@@ -1,0 +1,67 @@
+--- a/Gameplay.fs
++++ b/Gameplay.fs
+@@ -80,19 +80,16 @@
+                 World.doBlockBody2d "LeftWall"
+                     [Entity.Position .= v3 -164.0f 0.0f 0.0f
+                      Entity.Size .= v3 8.0f 360.0f 0.0f
+-                     Entity.Sensor .= true
+                      Entity.StaticImage .= Assets.Default.Black] world
+             let (rightWallBodyId, _) =
+                 World.doBlockBody2d "RightWall"
+                     [Entity.Position .= v3 164.0f 0.0f 0.0f
+                      Entity.Size .= v3 8.0f 360.0f 0.0f
+-                     Entity.Sensor .= true
+                      Entity.StaticImage .= Assets.Default.Black] world
+             let (topWallBodyId, _) =
+                 World.doBlockBody2d "TopWall"
+                     [Entity.Position .= v3 0.0f 176.0f 0.0f
+                      Entity.Size .= v3 320.0f 8.0f 0.0f
+-                     Entity.Sensor .= true
+                      Entity.StaticImage .= Assets.Default.Black] world
+ 
+             // declare paddle
+@@ -100,7 +97,6 @@
+                 World.doBlockBody2d "Paddle"
+                     [Entity.Position .= PaddleOrigin
+                      Entity.Size .= v3 64.0f 16.0f 0.0f
+-                     Entity.Sensor .= true
+                      Entity.StaticImage .= Assets.Default.Paddle] world
+             let paddle = world.DeclaredEntity
+ 
+@@ -121,8 +117,9 @@
+                     [Entity.Position .= BallOrigin
+                      Entity.Size .= v3 8.0f 8.0f 0.0f
+                      Entity.BodyType .= Dynamic
+-                     Entity.LinearVelocity @= (v3 (0.5f - Gen.randomf) -1.0f 0.0f).Normalized * BallSpeed
++                     Entity.LinearVelocity .= (v3 (0.5f - Gen.randomf) -1.0f 0.0f).Normalized * BallSpeed
+                      Entity.AngularFactor .= v3Zero
++                     Entity.Restitution .= 1.0f
+                      Entity.Gravity .= GravityIgnore
+                      Entity.CollisionDetection .= Continuous
+                      Entity.StaticImage .= Assets.Default.Ball] world
+@@ -160,16 +157,8 @@
+                             screen.Bricks.Map (Map.remove penetrateeId.BodySource.Name) world
+                             World.playSound 0.0f 0.0f 1.0f Assets.Default.Sound world
+ 
+-                        // wall collision
++                        // wall collision (the ball's restitution makes physics reflect it off the wall)
+                         | (false, _) ->
+-                            let normal =
+-                                if penetrateeId = leftWallBodyId then v3Right
+-                                elif penetrateeId = rightWallBodyId then v3Left
+-                                elif penetrateeId = topWallBodyId then v3Down
+-                                else failwithumf ()
+-                            let velocity = ball.GetLinearVelocity world
+-                            let bounce = velocity - 2.0f * Vector3.Dot (velocity, normal) * normal
+-                            World.setBodyLinearVelocity bounce ballBodyId world
+                             World.playSound 0.0f 0.0f 1.0f Assets.Default.Sound world
+ 
+                 | _ -> ()
+@@ -179,7 +168,6 @@
+                 World.doBlockBody2d brickName
+                     [Entity.Position .= brick.Position
+                      Entity.Size .= brick.Size
+-                     Entity.Sensor .= true
+                      Entity.Color @= brick.Color
+                      Entity.StaticImage .= Assets.Default.Brick] world |> ignore
+ 

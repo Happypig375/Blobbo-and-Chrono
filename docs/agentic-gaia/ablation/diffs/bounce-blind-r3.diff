@@ -1,0 +1,11 @@
+--- a/Gameplay.fs
++++ b/Gameplay.fs
+@@ -121,7 +121,7 @@
+                     [Entity.Position .= BallOrigin
+                      Entity.Size .= v3 8.0f 8.0f 0.0f
+                      Entity.BodyType .= Dynamic
+-                     Entity.LinearVelocity @= (v3 (0.5f - Gen.randomf) -1.0f 0.0f).Normalized * BallSpeed
++                     Entity.LinearVelocity .= (v3 (0.5f - Gen.randomf) -1.0f 0.0f).Normalized * BallSpeed
+                      Entity.AngularFactor .= v3Zero
+                      Entity.Gravity .= GravityIgnore
+                      Entity.CollisionDetection .= Continuous

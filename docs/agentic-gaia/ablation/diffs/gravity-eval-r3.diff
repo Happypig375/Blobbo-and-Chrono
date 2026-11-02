@@ -1,0 +1,12 @@
+--- a/Gameplay.fs
++++ b/Gameplay.fs
+@@ -72,6 +72,9 @@
+                 screen.SetLives 5 world
+                 screen.SetGameplayState Playing world
+ 
++                // disable gravity so the ball moves at a constant speed in a straight line between bounces
++                World.setGravity2d v3Zero world
++
+             // declare scene group
+             World.beginGroupFromFile "Scene" "Assets/Gameplay/Scene.nugroup" [] world
+ 

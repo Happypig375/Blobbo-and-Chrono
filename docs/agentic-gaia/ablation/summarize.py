@@ -8,7 +8,7 @@ import os
 import sys
 from collections import defaultdict
 
-CONDITIONS = ["blind", "eval", "inspect", "screenshot", "frames"]
+CONDITIONS = ["blind", "eval", "inspect", "screenshot", "frames", "frames+verify", "frames+instructions"]
 
 
 def main(out):

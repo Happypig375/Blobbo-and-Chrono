@@ -1,0 +1,25 @@
+--- a/Gameplay.fs
++++ b/Gameplay.fs
+@@ -18,7 +18,7 @@
+ 
+     static member make position =
+         { Position = position
+-          Size = v3 64.0f 16.0f 0.0f
++          Size = v3 (320.0f / 6.0f) 16.0f 0.0f
+           Color = color (Gen.randomf1 0.5f + 0.5f) (Gen.randomf1 0.5f + 0.5f) (Gen.randomf1 0.5f + 0.5f) 1.0f }
+ 
+ // this extends the Screen API to expose the user-defined properties.
+@@ -64,9 +64,11 @@
+             if FQueue.contains Select selectionResults then
+                 let bricks =
+                     Map.ofList
+-                        [for i in 0 .. dec 5 do
++                        [for i in 0 .. dec 6 do
+                             for j in 0 .. dec 6 do
+-                                (Gen.name, Brick.make (v3 (single i * 64.0f - 128.0f) (single j * 16.0f + 64.0f) 0.0f))]
++                                // columns span the inner walls (x = -160 to 160) with no gaps or overlaps
++                                let brickWidth = 320.0f / 6.0f
++                                (Gen.name, Brick.make (v3 (-160.0f + (single i + 0.5f) * brickWidth) (single j * 16.0f + 64.0f) 0.0f))]
+                 screen.SetBricks bricks world
+                 screen.SetScore 0 world
+                 screen.SetLives 5 world

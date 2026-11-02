@@ -1,0 +1,10 @@
+--- a/Gameplay.fs
++++ b/Gameplay.fs
+@@ -123,6 +123,7 @@
+                      Entity.BodyType .= Dynamic
+                      Entity.LinearVelocity |= (v3 (0.5f - Gen.randomf) -1.0f 0.0f).Normalized * BallSpeed
+                      Entity.AngularFactor .= v3Zero
++                     Entity.Gravity .= GravityIgnore
+                      Entity.CollisionDetection .= Continuous
+                      Entity.StaticImage .= Assets.Default.Ball] world
+             let ball = world.DeclaredEntity

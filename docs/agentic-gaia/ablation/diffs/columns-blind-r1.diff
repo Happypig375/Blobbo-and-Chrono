@@ -1,0 +1,29 @@
+--- a/Gameplay.fs
++++ b/Gameplay.fs
+@@ -16,9 +16,12 @@
+       Size : Vector3
+       Color : Color }
+ 
++    // the playfield spans the inner edges of the walls (x = -160 to 160), split into six columns
++    static member Width = 320.0f / 6.0f
++
+     static member make position =
+         { Position = position
+-          Size = v3 64.0f 16.0f 0.0f
++          Size = v3 Brick.Width 16.0f 0.0f
+           Color = color (Gen.randomf1 0.5f + 0.5f) (Gen.randomf1 0.5f + 0.5f) (Gen.randomf1 0.5f + 0.5f) 1.0f }
+ 
+ // this extends the Screen API to expose the user-defined properties.
+@@ -64,9 +67,10 @@
+             if FQueue.contains Select selectionResults then
+                 let bricks =
+                     Map.ofList
+-                        [for i in 0 .. dec 5 do
++                        [for i in 0 .. dec 6 do
+                             for j in 0 .. dec 6 do
+-                                (Gen.name, Brick.make (v3 (single i * 64.0f - 128.0f) (single j * 16.0f + 64.0f) 0.0f))]
++                                let x = -160.0f + Brick.Width * (single i + 0.5f)
++                                (Gen.name, Brick.make (v3 x (single j * 16.0f + 64.0f) 0.0f))]
+                 screen.SetBricks bricks world
+                 screen.SetScore 0 world
+                 screen.SetLives 5 world

@@ -188,5 +188,11 @@ here; the key claim was then verified in the live session.
   in-engine readback: the final composited image is already in `resolveTexture` (Rgba8, `TransferSrc` usage),
   so a `vkCmdCopyImageToBuffer` into a staging buffer recorded in `VulkanContext.endFrame` when a capture is
   requested, then mapped after the frame fence, would give exact frames with no X dependency (and would work
-  with an offscreen/headless surface on the GPU). Not implemented in the spike.
+  with an offscreen/headless surface on the GPU). **Implemented in round 3 [verified]:** `FrameCapture` in
+  `Nu/Nu/Vulkan/VulkanContext.fs` and the `capture` op in Gaia; the result matches the X grab pixel for pixel, in
+  about 0.1 s, and the X grab remains as a fallback (`NU_GAIA_CAPTURE=x11`).
+- **Do agents use it? [pilot, round 3].** In a small comparison (design.md §7a, `ablation/README.md`), agents
+  that had screenshot and frame tools almost never called them, and their success did not rise. What helped was
+  telling them to check the change in the running game, after which they mostly used `gaia_assert` (state
+  checks) and only sometimes frames. Visual feedback is worth having, but it is not used unprompted.
 - **Windows comparator.** Not needed, since Linux rendering worked; hkust-workspace was not touched.

@@ -1,0 +1,130 @@
+--- a/Gameplay.fs
++++ b/Gameplay.fs
+@@ -115,64 +115,72 @@
+                 elif World.isKeyboardKeyDown KeyboardKey.Right world then
+                     paddle.SetPosition (paddlePosition.MapX (fun x -> min 128.0f (x + 4.0f))) world
+ 
+-            // declare ball
+-            let (ballBodyId, ballResults) =
+-                World.doBallBody2d "Ball"
+-                    [Entity.Position .= BallOrigin
+-                     Entity.Size .= v3 8.0f 8.0f 0.0f
+-                     Entity.BodyType .= Dynamic
+-                     Entity.LinearVelocity |= (v3 (0.5f - Gen.randomf) -1.0f 0.0f).Normalized * BallSpeed
+-                     Entity.AngularFactor .= v3Zero
+-                     Entity.Gravity .= GravityIgnore
+-                     Entity.CollisionDetection .= Continuous
+-                     Entity.StaticImage .= Assets.Default.Ball] world
+-            let ball = world.DeclaredEntity
+-
+-            // process ball life cycle
+-            if (ball.GetPosition world).Y < -180.0f then
+-                screen.Lives.Map dec world
+-                if screen.GetLives world > 0 then
+-                    ball.SetPosition BallOrigin world
+-                    World.setBodyLinearVelocity ((v3 (0.5f - Gen.randomf) -1.0f 0.0f).Normalized * BallSpeed) ballBodyId world
+-            if (screen.GetBricks world).Count = 0 then
+-                World.setBodyLinearVelocity v3Zero ballBodyId world
+-
+-            // process ball collision
+-            for result in ballResults do
+-                match result with
+-                | BodyPenetrationData penetration ->
+-                    let penetrateeId = penetration.BodyShapePenetratee.BodyId
+-                    if penetrateeId = paddleBodyId then
+-
+-                        // paddle collision
+-                        let bounce = (ball.GetPosition world - paddle.GetPosition world).Normalized * BallSpeed
+-                        World.setBodyLinearVelocity bounce ballBodyId world
+-                        World.playSound 0.0f 0.0f 1.0f Assets.Default.Sound world
+-
+-                    else
+-
+-                        // brick collision
+-                        match (screen.GetBricks world).TryGetValue penetrateeId.BodySource.Name with
+-                        | (true, brick) ->
+-                            let bounce = (ball.GetPosition world - brick.Position).Normalized * BallSpeed
+-                            World.setBodyLinearVelocity bounce ballBodyId world
+-                            screen.Score.Map ((+) 100) world
+-                            screen.Bricks.Map (Map.remove penetrateeId.BodySource.Name) world
+-                            World.playSound 0.0f 0.0f 1.0f Assets.Default.Sound world
+-
+-                        // wall collision
+-                        | (false, _) ->
+-                            let normal =
+-                                if penetrateeId = leftWallBodyId then v3Right
+-                                elif penetrateeId = rightWallBodyId then v3Left
+-                                elif penetrateeId = topWallBodyId then v3Down
+-                                else failwithumf ()
+-                            let velocity = ball.GetLinearVelocity world
+-                            let bounce = velocity - 2.0f * Vector3.Dot (velocity, normal) * normal
++            // declares and processes a ball; both balls share exactly the same behavior
++            let processBall (ballName : string) (ballOrigin : Vector3) =
++
++                // declare ball
++                let (ballBodyId, ballResults) =
++                    World.doBallBody2d ballName
++                        [Entity.Position .= ballOrigin
++                         Entity.Size .= v3 8.0f 8.0f 0.0f
++                         Entity.BodyType .= Dynamic
++                         Entity.LinearVelocity |= (v3 (0.5f - Gen.randomf) -1.0f 0.0f).Normalized * BallSpeed
++                         Entity.AngularFactor .= v3Zero
++                         Entity.Gravity .= GravityIgnore
++                         Entity.CollisionDetection .= Continuous
++                         Entity.StaticImage .= Assets.Default.Ball] world
++                let ball = world.DeclaredEntity
++
++                // process ball life cycle
++                if (ball.GetPosition world).Y < -180.0f then
++                    screen.Lives.Map dec world
++                    if screen.GetLives world > 0 then
++                        ball.SetPosition ballOrigin world
++                        World.setBodyLinearVelocity ((v3 (0.5f - Gen.randomf) -1.0f 0.0f).Normalized * BallSpeed) ballBodyId world
++                if (screen.GetBricks world).Count = 0 then
++                    World.setBodyLinearVelocity v3Zero ballBodyId world
++
++                // process ball collision
++                for result in ballResults do
++                    match result with
++                    | BodyPenetrationData penetration ->
++                        let penetrateeId = penetration.BodyShapePenetratee.BodyId
++                        if penetrateeId = paddleBodyId then
++
++                            // paddle collision
++                            let bounce = (ball.GetPosition world - paddle.GetPosition world).Normalized * BallSpeed
+                             World.setBodyLinearVelocity bounce ballBodyId world
+                             World.playSound 0.0f 0.0f 1.0f Assets.Default.Sound world
+ 
+-                | _ -> ()
++                        else
++
++                            // brick collision (a brick may already have been removed by the other ball this frame, in which case it is ignored)
++                            match (screen.GetBricks world).TryGetValue penetrateeId.BodySource.Name with
++                            | (true, brick) ->
++                                let bounce = (ball.GetPosition world - brick.Position).Normalized * BallSpeed
++                                World.setBodyLinearVelocity bounce ballBodyId world
++                                screen.Score.Map ((+) 100) world
++                                screen.Bricks.Map (Map.remove penetrateeId.BodySource.Name) world
++                                World.playSound 0.0f 0.0f 1.0f Assets.Default.Sound world
++
++                            // wall collision
++                            | (false, _) when penetrateeId = leftWallBodyId || penetrateeId = rightWallBodyId || penetrateeId = topWallBodyId ->
++                                let normal =
++                                    if penetrateeId = leftWallBodyId then v3Right
++                                    elif penetrateeId = rightWallBodyId then v3Left
++                                    else v3Down
++                                let velocity = ball.GetLinearVelocity world
++                                let bounce = velocity - 2.0f * Vector3.Dot (velocity, normal) * normal
++                                World.setBodyLinearVelocity bounce ballBodyId world
++                                World.playSound 0.0f 0.0f 1.0f Assets.Default.Sound world
++
++                            | _ -> ()
++
++                    | _ -> ()
++
++            // declare both balls, launched at the same time, with the second starting 48 units to the right of the first
++            processBall "Ball" BallOrigin
++            processBall "Ball2" (BallOrigin + v3 48.0f 0.0f 0.0f)
+ 
+             // declare bricks
+             for (brickName, brick) in (screen.GetBricks world).Pairs do

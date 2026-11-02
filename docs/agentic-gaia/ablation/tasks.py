@@ -163,6 +163,22 @@ def reference_ball2(text):
     return text[:start] + wrapped + text[end:]
 
 
+def oracle_bounce(call):
+    """A velocity set on the ball must persist (a bounce must not be undone on the next frame)."""
+    setup = call("eval", code=f"{BALL}.SetLinearVelocity (v3 0.0f 150.0f 0.0f) world")
+    if setup.get("kind") != "ok":
+        return False, f"could not set velocity: {str(setup.get('diagnostics') or setup.get('exception'))[:200]}"
+    reply = call("assert", frames=4, predicate=f"({BALL}.GetLinearVelocity world).Y > 100.0f",
+                 probe=f"{BALL}.GetLinearVelocity world")
+    return reply.get("passed") is True, f"passed={reply.get('passed')} failedAt={reply.get('failedAtFrame')} velocity={reply.get('probe')}"
+
+
+def oracle_gravity(call):
+    reply = call("assert", frames=120, predicate=f"abs (({BALL}.GetLinearVelocity world).Magnitude - 150.0f) < 3.0f",
+                 probe=f"{BALL}.GetLinearVelocity world")
+    return reply.get("passed") is True, f"passed={reply.get('passed')} failedAt={reply.get('failedAtFrame')} velocity={reply.get('probe')}"
+
+
 TASKS = {
     "rows": {
         "task": "Add a seventh row of bricks on top of the six existing rows, with the same brick size and spacing. Every brick must stay below the top wall.",
@@ -214,8 +230,26 @@ TASKS = {
         "oracle": oracle_ball2,
         "reference": reference_ball2,
     },
+    "bounce": {
+        "task": "Bug report from a player: the ball never bounces off anything. It keeps travelling down in roughly its starting direction, straight through the paddle, and it wobbles slightly as it moves. Find the cause and fix it so that the ball bounces normally again.",
+        "seed": [("                     Entity.LinearVelocity |= (v3 (0.5f - Gen.randomf) -1.0f 0.0f).Normalized * BallSpeed\n",
+                  "                     Entity.LinearVelocity @= (v3 (0.5f - Gen.randomf) -1.0f 0.0f).Normalized * BallSpeed\n")],
+        "oracle": oracle_bounce,
+        "reference": [("Entity.LinearVelocity @= (v3", "Entity.LinearVelocity |= (v3")],
+    },
+    "gravity": {
+        "task": "Bug report from a player: the ball does not move at a constant speed. It speeds up while it falls and its path curves downwards, so it is much harder to catch than it should be. Find the cause and fix it so that the ball keeps a constant speed.",
+        "seed": [("                     Entity.Gravity .= GravityIgnore\n", "")],
+        "oracle": oracle_gravity,
+        "reference": [("                     Entity.AngularFactor .= v3Zero\n",
+                       "                     Entity.AngularFactor .= v3Zero\n                     Entity.Gravity .= GravityIgnore\n")],
+    },
 }
 
 
-def prompt(task_id):
-    return COMMON.format(task=TASKS[task_id]["task"])
+VERIFY = (" Before you finish, check in the running game that the change really works (for example with gaia_advance "
+          "and gaia_inspect, gaia_assert, gaia_screenshot or gaia_frames); if it does not, keep working.")
+
+
+def prompt(task_id, verify=False):
+    return COMMON.format(task=TASKS[task_id]["task"]) + (VERIFY if verify else "")

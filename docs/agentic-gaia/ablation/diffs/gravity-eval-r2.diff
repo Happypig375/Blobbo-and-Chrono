@@ -1,0 +1,13 @@
+--- a/Gameplay.fs
++++ b/Gameplay.fs
+@@ -72,6 +72,10 @@
+                 screen.SetLives 5 world
+                 screen.SetGameplayState Playing world
+ 
++                // the ball must travel at constant speed, so disable the physics engine's global gravity
++                // (the only dynamic body is the ball; walls, paddle and bricks are static or sensors)
++                World.setGravity2d v3Zero world
++
+             // declare scene group
+             World.beginGroupFromFile "Scene" "Assets/Gameplay/Scene.nugroup" [] world
+ 

@@ -82,5 +82,33 @@
    "detail": "passed=True failedAt=None balls=[|(\"Ball\", <4.549399, 36.357277, 0>, 150.0f);\n  (\"Ball2\", <42.614067, 36.719845, 0>, 150.0f)|]  "
   },
   "valid": true
+ },
+ {
+  "task": "bounce",
+  "pristine": {
+   "passed": false,
+   "stage": "oracle",
+   "detail": "passed=False failedAt=1 velocity=<11.933177, -149.52458, 0>"
+  },
+  "reference": {
+   "passed": true,
+   "stage": "oracle",
+   "detail": "passed=True failedAt=None velocity=<0, 150, 0>"
+  },
+  "valid": true
+ },
+ {
+  "task": "gravity",
+  "pristine": {
+   "passed": false,
+   "stage": "oracle",
+   "detail": "passed=False failedAt=1 velocity=<-29.596312, -173.20233, 0>"
+  },
+  "reference": {
+   "passed": true,
+   "stage": "oracle",
+   "detail": "passed=True failedAt=None velocity=<16.38461, -149.10246, 0>"
+  },
+  "valid": true
  }
 ]

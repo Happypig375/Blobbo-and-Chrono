@@ -1,0 +1,36 @@
+--- a/Gameplay.fs
++++ b/Gameplay.fs
+@@ -104,17 +104,6 @@
+                      Entity.StaticImage .= Assets.Default.Paddle] world
+             let paddle = world.DeclaredEntity
+ 
+-            // process paddle movement
+-            if  world.TimeAdvancing &&
+-                screen.GetGameplayState world = Playing &&
+-                screen.GetLives world > 0 &&
+-                (screen.GetBricks world).Count > 0 then
+-                let paddlePosition = paddle.GetPosition world
+-                if World.isKeyboardKeyDown KeyboardKey.Left world then
+-                    paddle.SetPosition (paddlePosition.MapX (fun x -> max -128.0f (x - 4.0f))) world
+-                elif World.isKeyboardKeyDown KeyboardKey.Right world then
+-                    paddle.SetPosition (paddlePosition.MapX (fun x -> min 128.0f (x + 4.0f))) world
+-
+             // declare ball
+             let (ballBodyId, ballResults) =
+                 World.doBallBody2d "Ball"
+@@ -128,6 +117,15 @@
+                      Entity.StaticImage .= Assets.Default.Ball] world
+             let ball = world.DeclaredEntity
+ 
++            // process autopilot paddle movement: the paddle tracks the ball's horizontal position, clamped between the walls
++            if  world.TimeAdvancing &&
++                screen.GetGameplayState world = Playing &&
++                screen.GetLives world > 0 &&
++                (screen.GetBricks world).Count > 0 then
++                let paddlePosition = paddle.GetPosition world
++                let ballPosition = ball.GetPosition world
++                paddle.SetPosition (paddlePosition.MapX (fun _ -> max -128.0f (min 128.0f ballPosition.X))) world
++
+             // process ball life cycle
+             if (ball.GetPosition world).Y < -180.0f then
+                 screen.Lives.Map dec world

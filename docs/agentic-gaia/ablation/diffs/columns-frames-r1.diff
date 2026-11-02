@@ -1,0 +1,34 @@
+--- a/Gameplay.fs
++++ b/Gameplay.fs
+@@ -16,9 +16,9 @@
+       Size : Vector3
+       Color : Color }
+ 
+-    static member make position =
++    static member make position size =
+         { Position = position
+-          Size = v3 64.0f 16.0f 0.0f
++          Size = size
+           Color = color (Gen.randomf1 0.5f + 0.5f) (Gen.randomf1 0.5f + 0.5f) (Gen.randomf1 0.5f + 0.5f) 1.0f }
+ 
+ // this extends the Screen API to expose the user-defined properties.
+@@ -62,11 +62,17 @@
+ 
+             // process initialization
+             if FQueue.contains Select selectionResults then
++                // the walls' inner edges are at x = -160 and x = 160, so the bricks span 320 units across six columns
++                let columnCount = 6
++                let brickWidth = 320.0f / single columnCount
++                let brickHeight = 16.0f
+                 let bricks =
+                     Map.ofList
+-                        [for i in 0 .. dec 5 do
++                        [for i in 0 .. dec columnCount do
+                             for j in 0 .. dec 6 do
+-                                (Gen.name, Brick.make (v3 (single i * 64.0f - 128.0f) (single j * 16.0f + 64.0f) 0.0f))]
++                                let x = -160.0f + (single i + 0.5f) * brickWidth
++                                let y = single j * brickHeight + 64.0f
++                                (Gen.name, Brick.make (v3 x y 0.0f) (v3 brickWidth brickHeight 0.0f))]
+                 screen.SetBricks bricks world
+                 screen.SetScore 0 world
+                 screen.SetLives 5 world

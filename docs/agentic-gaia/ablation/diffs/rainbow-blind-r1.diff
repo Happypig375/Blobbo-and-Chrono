@@ -1,0 +1,35 @@
+--- a/Gameplay.fs
++++ b/Gameplay.fs
+@@ -16,10 +16,21 @@
+       Size : Vector3
+       Color : Color }
+ 
+-    static member make position =
++    static member make position color =
+         { Position = position
+           Size = v3 64.0f 16.0f 0.0f
+-          Color = color (Gen.randomf1 0.5f + 0.5f) (Gen.randomf1 0.5f + 0.5f) (Gen.randomf1 0.5f + 0.5f) 1.0f }
++          Color = color }
++
++// the brick row colours, from the bottom row to the top row.
++[<RequireQualifiedAccess>]
++module RowColors =
++    let Colors =
++        [| color 1.0f 0.0f 0.0f 1.0f // red
++           color 1.0f 0.5f 0.0f 1.0f // orange
++           color 1.0f 1.0f 0.0f 1.0f // yellow
++           color 0.0f 1.0f 0.0f 1.0f // green
++           color 0.0f 0.0f 1.0f 1.0f // blue
++           color 0.5f 0.0f 1.0f 1.0f |] // violet
+ 
+ // this extends the Screen API to expose the user-defined properties.
+ [<AutoOpen>]
+@@ -66,7 +77,7 @@
+                     Map.ofList
+                         [for i in 0 .. dec 5 do
+                             for j in 0 .. dec 6 do
+-                                (Gen.name, Brick.make (v3 (single i * 64.0f - 128.0f) (single j * 16.0f + 64.0f) 0.0f))]
++                                (Gen.name, Brick.make (v3 (single i * 64.0f - 128.0f) (single j * 16.0f + 64.0f) 0.0f) RowColors.Colors.[j])]
+                 screen.SetBricks bricks world
+                 screen.SetScore 0 world
+                 screen.SetLives 5 world

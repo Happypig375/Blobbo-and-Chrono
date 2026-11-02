@@ -1,0 +1,152 @@
+{
+ "runs": 69,
+ "total_cost_usd": 0.759436,
+ "by_condition": {
+  "blind": {
+   "runs": 12,
+   "passed": 10,
+   "mean_cost_usd": 0.0054998175,
+   "mean_turns": 9.25,
+   "mean_seconds": 26.599999999999998,
+   "failure_stages": {
+    "oracle": 2
+   },
+   "tool_calls": {
+    "Grep": 34,
+    "Edit": 22,
+    "Read": 21,
+    "Glob": 17,
+    "Bash": 5
+   },
+   "gaia_calls_per_run": 0.0
+  },
+  "eval": {
+   "runs": 12,
+   "passed": 9,
+   "mean_cost_usd": 0.006030477499999999,
+   "mean_turns": 11.333333333333334,
+   "mean_seconds": 33.84166666666667,
+   "failure_stages": {
+    "oracle": 3
+   },
+   "tool_calls": {
+    "Grep": 31,
+    "Edit": 28,
+    "Read": 20,
+    "Glob": 14,
+    "ToolSearch": 12,
+    "mcp__gaia__gaia_reload_code": 12,
+    "mcp__gaia__gaia_status": 3,
+    "mcp__gaia__gaia_eval": 3,
+    "Bash": 1
+   },
+   "gaia_calls_per_run": 1.5
+  },
+  "inspect": {
+   "runs": 12,
+   "passed": 11,
+   "mean_cost_usd": 0.007261179166666669,
+   "mean_turns": 12.083333333333334,
+   "mean_seconds": 39.625,
+   "failure_stages": {
+    "oracle": 1
+   },
+   "tool_calls": {
+    "Grep": 31,
+    "Edit": 29,
+    "Read": 20,
+    "ToolSearch": 13,
+    "mcp__gaia__gaia_reload_code": 13,
+    "Glob": 10,
+    "mcp__gaia__gaia_eval": 5,
+    "mcp__gaia__gaia_advance": 4,
+    "mcp__gaia__gaia_status": 4,
+    "mcp__gaia__gaia_inspect": 3,
+    "mcp__gaia__gaia_hierarchy": 1
+   },
+   "gaia_calls_per_run": 2.5
+  },
+  "screenshot": {
+   "runs": 12,
+   "passed": 11,
+   "mean_cost_usd": 0.008018456666666667,
+   "mean_turns": 15.166666666666666,
+   "mean_seconds": 48.92499999999999,
+   "failure_stages": {
+    "oracle": 1
+   },
+   "tool_calls": {
+    "Grep": 37,
+    "Edit": 32,
+    "Read": 26,
+    "mcp__gaia__gaia_eval": 15,
+    "mcp__gaia__gaia_reload_code": 14,
+    "ToolSearch": 13,
+    "mcp__gaia__gaia_advance": 12,
+    "Glob": 11,
+    "mcp__gaia__nu_docs": 3,
+    "mcp__gaia__gaia_status": 3,
+    "mcp__gaia__gaia_inspect": 3,
+    "mcp__gaia__gaia_hierarchy": 1
+   },
+   "gaia_calls_per_run": 4.25
+  },
+  "frames": {
+   "runs": 15,
+   "passed": 11,
+   "mean_cost_usd": 0.009354694666666667,
+   "mean_turns": 15.266666666666667,
+   "mean_seconds": 50.17999999999999,
+   "failure_stages": {
+    "oracle": 4
+   },
+   "tool_calls": {
+    "Grep": 40,
+    "Edit": 36,
+    "Read": 32,
+    "mcp__gaia__gaia_reload_code": 19,
+    "Glob": 18,
+    "mcp__gaia__gaia_advance": 18,
+    "mcp__gaia__gaia_eval": 18,
+    "ToolSearch": 17,
+    "mcp__gaia__gaia_inspect": 9,
+    "mcp__gaia__gaia_status": 4,
+    "mcp__gaia__gaia_log": 2,
+    "mcp__gaia__nu_docs": 1
+   },
+   "gaia_calls_per_run": 4.733333333333333
+  },
+  "frames+verify": {
+   "runs": 6,
+   "passed": 5,
+   "mean_cost_usd": 0.04956606833333333,
+   "mean_turns": 59.166666666666664,
+   "mean_seconds": 421.8333333333333,
+   "failure_stages": {
+    "oracle": 1
+   },
+   "tool_calls": {
+    "mcp__gaia__gaia_eval": 88,
+    "mcp__gaia__gaia_status": 41,
+    "mcp__gaia__gaia_advance": 40,
+    "Edit": 38,
+    "mcp__gaia__gaia_assert": 28,
+    "mcp__gaia__gaia_reload_code": 19,
+    "Grep": 16,
+    "Glob": 15,
+    "ToolSearch": 15,
+    "Read": 14,
+    "mcp__gaia__gaia_inspect": 11,
+    "mcp__gaia__gaia_restart": 9,
+    "mcp__gaia__nu_docs": 8,
+    "mcp__gaia__gaia_ping": 7,
+    "mcp__gaia__gaia_log": 6,
+    "mcp__gaia__gaia_frames": 4,
+    "mcp__gaia__gaia_undo": 2,
+    "mcp__gaia__gaia_hierarchy": 2,
+    "mcp__gaia__gaia_screenshot": 1
+   },
+   "gaia_calls_per_run": 44.333333333333336
+  }
+ }
+}

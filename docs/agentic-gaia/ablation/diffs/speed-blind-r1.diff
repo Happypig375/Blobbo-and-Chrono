@@ -1,0 +1,20 @@
+--- a/Gameplay.fs
++++ b/Gameplay.fs
+@@ -45,7 +45,7 @@
+     // here we define some gameplay-specific constants
+     static let PaddleOrigin = v3 0.0f -160.0f 0.0f
+     static let BallOrigin = v3 0.0f 48.0f 0.0f
+-    static let BallSpeed = 150.0f
++    static let BallSpeed = 225.0f
+ 
+     // here we define default property values
+     static member Properties =
+@@ -168,7 +168,7 @@
+                                 elif penetrateeId = topWallBodyId then v3Down
+                                 else failwithumf ()
+                             let velocity = ball.GetLinearVelocity world
+-                            let bounce = velocity - 2.0f * Vector3.Dot (velocity, normal) * normal
++                            let bounce = (velocity - 2.0f * Vector3.Dot (velocity, normal) * normal).Normalized * BallSpeed
+                             World.setBodyLinearVelocity bounce ballBodyId world
+                             World.playSound 0.0f 0.0f 1.0f Assets.Default.Sound world
+ 

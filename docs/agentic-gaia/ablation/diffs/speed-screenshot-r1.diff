@@ -1,0 +1,20 @@
+--- a/Gameplay.fs
++++ b/Gameplay.fs
+@@ -45,7 +45,7 @@
+     // here we define some gameplay-specific constants
+     static let PaddleOrigin = v3 0.0f -160.0f 0.0f
+     static let BallOrigin = v3 0.0f 48.0f 0.0f
+-    static let BallSpeed = 150.0f
++    static let BallSpeed = 225.0f // 50% faster than the original 150.0f
+ 
+     // here we define default property values
+     static member Properties =
+@@ -169,7 +169,7 @@
+                                 else failwithumf ()
+                             let velocity = ball.GetLinearVelocity world
+                             let bounce = velocity - 2.0f * Vector3.Dot (velocity, normal) * normal
+-                            World.setBodyLinearVelocity bounce ballBodyId world
++                            World.setBodyLinearVelocity (bounce.Normalized * BallSpeed) ballBodyId world
+                             World.playSound 0.0f 0.0f 1.0f Assets.Default.Sound world
+ 
+                 | _ -> ()

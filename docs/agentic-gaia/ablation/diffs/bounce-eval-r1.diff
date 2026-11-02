@@ -1,0 +1,52 @@
+--- a/Gameplay.fs
++++ b/Gameplay.fs
+@@ -80,19 +80,16 @@
+                 World.doBlockBody2d "LeftWall"
+                     [Entity.Position .= v3 -164.0f 0.0f 0.0f
+                      Entity.Size .= v3 8.0f 360.0f 0.0f
+-                     Entity.Sensor .= true
+                      Entity.StaticImage .= Assets.Default.Black] world
+             let (rightWallBodyId, _) =
+                 World.doBlockBody2d "RightWall"
+                     [Entity.Position .= v3 164.0f 0.0f 0.0f
+                      Entity.Size .= v3 8.0f 360.0f 0.0f
+-                     Entity.Sensor .= true
+                      Entity.StaticImage .= Assets.Default.Black] world
+             let (topWallBodyId, _) =
+                 World.doBlockBody2d "TopWall"
+                     [Entity.Position .= v3 0.0f 176.0f 0.0f
+                      Entity.Size .= v3 320.0f 8.0f 0.0f
+-                     Entity.Sensor .= true
+                      Entity.StaticImage .= Assets.Default.Black] world
+ 
+             // declare paddle
+@@ -100,7 +97,6 @@
+                 World.doBlockBody2d "Paddle"
+                     [Entity.Position .= PaddleOrigin
+                      Entity.Size .= v3 64.0f 16.0f 0.0f
+-                     Entity.Sensor .= true
+                      Entity.StaticImage .= Assets.Default.Paddle] world
+             let paddle = world.DeclaredEntity
+ 
+@@ -168,9 +164,10 @@
+                                 elif penetrateeId = topWallBodyId then v3Down
+                                 else failwithumf ()
+                             let velocity = ball.GetLinearVelocity world
+-                            let bounce = velocity - 2.0f * Vector3.Dot (velocity, normal) * normal
+-                            World.setBodyLinearVelocity bounce ballBodyId world
+-                            World.playSound 0.0f 0.0f 1.0f Assets.Default.Sound world
++                            if Vector3.Dot (velocity, normal) < 0.0f then
++                                let bounce = velocity - 2.0f * Vector3.Dot (velocity, normal) * normal
++                                World.setBodyLinearVelocity bounce ballBodyId world
++                                World.playSound 0.0f 0.0f 1.0f Assets.Default.Sound world
+ 
+                 | _ -> ()
+ 
+@@ -179,7 +176,6 @@
+                 World.doBlockBody2d brickName
+                     [Entity.Position .= brick.Position
+                      Entity.Size .= brick.Size
+-                     Entity.Sensor .= true
+                      Entity.Color @= brick.Color
+                      Entity.StaticImage .= Assets.Default.Brick] world |> ignore
+ 
