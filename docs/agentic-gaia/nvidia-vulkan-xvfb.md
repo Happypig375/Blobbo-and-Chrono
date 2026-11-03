@@ -10,6 +10,9 @@
   **For the 3D sample game, the GPU runs at 60 fps; software rendering manages about one frame a minute**, so
   agent tools time out on it.
 - All 39 + 11 automatic checks of the agent tools pass on the GPU.
+- **The launcher now uses the GPU by default** (user rule, 3 Nov: all Nu runs on Vulkan, and 3D needs the GPU).
+  It stops with a clear message if the GPU is missing or busy; it never falls back to software rendering by itself.
+  Software rendering (lavapipe) is opt-in, only to reproduce a run that was recorded with it.
 
 Background: nu-value-research put the older OpenGL version of Nu on this GPU through VirtualGL (a library that
 moves OpenGL rendering onto a GPU and copies the frames back to X). There, Nu's window stayed black. Vulkan does not
@@ -22,10 +25,23 @@ and it is now corrected.
 With this repository's launcher (it starts its own Xvfb with an access cookie, then Gaia, then the agent bridge):
 
 ```bash
-nvidia-smi                                   # shared GPU: check who else is using it first
-GAIA_VULKAN=nvidia GAIA_DISPLAY=:92 docs/agentic-gaia/prototype/run_gaia_headless.sh [PROJECT_DLL]
+GAIA_DISPLAY=:92 docs/agentic-gaia/prototype/run_gaia_headless.sh [PROJECT_DLL]     # GPU is the default
 # optional: GAIA_EDIT_MODE=Gameplay opens a project's editor mode at start (Terra Firma: Splash|Title|Credits|Gameplay)
 ```
+
+What the launcher does about the GPU (`GAIA_VULKAN`, default `nvidia`):
+- **Before starting**, it checks `nvidia-smi`. It stops with a message if there is no usable NVIDIA GPU, or if the
+  GPU is busy. Busy means any process on it other than the system's Xorg, more than 512 MB of memory in use, or
+  more than 20% utilisation for 5 seconds. The message names what is using the GPU. Limits: `GAIA_GPU_MAX_USED_MB`,
+  `GAIA_GPU_MAX_UTIL`. If the GPU is shared on purpose, after checking with whoever uses it, `GAIA_GPU_SHARE=1`
+  starts anyway with a note.
+- Its own previous Gaia (for example one just stopped by `gaia_restart`) can stay listed on the GPU for a moment
+  after it exits. The launcher waits up to 30 s for it to go, so it is not mistaken for someone else's.
+- **After starting**, it checks that Gaia's log names the NVIDIA device. If Gaia picked anything else, the
+  launcher stops Gaia and fails. The success line prints the device name.
+- `GAIA_VULKAN=lavapipe` selects Mesa's software Vulkan instead. **Use it only to reproduce a run that was
+  recorded with software rendering, and say so in that run's protocol.** The launcher prints a reminder. Example:
+  the 2 Nov comparison study (`ablation/README.md`, "Renderer").
 
 Without the launcher, the only settings that matter are:
 
@@ -41,9 +57,9 @@ nice -n 5 dotnet Nu.Gaia.dll                                     # no VirtualGL,
   rendering it says `llvmpipe (LLVM 15.0.7, 256 bits)`.
 - `nvidia-smi` must list the `dotnet` process (type `C+G`), using about 1.2 GB (2D) to 1.5 GB (3D) of GPU memory.
 
-The launcher's default is still `lavapipe` (Mesa's software Vulkan). That keeps the recorded study reproducible,
-and an agent session does not hold the shared GPU unless asked. Both are Vulkan. Use `nvidia` for anything 3D
-and whenever speed matters.
+At first (3 Nov, afternoon) the launcher kept lavapipe as its default. The same evening it was switched to the GPU,
+following the user's rules. Every measurement below was taken with an explicit `GAIA_VULKAN` setting, so the
+switch does not change them.
 
 ## What was measured
 
@@ -116,8 +132,8 @@ really arrive.
 ## Caveats
 
 - **Shared GPU.** An open Gaia renders every frame. It holds 1.2–1.5 GB and keeps the GPU 11% (2D) to 44% (3D)
-  busy even when the agent is idle. Check `nvidia-smi` first, run one Gaia at a time, and stop Gaia when the
-  agent is done.
+  busy even when the agent is idle. The launcher refuses a busy GPU, which also means one Gaia at a time. Stop
+  Gaia when the agent is done.
 - **Only Gaia with Breakout and Terra Firma were tried**, with one driver version (580.178.04). Other sample
   projects were not run.
 - **Results recorded with lavapipe** (the round-3 comparison study) used software rendering. Pictures from the
@@ -136,5 +152,8 @@ really arrive.
 - `gpu-vulkan/imgdiff.py`: compares two PNGs.
 - `gpu-vulkan/results/`: raw output (`breakout-summary.txt`, `terra-firma-summary.txt`, the lavapipe frame log,
   `nvidia-smi` samples, check results and timings).
-- Launcher changes (`prototype/run_gaia_headless.sh`): `GAIA_VULKAN=nvidia` also sets `VK_DRIVER_FILES`; new
-  optional `GAIA_EDIT_MODE`. The comment that said NVIDIA cannot present to Xvfb is corrected.
+- Launcher changes (`prototype/run_gaia_headless.sh`): the GPU is the default; GPU check before the start and
+  device check after it; lavapipe only on request; both `VK_ICD_FILENAMES` and `VK_DRIVER_FILES` are set; new
+  optional `GAIA_EDIT_MODE`. Tested: no GPU, busy GPU (another process, memory, utilisation; simulated with stand-in
+  `nvidia-smi` programs), a real second Gaia on the GPU, `GAIA_GPU_SHARE=1`, an unknown `GAIA_VULKAN` value, and
+  explicit lavapipe. All 39 + 11 checks pass with the default (35 s), including the hang-and-restart check.

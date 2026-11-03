@@ -13,7 +13,8 @@ feedback channels after every change (compiler diagnostics, structured world sta
 short frame sequences) plus the live F# session's own type checker for API lookup. Every mutating call is
 wrapped in Gaia's existing world snapshot so it can be undone. Live-world edits are explicitly *temporary*;
 designs become *persistent* only through source edits + hot reload or saved scene files. Headless operation on
-Linux is Xvfb + Mesa lavapipe, or Xvfb + the NVIDIA GPU (`GAIA_VULKAN=nvidia`, needed for 3D). Since round 3, screenshots come from an in-engine Vulkan readback (exact pixels, no X grab).
+Linux is Xvfb + Vulkan on the NVIDIA GPU (the default since 3 Nov; needed for 3D), or Xvfb + Mesa lavapipe
+(software Vulkan, opt-in with `GAIA_VULKAN=lavapipe`, only to reproduce runs recorded with it). Since round 3, screenshots come from an in-engine Vulkan readback (exact pixels, no X grab).
 
 ## 2. Architecture
 
@@ -32,7 +33,7 @@ Linux is Xvfb + Mesa lavapipe, or Xvfb + the NVIDIA GPU (`GAIA_VULKAN=nvidia`, n
   editor thread, once per frame in imGuiProcess → agentProcess:
      drain queue → evalInteractive / tryUndo / setTimeAdvancing / tryReloadCode / inspect / symbol …
      deferred replies keyed by editor frame (advance N, wait N)
-  renderer thread → Vulkan (lavapipe on Xvfb, or a GPU) → window → capture
+  renderer thread → Vulkan (NVIDIA GPU on Xvfb; lavapipe opt-in) → window → capture
 ```
 
 Why this split: all FSI and `World` access must stay on the editor thread (`investigation.md` §1), so Gaia's side
@@ -237,8 +238,8 @@ These are that project's operational findings about agent harnesses, not literat
   - It complements Gaia for multi-file refactors.
 - **Stub-world headless runs** (`World.makeStub`): good for CI-style logic assertions, but they produce no pixels,
   so they don't support design.
-- **NVIDIA GPU rendering on this server**: works since 3 Nov with no root and no engine change (`GAIA_VULKAN=nvidia`;
-  NVIDIA's Vulkan driver presents to Xvfb). It is needed for 3D scenes: Terra Firma runs at 60 fps on the GPU and at
+- **NVIDIA GPU rendering on this server**: works since 3 Nov with no root and no engine change (NVIDIA's Vulkan
+  driver presents to Xvfb); it is now the launcher default. It is needed for 3D scenes: Terra Firma runs at 60 fps on the GPU and at
   about one frame a minute on lavapipe. Details: `nvidia-vulkan-xvfb.md`.
 
 ## 7. How to evaluate it (from the literature, §G)
@@ -298,7 +299,7 @@ under US$1 in total). Each result was checked automatically in a fresh editor.
 - **Reproduce**:
   ```bash
   nice dotnet build Nu/Nu.Gaia/Nu.Gaia.fsproj -c Debug        # builds engine + sample projects (~5 min first time)
-  docs/agentic-gaia/prototype/run_gaia_headless.sh             # Xvfb :91 + lavapipe + Breakout ImSim + bridge
+  docs/agentic-gaia/prototype/run_gaia_headless.sh             # Xvfb :91 + NVIDIA GPU (checked idle) + Breakout ImSim + bridge
   python3 -I docs/agentic-gaia/prototype/check_mcp.py OUT_DIR  # 39 checks incl. readback, checkpoint/diff/assert, hang + restart (NU_GAIA_CHECK_HANG=0 skips); PNGs + transcript
   python3 -I docs/agentic-gaia/prototype/check_review_fixes.py  # 11 checks for the round-3 review fixes
   claude mcp add gaia -- env NU_GAIA_AGENT_SOCKET=$XDG_RUNTIME_DIR/nu-gaia-agent.sock DISPLAY=:91 \

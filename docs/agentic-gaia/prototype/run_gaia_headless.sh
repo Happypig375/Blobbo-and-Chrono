@@ -1,10 +1,13 @@
 #!/usr/bin/env bash
-# Start Gaia headless on Linux: private Xvfb display + Mesa lavapipe (software Vulkan 1.3) + agent bridge socket.
+# Start Gaia headless on Linux: private Xvfb display + Vulkan on the NVIDIA GPU + agent bridge socket.
 # Usage: run_gaia_headless.sh [PROJECT_DLL]   (default: Projects/Breakout ImSim, Debug build)
 # Env:   GAIA_DISPLAY (default :91), NU_GAIA_AGENT_SOCKET (default $XDG_RUNTIME_DIR/nu-gaia-agent.sock),
 #        GAIA_LOG_DIR (default $XDG_RUNTIME_DIR/nu-gaia-logs),
-#        GAIA_VULKAN=lavapipe|nvidia|default (default lavapipe; nvidia = the RTX GPU, presents to Xvfb too, see
-#          docs/agentic-gaia/nvidia-vulkan-xvfb.md), GAIA_EDIT_MODE (optional plugin edit mode, e.g. Gameplay)
+#        GAIA_VULKAN=nvidia|lavapipe (default nvidia: the server's GPU; see docs/agentic-gaia/nvidia-vulkan-xvfb.md).
+#          lavapipe (Mesa software Vulkan) is ONLY for reproducing a run that was recorded with software rendering;
+#          say so in that run's protocol. There is no automatic fallback: no GPU, or a busy GPU, stops the launch.
+#        GAIA_GPU_SHARE=1 starts even if something else is using the GPU (only after checking with its owner),
+#        GAIA_EDIT_MODE (optional plugin edit mode, e.g. Gameplay)
 # Security: the bridge socket is code execution as this user, so everything lives under the private
 # $XDG_RUNTIME_DIR (no /tmp fallback), and the X display requires an Xauthority cookie.
 set -euo pipefail
@@ -31,14 +34,59 @@ LOG_DIR="${GAIA_LOG_DIR:-$XDG_RUNTIME_DIR/nu-gaia-logs}"
 private_dir "$LOG_DIR"
 private_dir "$(dirname "$NU_GAIA_AGENT_SOCKET")"
 
-case "${GAIA_VULKAN:-lavapipe}" in
-  lavapipe) export VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/lvp_icd.x86_64.json
-            export VK_DRIVER_FILES=/usr/share/vulkan/icd.d/lvp_icd.x86_64.json
-            export LP_NUM_THREADS="${LP_NUM_THREADS:-4}" ;;  # bound software-rasteriser threads (shared server)
-  nvidia)   export VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/nvidia_icd.json  # older Vulkan loaders
-            export VK_DRIVER_FILES=/usr/share/vulkan/icd.d/nvidia_icd.json ;;  # newer loaders
-  *) ;;
+VULKAN="${GAIA_VULKAN:-nvidia}"
+case "$VULKAN" in
+  nvidia)   ICD=/usr/share/vulkan/icd.d/nvidia_icd.json; DEVICE_RE='Selected Vulkan Device NVIDIA' ;;
+  lavapipe) ICD=/usr/share/vulkan/icd.d/lvp_icd.x86_64.json; DEVICE_RE='Selected Vulkan Device llvmpipe'
+            export LP_NUM_THREADS="${LP_NUM_THREADS:-4}"  # bound software-rasteriser threads (shared server)
+            echo "note: GAIA_VULKAN=lavapipe = software rendering, only for reproducing a recorded software-rendered run;" \
+                 "declare it in that run's protocol" >&2 ;;
+  *) die "GAIA_VULKAN must be nvidia (default) or lavapipe, not '$VULKAN'" ;;
 esac
+[ -f "$ICD" ] || die "Vulkan driver file $ICD is missing"
+export VK_ICD_FILENAMES="$ICD" VK_DRIVER_FILES="$ICD"  # older / newer Vulkan loaders: use this driver only
+unset LIBGL_ALWAYS_SOFTWARE GALLIUM_DRIVER MESA_VK_DEVICE_SELECT
+
+# GPU check (nvidia only; shared with labmates): the GPU must be visible and idle. Busy = any process on it other
+# than the system's Xorg, or more than GAIA_GPU_MAX_USED_MB (512) memory in use or GAIA_GPU_MAX_UTIL (20) % busy.
+gpu_check() {
+  command -v nvidia-smi >/dev/null || die "no NVIDIA GPU: nvidia-smi is not installed. Not falling back to software" \
+    "rendering; GAIA_VULKAN=lavapipe is only for reproducing a recorded software-rendered run."
+  local table="" query="" prev="${1:-}" i
+  for i in $(seq 30); do
+    table="$(timeout 20 nvidia-smi 2>&1)" && query="$(timeout 20 nvidia-smi \
+      --query-gpu=name,memory.used,utilization.gpu --format=csv,noheader,nounits 2>&1)" \
+      || die "no usable NVIDIA GPU: nvidia-smi failed ($(printf '%s' "$table$query" | head -c 200)). Not falling back" \
+        "to software rendering; GAIA_VULKAN=lavapipe is only for reproducing a recorded software-rendered run."
+    # our own previous Gaia (just stopped, e.g. by gaia_restart) can stay on the GPU briefly as a zombie: wait for it
+    [ -n "$prev" ] && awk -v p="$prev" '$1 == "|" && $5 == p {f = 1} END {exit !f}' <<<"$table" || break
+    sleep 1
+  done
+  local name used util others
+  IFS=, read -r name used util <<<"$(head -1 <<<"$query")"
+  used="${used// /}"; util="${util// /}"
+  [[ "$used" =~ ^[0-9]+$ && "$util" =~ ^[0-9]+$ ]] || die "cannot read GPU state from nvidia-smi: $query"
+  # process rows look like: |    0   N/A  N/A    4325      G   /usr/lib/xorg/Xorg     4MiB |
+  others="$(awk '/Processes:/ {p = 1} p && $1 == "|" && $2 ~ /^[0-9]+$/ && $5 ~ /^[0-9]+$/ && $7 !~ /(^|\/)Xorg$/ \
+    {print "pid " $5 " (" $7 ", " $(NF-1) ")"}' <<<"$table" | paste -sd ';' -)"
+  # utilisation is a short moving average: if it alone is high, confirm over 5 s before calling the GPU busy
+  local max_util="${GAIA_GPU_MAX_UTIL:-20}"
+  for i in 1 2 3 4 5; do
+    { [ -z "$others" ] && [ "$util" -gt "$max_util" ]; } || break
+    sleep 1
+    util="$(timeout 20 nvidia-smi --query-gpu=utilization.gpu --format=csv,noheader,nounits | head -1 | tr -d ' ')"
+    [[ "$util" =~ ^[0-9]+$ ]] || die "cannot read GPU utilisation from nvidia-smi"
+  done
+  if [ -n "$others" ] || [ "$used" -gt "${GAIA_GPU_MAX_USED_MB:-512}" ] || [ "$util" -gt "$max_util" ]; then
+    local what="GPU${name:+ ($name)} is busy: ${used} MiB used, ${util}% busy${others:+; in use by: $others}"
+    if [ "${GAIA_GPU_SHARE:-0}" = 1 ]; then
+      echo "note: $what; starting anyway because GAIA_GPU_SHARE=1" >&2
+    else
+      die "$what. It is shared with labmates: wait until it is free, or set GAIA_GPU_SHARE=1 after checking with" \
+        "whoever uses it. Not falling back to software rendering."
+    fi
+  fi
+}
 
 # 0. one instance per log dir: refuse if the recorded Gaia is still alive
 if [ -f "$LOG_DIR/gaia.pid" ]; then
@@ -47,6 +95,8 @@ if [ -f "$LOG_DIR/gaia.pid" ]; then
     die "Gaia pid $old from this launcher is still running; stop it (or use gaia_restart) first"
   fi
 fi
+
+[ "$VULKAN" = nvidia ] && gpu_check "$(cat "$LOG_DIR/gaia.pid" 2>/dev/null || true)"
 
 # 1. display: a private Xvfb with an Xauthority cookie (never touch :0/:77/:78/:99). Reuse only our own server.
 n="${DISPLAY#:}"
@@ -100,8 +150,11 @@ for _ in $(seq 240); do
   kill -0 "$pid" 2>/dev/null || { tail -20 "$LOG_DIR/gaia.log" >&2; die "Gaia exited during startup"; }
   sleep 0.5
 done
-if [ -S "$NU_GAIA_AGENT_SOCKET" ]; then
-  echo "Gaia pid $pid on $DISPLAY (XAUTHORITY=$XAUTHORITY); bridge $NU_GAIA_AGENT_SOCKET; log $LOG_DIR/gaia.log"
-else
-  tail -20 "$LOG_DIR/gaia.log" >&2; die "bridge socket did not appear"
+[ -S "$NU_GAIA_AGENT_SOCKET" ] || { tail -20 "$LOG_DIR/gaia.log" >&2; die "bridge socket did not appear"; }
+# 4. no silent fallback: Gaia must have picked the requested device (the line is logged before the bridge opens)
+device="$(grep -m1 'Selected Vulkan Device' "$LOG_DIR/gaia.log" | sed 's/.*Selected Vulkan Device //')"
+if ! grep -q "$DEVICE_RE" "$LOG_DIR/gaia.log"; then
+  kill "$pid" 2>/dev/null || true
+  die "Gaia selected '${device:-no Vulkan device}' instead of the $VULKAN driver; stopped it (log: $LOG_DIR/gaia.log)"
 fi
+echo "Gaia pid $pid on $DISPLAY (XAUTHORITY=$XAUTHORITY); Vulkan device $device; bridge $NU_GAIA_AGENT_SOCKET; log $LOG_DIR/gaia.log"

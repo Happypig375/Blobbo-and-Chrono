@@ -33,6 +33,11 @@ standard way to give an agent tools):
 
 The agent has no shell, so it cannot build or run the game in any way except through the Gaia tools.
 
+**Renderer (protocol).** All runs recorded here (2 Nov 2026) used Gaia on a virtual X display with Mesa lavapipe,
+a software Vulkan renderer on the CPU; the NVIDIA GPU route had not been tested yet. The launcher now uses the GPU by
+default, so reproducing these runs means setting `GAIA_VULKAN=lavapipe` (as in the commands at the end). A new
+study should use the GPU and say so; `results.jsonl` lines written from 3 Nov on carry a `renderer` field.
+
 **Tasks** (all on the Breakout sample game; `tasks.py`):
 - six build tasks: add a seventh row of bricks (rows), make the ball 50% faster (speed), an autopilot paddle
   (autopilot), one colour per row (rainbow), six columns instead of five (columns), a second ball (ball2);
@@ -154,6 +159,7 @@ check (about one `gaia_reload_code` per run).
 Reproduce (about 2 to 4 minutes per run; needs the built Breakout ImSim project copied to `WORK_DIR`, see the header
 of `run_ablation.py`):
 ```bash
+export GAIA_VULKAN=lavapipe   # the recorded runs were software-rendered; omit for a new study on the GPU
 python3 -I docs/agentic-gaia/ablation/run_ablation.py WORK_DIR OUT_DIR validate
 python3 -I docs/agentic-gaia/ablation/run_ablation.py WORK_DIR OUT_DIR run --reps 3
 python3 -I docs/agentic-gaia/ablation/run_ablation.py WORK_DIR OUT_DIR run --reps 6 --tasks bounce --conditions frames,frames+verify,frames+instructions

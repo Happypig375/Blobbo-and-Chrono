@@ -8,6 +8,8 @@ Usage:
 WORK_DIR holds a full copy of "Projects/Breakout ImSim" (with bin/) plus WORK_DIR/pristine/*.fs (original sources).
 Results are appended to OUT_DIR/results.jsonl (one line per run; finished runs are skipped on a rerun), with each
 run's agent stream in OUT_DIR/runs/<run>.jsonl and its source diff in OUT_DIR/runs/<run>.diff.
+Renderer: Gaia runs on the NVIDIA GPU by default. The recorded pilot (2 Nov 2026) used lavapipe (software Vulkan), so
+to reproduce or extend those recorded runs, set GAIA_VULKAN=lavapipe and say so in the write-up; new studies use the GPU.
 """
 import difflib
 import json
@@ -292,7 +294,10 @@ def run(work, out, reps, model, tasks, conditions, budget):
         open(os.path.join(out, "runs", run_id + ".diff"), "w").write(diff)
         verdict = oracle(work, task_id)
         restore_sources(work)
+        # renderer: the launcher's Vulkan driver (GAIA_VULKAN, default nvidia). Records without this field (2 Nov 2026)
+        # were all rendered by lavapipe (software Vulkan).
         record = {"run": run_id, "task": task_id, "condition": condition, "rep": rep, "model": model, "started": started,
+                  "renderer": os.environ.get("GAIA_VULKAN", "nvidia"),
                   "changed_source": bool(diff.strip()), **agent, "oracle": verdict}
         with open(results_path, "a") as f:
             f.write(json.dumps(record) + "\n")
