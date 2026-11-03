@@ -1,0 +1,2 @@
+check_mcp.py wall time (includes one Gaia restart): nvidia 34.1 s, lavapipe 118.1 s (3 Nov 2026, Breakout ImSim)
+check_review_fixes.py wall time: nvidia 4.8 s, lavapipe 5.0 s

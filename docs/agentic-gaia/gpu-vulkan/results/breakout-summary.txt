@@ -1,0 +1,18 @@
+[1-nvidia] 2026-11-03 19:44:27.052 +08:00|Info|Selected Vulkan Device NVIDIA GeForce RTX 4090 D, Driver v1.4.312(0)
+[1-nvidia] launch_to_bridge_s 3.608471884
+[1-nvidia] gpu-proc 336612, 1162 MiB
+[1-nvidia] compare {"window": {"x": 320, "y": 180, "width": 1280, "height": 720}, "engine": {"size": [1280, 720], "mean": [43.1, 43.1, 43.4], "extrema": [[0, 255], [0, 255], [0, 255]], "colours": 144}, "x11": {"size": [1280, 720], "mean": [43.1, 43.1, 43.4], "extrema": [[0, 255], [0, 255], [0, 255]], "colours": 144}, "engine_s": 0.035, "x11_s": 0.025, "diff": {"bbox": null, "mean": [0.0, 0.0, 0.0]}}
+[1-nvidia] time {"label": "1-nvidia", "editor_600_frames_s": 9.961, "advance_600_frames_s": 10.264, "capture_x20_s": 1.747, "x11_grab_x20_s": 0.49, "eval_s": 2.684, "total_s": 25.16, "gaia_cpu_cores_avg": 2.01, "editor_fps": 60.2}
+[2-lavapipe] 2026-11-03 19:45:12.598 +08:00|Info|Selected Vulkan Device llvmpipe (LLVM 15.0.7, 256 bits), Driver v1.3.255(0)
+[2-lavapipe] launch_to_bridge_s 15.669103853
+[2-lavapipe] compare {"window": {"x": 320, "y": 180, "width": 1280, "height": 720}, "engine": {"size": [1280, 720], "mean": [43.1, 43.1, 43.4], "extrema": [[0, 255], [0, 255], [0, 255]], "colours": 142}, "x11": {"size": [1280, 720], "mean": [43.1, 43.1, 43.4], "extrema": [[0, 255], [0, 255], [0, 255]], "colours": 142}, "engine_s": 0.17, "x11_s": 0.025, "diff": {"bbox": null, "mean": [0.0, 0.0, 0.0]}}
+[2-lavapipe] time {"label": "2-lavapipe", "editor_600_frames_s": 10.74, "advance_600_frames_s": 13.83, "capture_x20_s": 2.428, "x11_grab_x20_s": 0.464, "eval_s": 2.332, "total_s": 29.81, "gaia_cpu_cores_avg": 4.09, "editor_fps": 55.9}
+[3-nvidia] 2026-11-03 19:46:15.126 +08:00|Info|Selected Vulkan Device NVIDIA GeForce RTX 4090 D, Driver v1.4.312(0)
+[3-nvidia] launch_to_bridge_s 4.602696620
+[3-nvidia] gpu-proc 339495, 1162 MiB
+[3-nvidia] compare {"window": {"x": 320, "y": 180, "width": 1280, "height": 720}, "engine": {"size": [1280, 720], "mean": [43.1, 43.1, 43.4], "extrema": [[0, 255], [0, 255], [0, 255]], "colours": 144}, "x11": {"size": [1280, 720], "mean": [43.1, 43.1, 43.4], "extrema": [[0, 255], [0, 255], [0, 255]], "colours": 144}, "engine_s": 0.034, "x11_s": 0.026, "diff": {"bbox": null, "mean": [0.0, 0.0, 0.0]}}
+[3-nvidia] time {"label": "3-nvidia", "editor_600_frames_s": 9.96, "advance_600_frames_s": 10.224, "capture_x20_s": 1.834, "x11_grab_x20_s": 0.521, "eval_s": 2.991, "total_s": 25.55, "gaia_cpu_cores_avg": 1.92, "editor_fps": 60.2}
+[4-lavapipe] 2026-11-03 19:47:01.331 +08:00|Info|Selected Vulkan Device llvmpipe (LLVM 15.0.7, 256 bits), Driver v1.3.255(0)
+[4-lavapipe] launch_to_bridge_s 16.182774497
+[4-lavapipe] compare {"window": {"x": 320, "y": 180, "width": 1280, "height": 720}, "engine": {"size": [1280, 720], "mean": [43.1, 43.1, 43.4], "extrema": [[0, 255], [0, 255], [0, 255]], "colours": 142}, "x11": {"size": [1280, 720], "mean": [43.1, 43.1, 43.4], "extrema": [[0, 255], [0, 255], [0, 255]], "colours": 142}, "engine_s": 0.102, "x11_s": 0.025, "diff": {"bbox": null, "mean": [0.0, 0.0, 0.0]}}
+[4-lavapipe] time {"label": "4-lavapipe", "editor_600_frames_s": 10.18, "advance_600_frames_s": 12.337, "capture_x20_s": 2.26, "x11_grab_x20_s": 0.569, "eval_s": 3.047, "total_s": 28.4, "gaia_cpu_cores_avg": 4.06, "editor_fps": 58.9}

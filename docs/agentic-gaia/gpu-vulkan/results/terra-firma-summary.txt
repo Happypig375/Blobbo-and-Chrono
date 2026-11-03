@@ -1,0 +1,32 @@
+[1-nvidia] 2026-11-03 19:49:00.963 +08:00|Info|Selected Vulkan Device NVIDIA GeForce RTX 4090 D, Driver v1.4.312(0)
+[1-nvidia] launch_to_bridge_s 9.138180751
+[1-nvidia] gpu-proc 344432, 1162 MiB
+[1-nvidia] compare {"window": {"x": 320, "y": 180, "width": 1280, "height": 720}, "engine": {"size": [1280, 720], "mean": [58.1, 55.3, 49.1], "extrema": [[0, 255], [11, 255], [2, 255]], "colours": 12082}, "x11": {"size": [1280, 720], "mean": [58.1, 55.3, 49.1], "extrema": [[0, 255], [11, 255], [2, 255]], "colours": 12082}, "engine_s": 0.092, "x11_s": 0.025, "diff": {"bbox": null, "mean": [0.0, 0.0, 0.0]}}
+[1-nvidia] time {"label": "1-nvidia", "editor_600_frames_s": 9.963, "advance_600_frames_s": 10.338, "capture_x20_s": 2.139, "x11_grab_x20_s": 0.464, "eval_s": 2.774, "total_s": 25.69, "gaia_cpu_cores_avg": 3.11, "editor_fps": 60.2}
+[2-lavapipe] 2026-11-03 19:49:55.146 +08:00|Info|Selected Vulkan Device llvmpipe (LLVM 15.0.7, 256 bits), Driver v1.3.255(0)
+[2-lavapipe] launch_to_bridge_s 17.203948685
+[2-lavapipe] compare capture failed: {'id': '2', 'ok': False, 'frame': 2, 'msSinceFrame': 118702, 'busyOp': '', 'busyId': '', 'busyMs': 0, 'queued': 0, 'inFlight': 0, 'unresponsive': True, 'pendingException': None, 'error': 'Editor thread unresponsive for 118702 ms; request NOT queued. A non-terminating eval cannot be cancelled in-process: poll ping, or restart Gaia.'}
+Traceback (most recent call last):
+  File "SCRATCH/time_session.py", line 56, in <module>
+    main(int(sys.argv[1]), sys.argv[2])
+  File "SCRATCH/time_session.py", line 39, in main
+    ok(b.request("wait_frames", frames=5))
+  File "SCRATCH/time_session.py", line 33, in ok
+    raise RuntimeError(reply)
+RuntimeError: {'id': '1', 'ok': False, 'frame': 2, 'msSinceFrame': 118743, 'busyOp': '', 'busyId': '', 'busyMs': 0, 'queued': 0, 'inFlight': 0, 'unresponsive': True, 'pendingException': None, 'error': 'Editor thread unresponsive for 118743 ms; request NOT queued. A non-terminating eval cannot be cancelled in-process: poll ping, or restart Gaia.'}
+[3-nvidia] 2026-11-03 19:52:27.324 +08:00|Info|Selected Vulkan Device NVIDIA GeForce RTX 4090 D, Driver v1.4.312(0)
+[3-nvidia] launch_to_bridge_s 3.594529125
+[3-nvidia] gpu-proc 351384, 1162 MiB
+[3-nvidia] compare {"window": {"x": 320, "y": 180, "width": 1280, "height": 720}, "engine": {"size": [1280, 720], "mean": [58.1, 55.3, 49.1], "extrema": [[0, 255], [11, 255], [2, 255]], "colours": 12080}, "x11": {"size": [1280, 720], "mean": [58.1, 55.3, 49.1], "extrema": [[0, 255], [11, 255], [2, 255]], "colours": 12080}, "engine_s": 0.15, "x11_s": 0.026, "diff": {"bbox": null, "mean": [0.0, 0.0, 0.0]}}
+[3-nvidia] time {"label": "3-nvidia", "editor_600_frames_s": 9.984, "advance_600_frames_s": 10.752, "capture_x20_s": 2.175, "x11_grab_x20_s": 0.465, "eval_s": 2.753, "total_s": 26.14, "gaia_cpu_cores_avg": 6.25, "editor_fps": 60.1}
+[4-lavapipe] 2026-11-03 19:53:18.640 +08:00|Info|Selected Vulkan Device llvmpipe (LLVM 15.0.7, 256 bits), Driver v1.3.255(0)
+[4-lavapipe] launch_to_bridge_s 16.197372453
+[4-lavapipe] compare capture failed: {'id': '2', 'ok': False, 'frame': 2, 'msSinceFrame': 118122, 'busyOp': '', 'busyId': '', 'busyMs': 0, 'queued': 0, 'inFlight': 0, 'unresponsive': True, 'pendingException': None, 'error': 'Editor thread unresponsive for 118122 ms; request NOT queued. A non-terminating eval cannot be cancelled in-process: poll ping, or restart Gaia.'}
+Traceback (most recent call last):
+  File "SCRATCH/time_session.py", line 56, in <module>
+    main(int(sys.argv[1]), sys.argv[2])
+  File "SCRATCH/time_session.py", line 39, in main
+    ok(b.request("wait_frames", frames=5))
+  File "SCRATCH/time_session.py", line 33, in ok
+    raise RuntimeError(reply)
+RuntimeError: {'id': '1', 'ok': False, 'frame': 2, 'msSinceFrame': 118163, 'busyOp': '', 'busyId': '', 'busyMs': 0, 'queued': 0, 'inFlight': 0, 'unresponsive': True, 'pendingException': None, 'error': 'Editor thread unresponsive for 118163 ms; request NOT queued. A non-terminating eval cannot be cancelled in-process: poll ping, or restart Gaia.'}

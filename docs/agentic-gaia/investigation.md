@@ -173,8 +173,9 @@ here; the key claim was then verified in the live session.
 - **Headless on this server [verified].** Xvfb on a private display (`:91`; `:0/:77/:78/:99` are taken) plus
   Mesa **lavapipe** (`VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/lvp_icd.x86_64.json`, Mesa 23.2.1) works: Nu logs
   `Selected Vulkan Device llvmpipe (LLVM 15.0.7, 256 bits), Driver v1.3.255` and the full editor renders
-  (`img/gaia-headless-editor.png`). The machine has an RTX 4090 D, but NVIDIA's Vulkan driver cannot present to
-  an Xvfb surface, and a real NVIDIA X server needs root, so software Vulkan is the no-sudo route. It is
+  (`img/gaia-headless-editor.png`). (Correction, 3 Nov: the earlier claim here that NVIDIA's Vulkan driver
+  cannot present to Xvfb was never tested and is wrong. With `GAIA_VULKAN=nvidia`, Gaia renders on the RTX 4090 D
+  into the Xvfb window with no sudo; see `nvidia-vulkan-xvfb.md`.) Lavapipe stays the launcher default. It is
   adequate for 2D and small 3D scenes; expect low frame rates for heavy 3D. It is CPU-hungry: the idle editor
   used ~7 cores (701% CPU), likely because Gaia renders every frame unpaced (`FramePacing = false`). With
   `LP_NUM_THREADS=4` (now the launcher default) it used about 3.7 cores (366%).

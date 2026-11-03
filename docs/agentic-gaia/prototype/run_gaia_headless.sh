@@ -3,7 +3,8 @@
 # Usage: run_gaia_headless.sh [PROJECT_DLL]   (default: Projects/Breakout ImSim, Debug build)
 # Env:   GAIA_DISPLAY (default :91), NU_GAIA_AGENT_SOCKET (default $XDG_RUNTIME_DIR/nu-gaia-agent.sock),
 #        GAIA_LOG_DIR (default $XDG_RUNTIME_DIR/nu-gaia-logs),
-#        GAIA_VULKAN=lavapipe|nvidia|default (default lavapipe; nvidia cannot present to Xvfb)
+#        GAIA_VULKAN=lavapipe|nvidia|default (default lavapipe; nvidia = the RTX GPU, presents to Xvfb too, see
+#          docs/agentic-gaia/nvidia-vulkan-xvfb.md), GAIA_EDIT_MODE (optional plugin edit mode, e.g. Gameplay)
 # Security: the bridge socket is code execution as this user, so everything lives under the private
 # $XDG_RUNTIME_DIR (no /tmp fallback), and the X display requires an Xauthority cookie.
 set -euo pipefail
@@ -19,6 +20,9 @@ ROOT="$(cd "$(dirname "$0")/../../.." && pwd)"
 GAIA_BIN="$ROOT/Nu/Nu.Gaia/bin/Debug/net10.0"
 PROJECT_DLL="$(realpath -e "${1:-$ROOT/Projects/Breakout ImSim/bin/Debug/net10.0/Breakout ImSim.dll}" 2>/dev/null)" \
   || die "missing project dll: ${1:-Breakout ImSim} (build Nu.Gaia and the project first)"
+EDIT_MODE="${GAIA_EDIT_MODE:-}"
+case "$EDIT_MODE" in *[!A-Za-z0-9_]*) die "GAIA_EDIT_MODE may only contain letters, digits and _";; esac
+if [ -n "$EDIT_MODE" ]; then EDIT_MODE_OPT="[Some \"$EDIT_MODE\"]"; else EDIT_MODE_OPT=None; fi
 case "$PROJECT_DLL" in *'"'*|*']'*|*'['*) die "project path may not contain quotes or brackets (Gaia state file syntax)";; esac
 export DISPLAY="${GAIA_DISPLAY:-:91}"
 export NU_GAIA_AGENT_SOCKET="${NU_GAIA_AGENT_SOCKET:-$XDG_RUNTIME_DIR/nu-gaia-agent.sock}"
@@ -29,8 +33,10 @@ private_dir "$(dirname "$NU_GAIA_AGENT_SOCKET")"
 
 case "${GAIA_VULKAN:-lavapipe}" in
   lavapipe) export VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/lvp_icd.x86_64.json
+            export VK_DRIVER_FILES=/usr/share/vulkan/icd.d/lvp_icd.x86_64.json
             export LP_NUM_THREADS="${LP_NUM_THREADS:-4}" ;;  # bound software-rasteriser threads (shared server)
-  nvidia)   export VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/nvidia_icd.json ;;
+  nvidia)   export VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/nvidia_icd.json  # older Vulkan loaders
+            export VK_DRIVER_FILES=/usr/share/vulkan/icd.d/nvidia_icd.json ;;  # newer loaders
   *) ;;
 esac
 
@@ -66,7 +72,7 @@ if [ -f "$STATE" ] && [ ! -f "$STATE.pre-agent" ] && ! grep -q 'MasterSoundVolum
 fi
 cat >"$STATE" <<EOF
 [[ProjectDllPath "$PROJECT_DLL"]
- [ProjectEditModeOpt None]
+ [ProjectEditModeOpt $EDIT_MODE_OPT]
  [ProjectFreshlyLoaded True]
  [ProjectImperativeExecution False]
  [DesiredEye2dCenter [0 0]]

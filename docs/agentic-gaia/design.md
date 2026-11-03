@@ -13,7 +13,7 @@ feedback channels after every change (compiler diagnostics, structured world sta
 short frame sequences) plus the live F# session's own type checker for API lookup. Every mutating call is
 wrapped in Gaia's existing world snapshot so it can be undone. Live-world edits are explicitly *temporary*;
 designs become *persistent* only through source edits + hot reload or saved scene files. Headless operation on
-Linux is Xvfb + Mesa lavapipe. Since round 3, screenshots come from an in-engine Vulkan readback (exact pixels, no X grab).
+Linux is Xvfb + Mesa lavapipe, or Xvfb + the NVIDIA GPU (`GAIA_VULKAN=nvidia`, needed for 3D). Since round 3, screenshots come from an in-engine Vulkan readback (exact pixels, no X grab).
 
 ## 2. Architecture
 
@@ -237,8 +237,9 @@ These are that project's operational findings about agent harnesses, not literat
   - It complements Gaia for multi-file refactors.
 - **Stub-world headless runs** (`World.makeStub`): good for CI-style logic assertions, but they produce no pixels,
   so they don't support design.
-- **NVIDIA GPU rendering on this server**: it would need a real X server or an offscreen Vulkan surface, which means
-  root or engine changes. Lavapipe is adequate for 2D and light 3D, so this is deferred.
+- **NVIDIA GPU rendering on this server**: works since 3 Nov with no root and no engine change (`GAIA_VULKAN=nvidia`;
+  NVIDIA's Vulkan driver presents to Xvfb). It is needed for 3D scenes: Terra Firma runs at 60 fps on the GPU and at
+  about one frame a minute on lavapipe. Details: `nvidia-vulkan-xvfb.md`.
 
 ## 7. How to evaluate it (from the literature, §G)
 
@@ -312,7 +313,8 @@ under US$1 in total). Each result was checked automatically in a fresh editor.
 - **Not verified**:
   - (verified in round 3: editing `BallSpeed` in Gameplay.fs and calling reload changed the running ball speed from 150 to 300. After a reload, project extension members can become ambiguous (FS0816) because old and new definitions coexist; the generic `Set`/`Get` property API works.)
   - Windows named pipes;
-  - 3D scenes under lavapipe;
+  - (3D, 3 Nov: Terra Firma runs at 60 fps on the NVIDIA GPU, but only about one frame a minute under lavapipe;
+    `nvidia-vulkan-xvfb.md`)
   - Gaia's exception dialog path (`gaia_resolve_exception`) and time-control serialization: implemented and
     reviewed, but not exercised by `check_mcp.py` (no reliable way yet to make a frame throw on demand).
 - **Spike-quality gaps**:
