@@ -11,6 +11,7 @@
         <None Include="Assets\*\*" />
         <Compile Include="GaiaConstants.fs" />
         <Compile Include="GaiaPrelude.fs" />
+        <Compile Include="GaiaAgentBridge.fs" />
         <Compile Include="Gaia.fs" />
         <Compile Include="GaiaPlugin.fs" />
         <Compile Include="Program.fs" />

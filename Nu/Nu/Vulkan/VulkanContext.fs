@@ -275,6 +275,30 @@ type [<ReferenceEquality>] ConcurrentCommandQueue =
 
 /// Exposes the vulkan handles that must be globally accessible within the renderer.
 /// TODO: P1: group fields / properties by role rather than type.
+/// A frame read back from the GPU: tightly packed RGBA8 rows, top row first.
+type CapturedFrame =
+    { Width : int
+      Height : int
+      Pixels : byte array }
+
+/// One-shot requests to read back the next finished frame (for tooling such as Gaia's agent bridge). Costs nothing
+/// unless a request is pending; a pending request makes the render thread wait for that one frame's GPU work.
+[<RequireQualifiedAccess>]
+module FrameCapture =
+
+    let private slot = ref (null : CapturedFrame Threading.Tasks.TaskCompletionSource)
+
+    /// Request a capture of the next frame that finishes rendering. A request already pending is shared.
+    let request () =
+        let created = Threading.Tasks.TaskCompletionSource<CapturedFrame> Threading.Tasks.TaskCreationOptions.RunContinuationsAsynchronously
+        match Threading.Interlocked.CompareExchange (&slot.contents, created, null) with
+        | null -> created.Task
+        | pending -> pending.Task
+
+    /// Take the pending request, if any (render thread).
+    let internal tryTake () =
+        Threading.Interlocked.Exchange (&slot.contents, null)
+
 type [<ReferenceEquality>] VulkanContext =
     private
         { Instance_ : VkInstance
@@ -837,11 +861,79 @@ type [<ReferenceEquality>] VulkanContext =
                     submitInfo.pSignalSemaphores <- &&swapchainImageSemaphore
                     DeviceApi.vkQueueSubmit (vkQueue, submitInfo, VkFence.Null) |> Hl.check
 
+        // record a read back of the resolve image when a frame capture is pending
+        let captureOpt =
+            match FrameCapture.tryTake () with
+            | null -> None
+            | request ->
+                let width = int windowViewport.Outer.Size.X
+                let height = int windowViewport.Outer.Size.Y
+                if width <= 0 || height <= 0 then
+                    request.TrySetException (InvalidOperationException "Cannot capture a frame with an empty viewport.") |> ignore<bool>
+                    None
+                else
+                    try let mutable bufferInfo = VkBufferCreateInfo ()
+                        bufferInfo.usage <- VkBufferUsageFlags.TransferDst
+                        bufferInfo.size <- uint64 (width * height * 4)
+                        bufferInfo.sharingMode <- VkSharingMode.Exclusive
+                        let mutable allocInfo = VmaAllocationCreateInfo ()
+                        allocInfo.usage <- VmaMemoryUsage.AutoPreferHost
+                        allocInfo.flags <- VmaAllocationCreateFlags.HostAccessRandom ||| VmaAllocationCreateFlags.Mapped
+                        let mutable buffer = Unchecked.defaultof<VkBuffer>
+                        let mutable allocation = Unchecked.defaultof<VmaAllocation>
+                        let mutable allocationInfo = Unchecked.defaultof<VmaAllocationInfo>
+                        Vma.vmaCreateBuffer (context.VmaAllocator, &&bufferInfo, &&allocInfo, &buffer, &allocation, &allocationInfo) |> Hl.check
+                        Hl.recordTransitionLayout true 1 0 1 VkImageAspectFlags.Color ColorAttachmentWrite TransferSrc resolveImage context.RenderCommandBuffer
+                        let mutable region = VkBufferImageCopy ()
+                        region.imageSubresource <- Hl.makeSubresourceLayers 0 0 VkImageAspectFlags.Color
+                        region.imageExtent <- VkExtent3D (width, height, 1)
+                        DeviceApi.vkCmdCopyImageToBuffer (context.RenderCommandBuffer, resolveImage, TransferSrc.VkImageLayout, buffer, 1u, &&region)
+                        // make the copy visible to the host read after the fence (the spec's readback pattern)
+                        let mutable bufferBarrier = VkBufferMemoryBarrier ()
+                        bufferBarrier.srcAccessMask <- VkAccessFlags.TransferWrite
+                        bufferBarrier.dstAccessMask <- VkAccessFlags.HostRead
+                        bufferBarrier.srcQueueFamilyIndex <- Vulkan.VK_QUEUE_FAMILY_IGNORED
+                        bufferBarrier.dstQueueFamilyIndex <- Vulkan.VK_QUEUE_FAMILY_IGNORED
+                        bufferBarrier.buffer <- buffer
+                        bufferBarrier.offset <- 0UL
+                        bufferBarrier.size <- Vulkan.VK_WHOLE_SIZE
+                        DeviceApi.vkCmdPipelineBarrier
+                            (context.RenderCommandBuffer,
+                             VkPipelineStageFlags.Transfer,
+                             VkPipelineStageFlags.Host,
+                             VkDependencyFlags.None,
+                             0u, nullPtr,
+                             1u, &&bufferBarrier,
+                             0u, nullPtr)
+                        Hl.recordTransitionLayout true 1 0 1 VkImageAspectFlags.Color TransferSrc ColorAttachmentWrite resolveImage context.RenderCommandBuffer
+                        Some (request, buffer, allocation, NativePtr.toNativeInt (NativePtr.ofVoidPtr<byte> allocationInfo.pMappedData), width, height)
+                    with exn ->
+                        request.TrySetException exn |> ignore<bool>
+                        None
+
         // transition resolve image back to read
         Hl.recordTransitionLayout true 1 0 1 VkImageAspectFlags.Color ColorAttachmentWrite ColorAttachmentRead resolveImage context.RenderCommandBuffer
 
         // end resolve rendering path, signaling render semaphore and fence
         VulkanContext.endRenderCommandBuffer true context
+
+        // complete a pending capture: wait for this frame's GPU work (the fence is reset by the next beginFrame)
+        match captureOpt with
+        | Some (request, buffer, allocation, mapping, width, height) ->
+            try try let mutable renderFence = context.RenderFence_
+                    let mutable waiting = true
+                    while waiting do
+                        let result = DeviceApi.vkWaitForFences (1u, &&renderFence, true, UInt64.MaxValue)
+                        if result <> VkResult.Timeout then
+                            waiting <- false
+                            Hl.check result
+                    Vma.vmaInvalidateAllocation (context.VmaAllocator, allocation, 0UL, Vulkan.VK_WHOLE_SIZE) |> Hl.check
+                    let pixels = Array.zeroCreate<byte> (width * height * 4)
+                    Marshal.Copy (mapping, pixels, 0, pixels.Length)
+                    request.TrySetResult { Width = width; Height = height; Pixels = pixels } |> ignore<bool>
+                with exn -> request.TrySetException exn |> ignore<bool>
+            finally Vma.vmaDestroyBuffer (context.VmaAllocator, buffer, allocation)
+        | None -> ()
 
     /// Present the image back to the swapchain to appear on screen.
     static member present (context : VulkanContext) =

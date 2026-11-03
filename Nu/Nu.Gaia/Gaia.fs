@@ -149,6 +149,12 @@ module Gaia =
 
     let mutable private MessageBoxOpt = Option<string>.None
     let mutable private RecoverableExceptionOpt = Option<Exception>.None
+    let private AgentLog = Queue<struct (int64 * string)> ()
+    let mutable private AgentLogSeq = 0L
+    let mutable private AgentFrame = 0L
+    /// Completions due at an editor frame: (frame, request it answers, whether it holds AgentTimeControlBusy, completion).
+    let mutable private AgentDeferred = [] : (int64 * AgentRequest * bool * (World -> unit)) list
+    let mutable private AgentTimeControlBusy = false // one advance/set_advancing/assert in flight at a time
     let mutable private ShowEntityContextMenu = false
     let mutable private ShowNewProjectDialog = false
     let mutable private ShowOpenProjectDialog = false
@@ -484,6 +490,11 @@ DockSpace           ID=0x7C6B3D9B Window=0xA87D555D Pos=0,0 Size=1920,1080 Split
     let private concatLog (str : string) =
         truncateLog ()
         LogStr <- LogStr + str
+        if AgentBridge.Active then
+            lock AgentLog (fun () ->
+                AgentLogSeq <- AgentLogSeq + 1L
+                AgentLog.Enqueue struct (AgentLogSeq, str)
+                if AgentLog.Count > 4096 then AgentLog.Dequeue () |> ignore)
 
     let private shouldSwallowMouseButton (world : World) =
         let io = ImGui.GetIO ()
@@ -3251,6 +3262,132 @@ DockSpace           ID=0x7C6B3D9B Window=0xA87D555D Pos=0,0 Size=1920,1080 Split
         // fin
         ImGui.End ()
 
+    /// Run the interactive session's #r/open prelude once. Takes no world snapshot.
+    let private ensureInteractiveInitialized () =
+        if InteractiveNeedsInitialization then
+
+            // run initialization script
+            let projectDllPathValid = File.Exists ProjectDllPath
+            let initial =
+                "#r \"System.Configuration.ConfigurationManager.dll\"\n" +
+                "#r \"System.Drawing.Common.dll\"\n" +
+                "#r \"FSharp.Core.dll\"\n" +
+                "#r \"FSharp.Compiler.Service.dll\"\n" +
+                "#r \"Astc-Encoder-CSharp.dll\"\n" +
+                "#r \"Box2D.NET.dll\"\n" +
+                "#r \"BCnEncoder.dll\"\n" +
+                "#r \"JoltPhysicsSharp.dll\"\n" +
+                "#r \"AssimpNet.dll\"\n" +
+                "#r \"BulletSharp.dll\"\n" +
+                "#r \"Csv.dll\"\n" +
+                "#r \"DotRecast.Recast.Toolset.dll\"\n" +
+                "#r \"FParsec.dll\"\n" +
+                "#r \"Magick.NET-Q8-AnyCPU.dll\"\n" +
+                "#r \"Pfim.dll\"\n" +
+                "#r \"SDL3-CS.dll\"\n" +
+                "#r \"SDL3_image-CS.dll\"\n" +
+                "#r \"SDL3_mixer-CS.dll\"\n" +
+                "#r \"SDL3_ttf-CS.dll\"\n" +
+                "#r \"TiledSharp.dll\"\n" +
+                "#r \"Twizzle.ImGui-Bundle.NET.dll\"\n" +
+                "#r \"Vortice.ShaderCompiler.dll\"\n" +
+                "#r \"Vortice.Vulkan.dll\"\n" +
+                "#r \"Vortice.VulkanMemoryAllocator.dll\"\n" +
+                "#r \"Prime.dll\"\n" +
+                "#r \"Nu.Math.dll\"\n" +
+                "#r \"Nu.dll\"\n" +
+                "#r \"Nu.Gaia.dll\"\n" +
+                (if projectDllPathValid && not FsiSessionHasProjectCode then "#r \"" + PathF.GetFileName ProjectDllPath + "\"\n" else "") +
+                "open System\n" +
+                "open System.Numerics\n" +
+                "open Prime\n" +
+                "open Nu\n" +
+                "open Nu.Gaia"
+            match FsiSession.EvalInteractionNonThrowing initial with
+            | (Choice1Of2 _, _) -> ()
+            | (Choice2Of2 exn, _) -> Log.error ("Could not initialize fsi eval due to: " + scstring exn)
+
+            // attempt to open template namespace "MyGame", as well as namespace derived from project name
+            if projectDllPathValid then
+                let errorStr = string FsiErrorStream // preserve any existing error
+                let namespaceName = PathF.GetFileNameWithoutExtension (ProjectDllPath.Replace (" ", ""))
+                FsiSession.EvalInteractionNonThrowing ("open " + "MyGame") |> ignore<Choice<_, _> * _>
+                FsiSession.EvalInteractionNonThrowing ("open " + namespaceName) |> ignore<Choice<_, _> * _>
+                FsiErrorStream.GetStringBuilder().Clear() |> ignore<StringBuilder> // ignore any open directive errors
+                FsiErrorStream.Write errorStr // restore previous error string
+
+            // eval initialization finished; drop its "--> Referenced ..." noise so that it cannot leak into the output
+            // of a later eval when initialization was triggered by something else (e.g. the agent bridge's symbol op)
+            FsiOutStream.GetStringBuilder().Clear() |> ignore<StringBuilder>
+            InteractiveNeedsInitialization <- false
+
+    /// Evaluate F# input in the interactive session on the editor thread, appending to the Interactive window's
+    /// output, and return a structured outcome (used by both the Interactive window and the agent bridge).
+    let private evalInteractive (inputStr : string) world : EvalOutcome =
+        let mutable outcome = EvalOutcome.empty
+        snapshot (Evaluate inputStr) world
+        let initialEval = InteractiveNeedsInitialization
+        ensureInteractiveInitialized ()
+
+        // attempt to run interactive input
+        if inputStr.Contains (nameof TargetDir) then FsiSession.AddBoundValue (nameof TargetDir, TargetDir)
+        if inputStr.Contains (nameof ProjectDllPath) then FsiSession.AddBoundValue (nameof ProjectDllPath, ProjectDllPath)
+        if inputStr.Contains (nameof SelectedScreen) then FsiSession.AddBoundValue (nameof SelectedScreen, SelectedScreen)
+        if inputStr.Contains (nameof SelectedGroup) then FsiSession.AddBoundValue (nameof SelectedGroup, SelectedGroup)
+        if inputStr.Contains (nameof SelectedEntityOpt) then
+            if SelectedEntityOpt.IsNone // HACK: 1/2: workaround for binding a null value with AddBoundValue.
+            then FsiSession.EvalInteractionNonThrowing "let SelectedEntityOpt = Option<Entity>.None;;" |> ignore<Choice<_, _> * _>
+            else FsiSession.AddBoundValue (nameof SelectedEntityOpt, SelectedEntityOpt)
+        if inputStr.Contains "SelectedEntity" then
+            match SelectedEntityOpt with
+            | Some selectedEntity -> FsiSession.AddBoundValue ("SelectedEntity", selectedEntity)
+            | None -> FsiSession.AddBoundValue ("SelectedEntity", SelectedGroup / "@Sentinel")
+        if inputStr.Contains (nameof world) then FsiSession.AddBoundValue (nameof world, world)
+        if File.Exists Constants.Gaia.InteractiveInputFilePath then
+            File.SetAttributes (Constants.Gaia.InteractiveInputFilePath, FileAttributes.None)
+            File.WriteAllText (Constants.Gaia.InteractiveInputFilePath, inputStr)
+            File.SetAttributes (Constants.Gaia.InteractiveInputFilePath, FileAttributes.ReadOnly)
+        let interactiveInputStr = inputStr + ";;"
+        match FsiSession.EvalInteractionNonThrowing (interactiveInputStr, Constants.Gaia.InteractiveInputFilePath) with
+        | (Choice1Of2 _, diags) ->
+            let errorStr = string FsiErrorStream
+            let outStr = string FsiOutStream
+            let outStr =
+                if initialEval then
+                    let outStr = outStr.Replace("\r\n", "\n").Replace ("\n> ", "") // NOTE: normalized to \n first; splitting on \r\n dropped all output on Linux.
+                    let outStrLines = outStr.Split "\n"
+                    let outStrLines = Array.filter (fun (line : string) -> not (line.Contains "--> Referenced '") && not (String.IsNullOrWhiteSpace line)) outStrLines
+                    String.join Environment.NewLine outStrLines
+                else outStr
+            let outStr =
+                if SelectedEntityOpt.IsNone // HACK: 2/2: strip eval output relating to above 1/2 hack.
+                then outStr.Replace("val SelectedEntityOpt: Entity option = None\r\n", "").Replace("val SelectedEntityOpt: Entity option = None\n", "")
+                else outStr
+            if errorStr.Length > 0
+            then InteractiveOutputStr <- InteractiveOutputStr + errorStr
+            else InteractiveOutputStr <- InteractiveOutputStr + Environment.NewLine + outStr
+            outcome <- { Kind = "ok"; Output = outStr; Warnings = errorStr; Exception = ""; Diagnostics = Array.map EvalDiagnostic.make diags }
+        | (Choice2Of2 exn, diags) ->
+            let exnStr = "Unhandled exception: " + scstring exn
+            InteractiveOutputStr <- InteractiveOutputStr + Environment.NewLine + exnStr
+            let diagsStr = diags |> Array.map _.Message |> String.join Environment.NewLine
+            if diagsStr.Length > 0 then
+                InteractiveOutputStr <- InteractiveOutputStr + Environment.NewLine + diagsStr
+            let isCompileError = diags |> Array.exists (fun diag -> diag.Severity = FSharp.Compiler.Diagnostics.FSharpDiagnosticSeverity.Error)
+            outcome <-
+                { Kind = (if isCompileError then "compile_error" else "runtime_error")
+                  Output = string FsiOutStream
+                  Warnings = ""
+                  Exception = (if isCompileError then "" else scstring exn)
+                  Diagnostics = Array.map EvalDiagnostic.make diags }
+        InteractiveOutputStr <-
+            InteractiveOutputStr.Split Environment.NewLine
+            |> Array.filter (not << String.IsNullOrWhiteSpace)
+            |> String.join Environment.NewLine
+        FsiErrorStream.GetStringBuilder().Clear() |> ignore<StringBuilder>
+        FsiOutStream.GetStringBuilder().Clear() |> ignore<StringBuilder>
+        outcome
+
     let private imGuiInteractiveWindow world =
         let windowName = "Interactive"
         if ImGui.Begin (windowName, ImGuiWindowFlags.NoNav) then
@@ -3266,112 +3403,7 @@ DockSpace           ID=0x7C6B3D9B Window=0xA87D555D Pos=0,0 Size=1920,1080 Split
                 ImGui.Text "Evaluate current expression, then clear input (Ctrl+Shift+Enter)"
                 ImGui.EndTooltip ()
             if eval || enter then
-                snapshot (Evaluate InteractiveInputStr) world
-                let initialEval = InteractiveNeedsInitialization
-                if InteractiveNeedsInitialization then
-
-                    // run initialization script
-                    let projectDllPathValid = File.Exists ProjectDllPath
-                    let initial =
-                        "#r \"System.Configuration.ConfigurationManager.dll\"\n" +
-                        "#r \"System.Drawing.Common.dll\"\n" +
-                        "#r \"FSharp.Core.dll\"\n" +
-                        "#r \"FSharp.Compiler.Service.dll\"\n" +
-                        "#r \"Astc-Encoder-CSharp.dll\"\n" +
-                        "#r \"Box2D.NET.dll\"\n" +
-                        "#r \"BCnEncoder.dll\"\n" +
-                        "#r \"JoltPhysicsSharp.dll\"\n" +
-                        "#r \"AssimpNet.dll\"\n" +
-                        "#r \"BulletSharp.dll\"\n" +
-                        "#r \"Csv.dll\"\n" +
-                        "#r \"DotRecast.Recast.Toolset.dll\"\n" +
-                        "#r \"FParsec.dll\"\n" +
-                        "#r \"Magick.NET-Q8-AnyCPU.dll\"\n" +
-                        "#r \"Pfim.dll\"\n" +
-                        "#r \"SDL3-CS.dll\"\n" +
-                        "#r \"SDL3_image-CS.dll\"\n" +
-                        "#r \"SDL3_mixer-CS.dll\"\n" +
-                        "#r \"SDL3_ttf-CS.dll\"\n" +
-                        "#r \"TiledSharp.dll\"\n" +
-                        "#r \"Twizzle.ImGui-Bundle.NET.dll\"\n" +
-                        "#r \"Vortice.ShaderCompiler.dll\"\n" +
-                        "#r \"Vortice.Vulkan.dll\"\n" +
-                        "#r \"Vortice.VulkanMemoryAllocator.dll\"\n" +
-                        "#r \"Prime.dll\"\n" +
-                        "#r \"Nu.Math.dll\"\n" +
-                        "#r \"Nu.dll\"\n" +
-                        "#r \"Nu.Gaia.dll\"\n" +
-                        (if projectDllPathValid && not FsiSessionHasProjectCode then "#r \"" + PathF.GetFileName ProjectDllPath + "\"\n" else "") +
-                        "open System\n" +
-                        "open System.Numerics\n" +
-                        "open Prime\n" +
-                        "open Nu\n" +
-                        "open Nu.Gaia"
-                    match FsiSession.EvalInteractionNonThrowing initial with
-                    | (Choice1Of2 _, _) -> ()
-                    | (Choice2Of2 exn, _) -> Log.error ("Could not initialize fsi eval due to: " + scstring exn)
-
-                    // attempt to open template namespace "MyGame", as well as namespace derived from project name
-                    if projectDllPathValid then
-                        let errorStr = string FsiErrorStream // preserve any existing error
-                        let namespaceName = PathF.GetFileNameWithoutExtension (ProjectDllPath.Replace (" ", ""))
-                        FsiSession.EvalInteractionNonThrowing ("open " + "MyGame") |> ignore<Choice<_, _> * _>
-                        FsiSession.EvalInteractionNonThrowing ("open " + namespaceName) |> ignore<Choice<_, _> * _>
-                        FsiErrorStream.GetStringBuilder().Clear() |> ignore<StringBuilder> // ignore any open directive errors
-                        FsiErrorStream.Write errorStr // restore previous error string
-
-                    // eval initialization finished
-                    InteractiveNeedsInitialization <- false
-
-                // attempt to run interactive input
-                if InteractiveInputStr.Contains (nameof TargetDir) then FsiSession.AddBoundValue (nameof TargetDir, TargetDir)
-                if InteractiveInputStr.Contains (nameof ProjectDllPath) then FsiSession.AddBoundValue (nameof ProjectDllPath, ProjectDllPath)
-                if InteractiveInputStr.Contains (nameof SelectedScreen) then FsiSession.AddBoundValue (nameof SelectedScreen, SelectedScreen)
-                if InteractiveInputStr.Contains (nameof SelectedGroup) then FsiSession.AddBoundValue (nameof SelectedGroup, SelectedGroup)
-                if InteractiveInputStr.Contains (nameof SelectedEntityOpt) then
-                    if SelectedEntityOpt.IsNone // HACK: 1/2: workaround for binding a null value with AddBoundValue.
-                    then FsiSession.EvalInteractionNonThrowing "let SelectedEntityOpt = Option<Entity>.None;;" |> ignore<Choice<_, _> * _>
-                    else FsiSession.AddBoundValue (nameof SelectedEntityOpt, SelectedEntityOpt)
-                if InteractiveInputStr.Contains "SelectedEntity" then
-                    match SelectedEntityOpt with
-                    | Some selectedEntity -> FsiSession.AddBoundValue ("SelectedEntity", selectedEntity)
-                    | None -> FsiSession.AddBoundValue ("SelectedEntity", SelectedGroup / "@Sentinel")
-                if InteractiveInputStr.Contains (nameof world) then FsiSession.AddBoundValue (nameof world, world)
-                if File.Exists Constants.Gaia.InteractiveInputFilePath then
-                    File.SetAttributes (Constants.Gaia.InteractiveInputFilePath, FileAttributes.None)
-                    File.WriteAllText (Constants.Gaia.InteractiveInputFilePath, InteractiveInputStr)
-                    File.SetAttributes (Constants.Gaia.InteractiveInputFilePath, FileAttributes.ReadOnly)
-                let interactiveInputStr = InteractiveInputStr + ";;"
-                match FsiSession.EvalInteractionNonThrowing (interactiveInputStr, Constants.Gaia.InteractiveInputFilePath) with
-                | (Choice1Of2 _, _) ->
-                    let errorStr = string FsiErrorStream
-                    let outStr = string FsiOutStream
-                    let outStr =
-                        if initialEval then
-                            let outStr = outStr.Replace ("\r\n> ", "") // TODO: ensure the use of \r\n also works on linux.
-                            let outStrLines = outStr.Split "\r\n"
-                            let outStrLines = Array.filter (fun (line : string) -> not (line.Contains "--> Referenced '")) outStrLines
-                            String.join "\r\n" outStrLines
-                        else outStr
-                    let outStr =
-                        if SelectedEntityOpt.IsNone // HACK: 2/2: strip eval output relating to above 1/2 hack.
-                        then outStr.Replace ("val SelectedEntityOpt: Entity option = None\r\n", "")
-                        else outStr
-                    if errorStr.Length > 0
-                    then InteractiveOutputStr <- InteractiveOutputStr + errorStr
-                    else InteractiveOutputStr <- InteractiveOutputStr + Environment.NewLine + outStr
-                | (Choice2Of2 exn, diags) ->
-                    let exnStr = "Unhandled exception: " + scstring exn
-                    InteractiveOutputStr <- InteractiveOutputStr + Environment.NewLine + exnStr
-                    let diagsStr = diags |> Array.map _.Message |> String.join Environment.NewLine
-                    if diagsStr.Length > 0 then
-                        InteractiveOutputStr <- InteractiveOutputStr + Environment.NewLine + diagsStr
-                InteractiveOutputStr <-
-                    InteractiveOutputStr.Split Environment.NewLine
-                    |> Array.filter (not << String.IsNullOrWhiteSpace)
-                    |> String.join Environment.NewLine
-                FsiErrorStream.GetStringBuilder().Clear() |> ignore<StringBuilder>
-                FsiOutStream.GetStringBuilder().Clear() |> ignore<StringBuilder>
+                evalInteractive InteractiveInputStr world |> ignore<EvalOutcome>
                 toBottom <- true
 
             ImGui.SameLine ()
@@ -4247,6 +4279,513 @@ DockSpace           ID=0x7C6B3D9B Window=0xA87D555D Pos=0,0 Size=1920,1080 Split
                 RecoverableExceptionOpt <- None
             ImGui.EndPopup ()
 
+    (* Agent Bridge (EXPERIMENTAL, agentic-gaia spike) *)
+
+    let private agentLogSince (since : int64) =
+        lock AgentLog (fun () ->
+            AgentLog
+            |> Seq.filter (fun struct (seq, _) -> seq > since)
+            |> Seq.map (fun struct (_, str) -> str)
+            |> String.concat "")
+
+    let private agentReply (request : AgentRequest) (fields : (string * obj) list) =
+        let payload = Dictionary<string, obj> ()
+        payload["id"] <- request.Id
+        payload["ok"] <- true
+        for (key, value) in fields do payload[key] <- value
+        request.Reply.TrySetResult (AgentBridge.toJson payload) |> ignore<bool>
+
+    /// Run 'complete' at editor frame 'target' on behalf of 'request'. If it throws, the request gets an error reply,
+    /// and AgentTimeControlBusy is released only when this completion holds it ('ownsTimeControl').
+    let private agentDefer (target : int64) (request : AgentRequest) (ownsTimeControl : bool) (complete : World -> unit) =
+        AgentDeferred <- (target, request, ownsTimeControl, complete) :: AgentDeferred
+
+    let private agentArgString (name : string) (request : AgentRequest) =
+        match request.Args.ValueKind with
+        | Text.Json.JsonValueKind.Object ->
+            match request.Args.TryGetProperty name with
+            | (true, value) when value.ValueKind = Text.Json.JsonValueKind.String -> Some (value.GetString ())
+            | (true, value) -> Some (value.GetRawText ())
+            | _ -> None
+        | _ -> None
+
+    let private agentArgInt (name : string) defaultValue request =
+        match agentArgString name request with
+        | Some str -> match Int32.TryParse str with | (true, i) -> i | _ -> defaultValue
+        | None -> defaultValue
+
+    let private agentStatus (world : World) : (string * obj) list =
+        [("frame", box AgentFrame)
+         ("updateTime", box world.UpdateTime)
+         ("advancing", box world.TimeAdvancing)
+         ("imperative", box (World.getImperative world))
+         ("projectDllPath", box ProjectDllPath)
+         ("selectedScreen", box (string SelectedScreen))
+         ("selectedGroup", box (string SelectedGroup))
+         ("selectedEntity", box (match SelectedEntityOpt with Some entity -> string entity | None -> null))
+         ("undoDepth", box Pasts.Length)
+         ("logSeq", box AgentLogSeq)
+         ("pendingException", box (match RecoverableExceptionOpt with Some exn -> scstring exn | None -> null))
+         // window rectangle in screen pixels, so external captures can crop to the window
+         ("window",
+            match (World.tryGetWindowPosition world, World.tryGetWindowSize world) with
+            | (Some position, Some size) -> box (dict ["x", position.X; "y", position.Y; "width", size.X; "height", size.Y])
+            | (_, _) -> null)]
+
+    let private agentTryResolveSimulant (path : string) : Simulant option =
+        // accepts paths as printed by the hierarchy op ("Game/Screen/Group/Entity...") or without the "Game/" root
+        let names = path.Split ('/', StringSplitOptions.RemoveEmptyEntries)
+        let names = if names.Length > 0 && names[0] = "Game" then names else Array.append [|"Game"|] names
+        match names.Length with
+        | 1 -> Some (Nu.Game.Handle :> Simulant)
+        | 2 -> Some (Nu.Screen names :> Simulant)
+        | 3 -> Some (Nu.Group names :> Simulant)
+        | _ -> Some (Nu.Entity names :> Simulant)
+
+    let private agentHierarchy (world : World) =
+        [for screen in World.getScreens world do
+            yield
+                dict
+                    ["path", box (string screen)
+                     "dispatcher", box (getTypeName (screen.GetDispatcher world))
+                     "groups",
+                        box
+                            [for group in World.getGroups screen world do
+                                yield
+                                    dict
+                                        ["path", box (string group)
+                                         "dispatcher", box (getTypeName (group.GetDispatcher world))
+                                         "entities",
+                                            box
+                                                [for entity in World.getEntitiesDepthFirst group world do
+                                                    yield
+                                                        dict
+                                                            ["path", box (string entity)
+                                                             "dispatcher", box (getTypeName (entity.GetDispatcher world))]]]]]]
+
+    let private agentInspect (simulant : Simulant) world =
+        [for propertyDescriptor in SimulantPropertyDescriptor.getPropertyDescriptors simulant world do
+            let valueStr =
+                try let value = SimulantPropertyDescriptor.getValue propertyDescriptor simulant world
+                    let converter = SymbolicConverter (false, None, propertyDescriptor.PropertyType, ToSymbolMemo, OfSymbolMemo)
+                    match converter.ConvertTo (value, typeof<Symbol>) with
+                    | :? Symbol as symbol -> PrettyPrinter.prettyPrintSymbol symbol PrettyPrinter.defaultPrinter
+                    | _ -> string value
+                with exn -> "<error: " + exn.Message + ">"
+            yield
+                dict
+                    ["name", box propertyDescriptor.PropertyName
+                     "type", box (getTypeName propertyDescriptor.PropertyType)
+                     "value", box valueStr]]
+
+    let private agentXmlDocCache = Dictionary<string, Xml.XmlDocument option> ()
+
+    let private agentTryReadXmlDoc (dllName : string) (xmlSig : string) =
+        // FCS only gives (dll, signature) for compiled code; the host must read the sidecar XML itself.
+        let dllPaths =
+            [yield dllName
+             yield dllName + ".dll"
+             for assembly in AppDomain.CurrentDomain.GetAssemblies () do
+                if not assembly.IsDynamic && String.Equals (assembly.GetName().Name, PathF.GetFileNameWithoutExtension dllName, StringComparison.OrdinalIgnoreCase) then
+                    yield assembly.Location]
+        let xmlPathOpt = dllPaths |> List.map (fun path -> PathF.ChangeExtension (path, ".xml")) |> List.tryFind File.Exists
+        match xmlPathOpt with
+        | Some xmlPath ->
+            let docOpt =
+                match agentXmlDocCache.TryGetValue xmlPath with
+                | (true, docOpt) -> docOpt
+                | (false, _) ->
+                    let docOpt = try let doc = Xml.XmlDocument () in doc.Load xmlPath; Some doc with _ -> None
+                    agentXmlDocCache[xmlPath] <- docOpt
+                    docOpt
+            match docOpt with
+            | Some doc ->
+                match doc.SelectSingleNode ("/doc/members/member[@name='" + xmlSig + "']") with
+                | null -> ("not-in-xml:" + xmlPath, "")
+                | node -> (xmlPath, String.Join (" ", node.InnerText.Split ([|' '; '\n'; '\r'; '\t'|], StringSplitOptions.RemoveEmptyEntries)))
+            | None -> ("unreadable:" + xmlPath, "")
+        | None -> ("no-xml-beside:" + dllName, "")
+
+    /// Resolve a (possibly qualified) name in the live FSI session: F# signature(s), XML docs, declaration location.
+    let private agentSymbol (name : string) (_ : World) =
+        ensureInteractiveInitialized () // the session's #r/open prelude; no snapshot, so no undo entry
+        let lineText = name.Trim ()
+        let names = lineText.Split '.' |> List.ofArray
+        let col = lineText.Length
+        let (_, checkResults, _) = FsiSession.ParseAndCheckInteraction lineText
+        let (FSharp.Compiler.EditorServices.ToolTipText elements) =
+            checkResults.GetToolTip (1, col, lineText, names, FSharp.Compiler.Tokenization.FSharpTokenTag.Identifier)
+        let overloads =
+            [for element in elements do
+                match element with
+                | FSharp.Compiler.EditorServices.ToolTipElement.Group datas ->
+                    for data in datas do
+                        let signature = data.MainDescription |> Array.map _.Text |> String.concat ""
+                        let (docSource, doc) =
+                            match data.XmlDoc with
+                            | FSharp.Compiler.Symbols.FSharpXmlDoc.FromXmlText xmlDoc -> ("source", String.Join (" ", xmlDoc.UnprocessedLines))
+                            | FSharp.Compiler.Symbols.FSharpXmlDoc.FromXmlFile (dllName, xmlSig) ->
+                                let (source, doc) = agentTryReadXmlDoc dllName xmlSig
+                                (source + "#" + xmlSig, doc)
+                            | FSharp.Compiler.Symbols.FSharpXmlDoc.None -> ("none", "")
+                        yield dict ["signature", box signature; "doc", box doc; "docSource", box docSource]
+                | FSharp.Compiler.EditorServices.ToolTipElement.CompositionError error ->
+                    yield dict ["signature", box ""; "doc", box ("error: " + error); "docSource", box "error"]
+                | _ -> ()]
+        let symbolFields =
+            match checkResults.GetSymbolUseAtLocation (1, col, lineText, names) with
+            | Some symbolUse ->
+                let symbol = symbolUse.Symbol
+                [("fullName", box symbol.FullName)
+                 ("kind", box (symbol.GetType().Name))
+                 ("assembly", box symbol.Assembly.SimpleName)
+                 ("declaration", box (match symbol.DeclarationLocation with Some range -> range.FileName + ":" + string range.StartLine | None -> null))]
+            | None -> [("fullName", box null)]
+        let diagnostics = checkResults.Diagnostics |> Array.map EvalDiagnostic.make
+        ("overloads", box overloads) :: ("diagnostics", box diagnostics) :: symbolFields
+
+    /// Encode tightly packed RGBA8 rows as an RGB PNG (alpha dropped so that captures never come out transparent).
+    let private agentEncodePng (width : int) (height : int) (rgba : byte array) =
+        let crcTable =
+            Array.init 256 (fun n ->
+                let mutable c = uint32 n
+                for _ in 0 .. 7 do c <- if c &&& 1u <> 0u then 0xEDB88320u ^^^ (c >>> 1) else c >>> 1
+                c)
+        let crc (bytes : byte array) =
+            let mutable c = 0xFFFFFFFFu
+            for b in bytes do c <- crcTable[int ((c ^^^ uint32 b) &&& 0xFFu)] ^^^ (c >>> 8)
+            c ^^^ 0xFFFFFFFFu
+        let bigEndian (value : uint32) = [|byte (value >>> 24); byte (value >>> 16); byte (value >>> 8); byte value|]
+        use output = new MemoryStream ()
+        let writeChunk (kind : string) (data : byte array) =
+            let kindAndData = Array.append (Encoding.ASCII.GetBytes kind) data
+            output.Write (bigEndian (uint32 data.Length), 0, 4)
+            output.Write (kindAndData, 0, kindAndData.Length)
+            output.Write (bigEndian (crc kindAndData), 0, 4)
+        output.Write ([|0x89uy; 0x50uy; 0x4Euy; 0x47uy; 0x0Duy; 0x0Auy; 0x1Auy; 0x0Auy|], 0, 8)
+        writeChunk "IHDR" (Array.concat [bigEndian (uint32 width); bigEndian (uint32 height); [|8uy; 2uy; 0uy; 0uy; 0uy|]])
+        let raw = Array.zeroCreate<byte> (height * (1 + width * 3))
+        for y in 0 .. dec height do
+            let rowStart = y * (1 + width * 3) // filter byte 0 (none) then RGB triples
+            for x in 0 .. dec width do
+                let source = (y * width + x) * 4
+                let target = rowStart + 1 + x * 3
+                raw[target] <- rgba[source]
+                raw[target + 1] <- rgba[source + 1]
+                raw[target + 2] <- rgba[source + 2]
+        use compressed = new MemoryStream ()
+        do (use zlib = new Compression.ZLibStream (compressed, Compression.CompressionLevel.Fastest, true)
+            zlib.Write (raw, 0, raw.Length))
+        writeChunk "IDAT" (compressed.ToArray ())
+        writeChunk "IEND" [||]
+        output.ToArray ()
+
+    /// Every simulant's properties as symbolic strings, keyed by simulant path (for checkpoints and diffs).
+    let private agentPropertyMap (world : World) =
+        let map = Dictionary<string, Dictionary<string, string>> ()
+        let add (simulant : Simulant) =
+            let properties = Dictionary<string, string> ()
+            for property in agentInspect simulant world do
+                properties[property["name"] :?> string] <- property["value"] :?> string
+            map[string simulant] <- properties
+        add Nu.Game.Handle
+        for screen in World.getScreens world do
+            add screen
+            for group in World.getGroups screen world do
+                add group
+                for entity in World.getEntitiesDepthFirst group world do add entity
+        map
+
+    /// Named checkpoints outside the linear undo stack: the world state plus its property map.
+    let private AgentCheckpoints = Dictionary<string, WorldState * Dictionary<string, Dictionary<string, string>>> ()
+    let private AgentCheckpointMax = 16
+
+    let private agentDiff (before : Dictionary<string, Dictionary<string, string>>) (after : Dictionary<string, Dictionary<string, string>>) (limit : int) =
+        let added = [for path in after.Keys do if not (before.ContainsKey path) then yield path]
+        let removed = [for path in before.Keys do if not (after.ContainsKey path) then yield path]
+        let changed = List<IDictionary<string, obj>> ()
+        let mutable changedTotal = 0
+        for entry in after do
+            match before.TryGetValue entry.Key with
+            | (true, propertiesBefore) ->
+                for property in entry.Value do
+                    let valueBefore = match propertiesBefore.TryGetValue property.Key with | (true, value) -> value | _ -> null
+                    if valueBefore <> property.Value then
+                        changedTotal <- inc changedTotal
+                        if changed.Count < limit then
+                            changed.Add (dict ["path", box entry.Key; "property", box property.Key; "before", box valueBefore; "after", box property.Value])
+                // properties the simulant had at the checkpoint but no longer has (e.g. after a dispatcher change)
+                for property in propertiesBefore do
+                    if not (entry.Value.ContainsKey property.Key) then
+                        changedTotal <- inc changedTotal
+                        if changed.Count < limit then
+                            changed.Add (dict ["path", box entry.Key; "property", box property.Key; "before", box property.Value; "after", null])
+            | _ -> ()
+        [("added", box added)
+         ("removed", box removed)
+         ("changed", box changed)
+         ("changedTotal", box changedTotal)
+         ("truncated", box (changedTotal > changed.Count))]
+
+    /// Compile an F# expression over 'world' once, as a function value the editor can call every frame.
+    let private agentCompileWorldFunction<'a> (body : string) (resultType : string) =
+        ensureInteractiveInitialized ()
+        // a named function with the body indented under it, so multi-line bodies keep F#'s offside rule
+        let indented = body.Replace("\r\n", "\n").Split '\n' |> Array.map (fun line -> "    " + line) |> String.concat "\n"
+        let code = "let __agentWorldFunction (world : Nu.World) : " + resultType + " =\n" + indented + "\n"
+        let (definition, definitionDiagnostics) = FsiSession.EvalInteractionNonThrowing code
+        let (result, diagnostics) =
+            match definition with
+            | Choice1Of2 _ -> FsiSession.EvalExpressionNonThrowing "__agentWorldFunction"
+            | Choice2Of2 exn -> (Choice2Of2 exn, definitionDiagnostics)
+        FsiErrorStream.GetStringBuilder().Clear() |> ignore<StringBuilder>
+        FsiOutStream.GetStringBuilder().Clear() |> ignore<StringBuilder>
+        match result with
+        | Choice1Of2 (Some value) ->
+            match value.ReflectionValue with
+            | :? (World -> 'a) as func -> Right func
+            | other -> Left ("Expression compiled to an unexpected type: " + (if isNull other then "null" else other.GetType().Name), diagnostics)
+        | Choice1Of2 None -> Left ("Expression produced no value.", diagnostics)
+        | Choice2Of2 exn -> Left (exn.Message, diagnostics)
+
+    let private agentProcessRequest (request : AgentRequest) (world : World) =
+        match request.Op with
+        | op when RecoverableExceptionOpt.IsSome && not (List.contains op ["status"; "log"; "hierarchy"; "inspect"; "symbol"; "diff"; "capture"; "resolve_exception"]) ->
+            request.Reply.TrySetResult (AgentBridge.error request.Id "Gaia's 'Unhandled Exception!' dialog is open; read status.pendingException, then call resolve_exception with choice hard_rewind (undo the last edit) or ignore.") |> ignore<bool>
+        | "resolve_exception" ->
+            match (RecoverableExceptionOpt, agentArgString "choice" request) with
+            | (None, _) -> request.Reply.TrySetResult (AgentBridge.error request.Id "No exception is pending.") |> ignore<bool>
+            | (Some _, Some "hard_rewind") ->
+                let undone = tryUndo world
+                RecoverableExceptionOpt <- None
+                agentReply request (("undone", box undone) :: agentStatus world)
+            | (Some _, Some "ignore") ->
+                RecoverableExceptionOpt <- None
+                agentReply request (agentStatus world)
+            | (Some _, _) -> request.Reply.TrySetResult (AgentBridge.error request.Id "resolve_exception requires args.choice = hard_rewind | ignore") |> ignore<bool>
+        | "advance" | "set_advancing" | "assert" | "undo" | "redo" | "reload_code" when AgentTimeControlBusy ->
+            // undo/redo/reload would swap the world under a running advance or assert and corrupt its result
+            request.Reply.TrySetResult (AgentBridge.error request.Id ("Cannot " + request.Op + " while an advance/set_advancing/assert is still in flight; wait for its reply.")) |> ignore<bool>
+        | "status" ->
+            agentReply request (agentStatus world)
+        | "eval" ->
+            match agentArgString "code" request with
+            | Some code ->
+                let outcome = evalInteractive code world
+                agentReply request
+                    ([("kind", box outcome.Kind)
+                      ("output", box outcome.Output)
+                      ("warnings", box outcome.Warnings)
+                      ("exception", box outcome.Exception)
+                      ("diagnostics", box outcome.Diagnostics)] @ agentStatus world)
+            | None -> request.Reply.TrySetResult (AgentBridge.error request.Id "eval requires args.code") |> ignore<bool>
+        | "undo" ->
+            let undone = tryUndo world
+            agentReply request (("undone", box undone) :: agentStatus world)
+        | "redo" ->
+            let redone = tryRedo world
+            agentReply request (("redone", box redone) :: agentStatus world)
+        | "advance" ->
+            // advance game time for N editor frames, then halt again and reply
+            let frames = Math.Clamp (agentArgInt "frames" 1 request, 1, 600)
+            AgentTimeControlBusy <- true
+            let wasAdvancing = world.TimeAdvancing
+            if not wasAdvancing then
+                snapshot Advance world
+                World.setTimeAdvancing true world
+            let target = AgentFrame + int64 frames
+            agentDefer target request true (fun world ->
+                // NOTE: halting is a request resolved at the next frame boundary, so reply one frame later.
+                if not wasAdvancing then World.setTimeAdvancing false world
+                agentDefer (AgentFrame + 1L) request true (fun world ->
+                    AgentTimeControlBusy <- false
+                    agentReply request (("advancedFrames", box frames) :: agentStatus world)))
+        | "set_advancing" ->
+            let on = agentArgString "on" request = Some "true"
+            if world.TimeAdvancing <> on then
+                snapshot (if on then Advance else Halt) world
+                World.setTimeAdvancing on world
+            AgentTimeControlBusy <- true
+            agentDefer (AgentFrame + 1L) request true (fun world -> AgentTimeControlBusy <- false; agentReply request (agentStatus world))
+        | "wait_frames" ->
+            // let N editor frames render (time need not advance), e.g. before an external screenshot
+            let frames = Math.Clamp (agentArgInt "frames" 2 request, 1, 600)
+            agentDefer (AgentFrame + int64 frames) request false (fun world -> agentReply request (agentStatus world))
+        | "view_mode" ->
+            let viewMode =
+                match agentArgString "mode" request with
+                | Some "capture" -> CaptureMode
+                | Some "free" -> FreeMode
+                | _ -> NormalMode
+            setViewMode viewMode world
+            agentReply request (("viewMode", box (string viewMode)) :: agentStatus world)
+        | "reload_code" ->
+            let logSeqBefore = AgentLogSeq
+            tryReloadCode false world
+            agentReply request (("log", box (agentLogSince logSeqBefore)) :: agentStatus world)
+        | "log" ->
+            let since = int64 (agentArgInt "since" 0 request)
+            agentReply request [("log", box (agentLogSince since)); ("logSeq", box AgentLogSeq)]
+        | "hierarchy" ->
+            agentReply request [("screens", box (agentHierarchy world))]
+        | "symbol" ->
+            match agentArgString "name" request with
+            | Some name -> agentReply request (agentSymbol name world)
+            | None -> request.Reply.TrySetResult (AgentBridge.error request.Id "symbol requires args.name") |> ignore<bool>
+        | "inspect" ->
+            let path = Option.defaultValue "" (agentArgString "path" request)
+            match agentTryResolveSimulant path with
+            | Some simulant when World.getExists simulant world ->
+                agentReply request [("path", box (string simulant)); ("properties", box (agentInspect simulant world))]
+            | _ -> request.Reply.TrySetResult (AgentBridge.error request.Id ("No such simulant: " + path)) |> ignore<bool>
+        | "capture" ->
+            // read the rendered frame back from the GPU (no X server involved) after letting 'settle' frames render
+            let settle = Math.Clamp (agentArgInt "settle" 2 request, 0, 60)
+            let rec poll (task : Threading.Tasks.Task<Nu.Vulkan.CapturedFrame>) deadline (world : World) =
+                if task.IsCompletedSuccessfully then
+                    let frame = task.Result
+                    let png = agentEncodePng frame.Width frame.Height frame.Pixels
+                    agentReply request
+                        ([("png", box (Convert.ToBase64String png))
+                          ("width", box frame.Width)
+                          ("height", box frame.Height)] @ agentStatus world)
+                elif task.IsCompleted then
+                    let message = match task.Exception with null -> "cancelled" | exn -> exn.InnerException.Message
+                    request.Reply.TrySetResult (AgentBridge.error request.Id ("Frame capture failed: " + message)) |> ignore<bool>
+                elif AgentFrame >= deadline then
+                    request.Reply.TrySetResult (AgentBridge.error request.Id "Frame capture did not complete within 120 frames (is the window minimized?).") |> ignore<bool>
+                else agentDefer (AgentFrame + 1L) request false (poll task deadline)
+            let start (world : World) = poll (Nu.Vulkan.FrameCapture.request ()) (AgentFrame + 120L) world
+            if settle = 0 then start world
+            else agentDefer (AgentFrame + int64 settle) request false start
+        | "checkpoint" ->
+            let names () = List.ofSeq AgentCheckpoints.Keys
+            match agentArgString "name" request with
+            | Some name when name.Length > 0 && name.Length <= 64 ->
+                if agentArgString "delete" request = Some "true" then
+                    let deleted = AgentCheckpoints.Remove name
+                    agentReply request [("deleted", box deleted); ("checkpoints", box (names ()))]
+                elif agentArgString "restore" request = Some "true" then
+                    match AgentCheckpoints.TryGetValue name with
+                    | _ when AgentTimeControlBusy ->
+                        request.Reply.TrySetResult (AgentBridge.error request.Id "Cannot restore a checkpoint while an advance/set_advancing/assert is still in flight; wait for its reply.") |> ignore<bool>
+                    | (true, (state, _)) when not (World.getImperative world) ->
+                        snapshot RestorePoint world // the restore itself is undoable
+                        World.switch state world
+                        // the same editor clean-up as tryUndo after its switch
+                        focusPropertyOpt None world
+                        selectScreen false (World.getSelectedScreen world)
+                        if not (SelectedGroup.GetExists world) || not (SelectedGroup.GetSelected world) then
+                            selectGroup false (Seq.head (World.getGroups SelectedScreen world))
+                        match SelectedEntityOpt with
+                        | Some entity when not (entity.GetExists world) || entity.Group <> SelectedGroup -> selectEntityOpt None world
+                        | Some _ | None -> ()
+                        World.setEye2dCenter DesiredEye2dCenter world
+                        World.setEye3dCenter DesiredEye3dCenter world
+                        World.setEye3dRotation DesiredEye3dRotation world
+                        agentReply request (("restored", box name) :: agentStatus world)
+                    | (true, _) -> request.Reply.TrySetResult (AgentBridge.error request.Id "Checkpoints cannot be restored in imperative mode.") |> ignore<bool>
+                    | (false, _) -> request.Reply.TrySetResult (AgentBridge.error request.Id ("No such checkpoint: " + name + "; existing: " + String.Join (", ", names ()))) |> ignore<bool>
+                elif not (AgentCheckpoints.ContainsKey name) && AgentCheckpoints.Count >= AgentCheckpointMax then
+                    request.Reply.TrySetResult (AgentBridge.error request.Id ("At most " + string AgentCheckpointMax + " checkpoints; delete one first.")) |> ignore<bool>
+                else
+                    let properties = agentPropertyMap world
+                    AgentCheckpoints[name] <- (world.CurrentState, properties)
+                    agentReply request [("checkpoint", box name); ("simulants", box properties.Count); ("checkpoints", box (names ()))]
+            | _ -> request.Reply.TrySetResult (AgentBridge.error request.Id "checkpoint requires args.name (1-64 characters)") |> ignore<bool>
+        | "diff" ->
+            let limit = Math.Clamp (agentArgInt "limit" 200 request, 1, 2000)
+            match agentArgString "from" request with
+            | Some name ->
+                match AgentCheckpoints.TryGetValue name with
+                | (true, (_, before)) -> agentReply request (("from", box name) :: agentDiff before (agentPropertyMap world) limit)
+                | (false, _) -> request.Reply.TrySetResult (AgentBridge.error request.Id ("No such checkpoint: " + name)) |> ignore<bool>
+            | None -> request.Reply.TrySetResult (AgentBridge.error request.Id "diff requires args.from (a checkpoint name)") |> ignore<bool>
+        | "assert" ->
+            // check an F# boolean over 'world' once per frame for N frames (advancing game time when N > 1)
+            let compileFailure (message : string) (diagnostics : FSharp.Compiler.Diagnostics.FSharpDiagnostic array) =
+                agentReply request
+                    ([("passed", box false)
+                      ("kind", box "compile_error")
+                      ("message", box message)
+                      ("diagnostics", box (Array.map EvalDiagnostic.make diagnostics))] @ agentStatus world)
+            match agentArgString "predicate" request with
+            | None -> request.Reply.TrySetResult (AgentBridge.error request.Id "assert requires args.predicate (an F# bool expression over 'world')") |> ignore<bool>
+            | Some predicate ->
+                match agentCompileWorldFunction<bool> predicate "bool" with
+                | Left (message, diagnostics) -> compileFailure message diagnostics
+                | Right check ->
+                    let probeResult =
+                        match agentArgString "probe" request with
+                        | Some probe ->
+                            // newlines keep a trailing '// comment' in the probe from swallowing the closing parenthesis
+                            match agentCompileWorldFunction<obj> ("box (\n" + probe + "\n)") "obj" with
+                            | Right probe -> Right (Some probe)
+                            | Left failure -> Left failure
+                        | None -> Right None
+                    match probeResult with
+                    | Left (message, diagnostics) -> compileFailure ("probe: " + message) diagnostics
+                    | Right probeOpt ->
+                        let frames = Math.Clamp (agentArgInt "frames" 1 request, 1, 600)
+                        let advance = frames > 1 && agentArgString "advance" request <> Some "false"
+                        let wasAdvancing = world.TimeAdvancing
+                        let started = ref false // time is started only after the first check passes
+                        if advance then AgentTimeControlBusy <- true
+                        let probeValue world =
+                            match probeOpt with
+                            | Some probe ->
+                                try let text = sprintf "%A" (probe world)
+                                    box (if text.Length <= 4000 then text else text.Substring (0, 4000) + "... (" + string text.Length + " characters, truncated)")
+                                with exn -> box ("<probe failed: " + exn.Message + ">")
+                            | None -> null
+                        let finish (fields : (string * obj) list) (world : World) =
+                            if started.Value then World.setTimeAdvancing false world
+                            // NOTE: halting is resolved at the next frame boundary, so reply one frame later (as advance does).
+                            agentDefer (AgentFrame + 1L) request advance (fun world ->
+                                if advance then AgentTimeControlBusy <- false
+                                agentReply request (fields @ agentStatus world))
+                        let rec step index (world : World) =
+                            match (try Choice1Of2 (check world) with exn -> Choice2Of2 exn) with
+                            | Choice1Of2 true when index >= frames ->
+                                finish [("passed", box true); ("checkedFrames", box index); ("probe", probeValue world)] world
+                            | Choice1Of2 true ->
+                                if advance && not wasAdvancing && not started.Value then
+                                    snapshot Advance world // undoable, like advance
+                                    World.setTimeAdvancing true world
+                                    started.Value <- true
+                                agentDefer (AgentFrame + 1L) request advance (step (inc index))
+                            | Choice1Of2 false ->
+                                finish [("passed", box false); ("failedAtFrame", box index); ("checkedFrames", box index); ("updateTimeAtFailure", box world.UpdateTime); ("probe", probeValue world)] world
+                            | Choice2Of2 exn ->
+                                finish [("passed", box false); ("failedAtFrame", box index); ("checkedFrames", box index); ("exception", box (scstring exn)); ("probe", probeValue world)] world
+                        step 1 world
+        | op ->
+            request.Reply.TrySetResult (AgentBridge.error request.Id ("Unknown op: " + op)) |> ignore<bool>
+
+    /// Drain agent requests and complete due deferred replies. Runs on the editor thread once per frame.
+    let private agentProcess (world : World) =
+        AgentFrame <- inc AgentFrame
+        AgentBridge.heartbeat AgentFrame (match RecoverableExceptionOpt with Some exn -> exn.GetType().Name + ": " + exn.Message | None -> "")
+        let (due, pending) = List.partition (fun (target, _, _, _) -> target <= AgentFrame) AgentDeferred
+        AgentDeferred <- pending
+        for (_, request, ownsTimeControl, complete) in List.rev due do
+            // a failing completion must neither escape the frame nor stop the remaining ones (e.g. an advance's halt)
+            try complete world
+            with exn ->
+                Log.error ("Agent bridge deferred completion failed: " + scstring exn)
+                // release time control only if this request held it, so another in-flight advance keeps its lock
+                if ownsTimeControl then AgentTimeControlBusy <- false
+                let message = "Request failed in a later frame (game time may still be advancing; check gaia_status): " + scstring exn
+                request.Reply.TrySetResult (AgentBridge.error request.Id message) |> ignore<bool>
+        let mutable request = Unchecked.defaultof<AgentRequest>
+        while AgentBridge.Requests.TryDequeue &request do
+            // a request whose client already timed out was withdrawn; never run it late
+            if AgentBridge.tryClaim request then
+                AgentBridge.beginRequest request
+                try try agentProcessRequest request world
+                    with exn -> request.Reply.TrySetResult (AgentBridge.error request.Id ("Request failed: " + scstring exn)) |> ignore<bool>
+                finally AgentBridge.endRequest ()
+
     let private imGuiProcess (world : World) =
 
         // store old world state
@@ -4261,6 +4800,10 @@ DockSpace           ID=0x7C6B3D9B Window=0xA87D555D Pos=0,0 Size=1920,1080 Split
         // enable global docking
         let dockNodeFlags = ImGuiDockNodeFlags.NoDockingOverCentralNode ||| ImGuiDockNodeFlags.PassthruCentralNode
         let dockSpaceId = ImGui.DockSpaceOverViewport (0u, ImGui.GetMainViewport (), dockNodeFlags)
+
+        // process agent bridge requests (EXPERIMENTAL); also while the exception dialog is open, so a headless agent
+        // can see and resolve it
+        if AgentBridge.Active then agentProcess world
 
         // attempt to proceed with normal operation
         match RecoverableExceptionOpt with
@@ -4554,7 +5097,9 @@ DockSpace           ID=0x7C6B3D9B Window=0xA87D555D Pos=0,0 Size=1920,1080 Split
             let prettyPrinter = (SyntaxAttribute.defaultValue typeof<Overlay>).PrettyPrinter
             PrettyPrinter.prettyPrint extrinsicOverlaysStr prettyPrinter
         FsiSession <- Shell.FsiEvaluationSession.Create (FsiConfig, FsiArgs, FsiInStream, FsiOutStream, FsiErrorStream)
+        AgentBridge.tryStart ()
         let result = runWithCleanUpAndErrorProtection (Some ignore) world
+        AgentBridge.stop ()
         (FsiSession :> IDisposable).Dispose () // not sure why we have to cast here...
         FsiErrorStream.Dispose ()
         FsiInStream.Dispose ()
