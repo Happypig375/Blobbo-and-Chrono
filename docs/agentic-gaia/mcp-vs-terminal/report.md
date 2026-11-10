@@ -34,8 +34,8 @@ better results.
     call would split the two exactly; it was not run in this phase (limit of one experiment).
   - Offline sizes: the MCP `tools/list` reply is 7,528 bytes of JSON for 19 tools; the server instructions are
     381 characters.
-  - The old 2 Nov study gave its agents `ToolSearch`, so its MCP tools were most likely deferred too (not checked
-    in the old streams).
+  - The old 2 Nov study gave its agents `ToolSearch`, so its MCP tools were deferred too: its 75 saved agent streams contain 83 `ToolSearch` calls (counted
+    in `ablation/agent-streams.tar.gz`). Its token numbers include that loading step.
 - **CLI check** (`docs/agentic-gaia/prototype/check_gaia_cli.sh`, CPU only): 18/18 pass. It checks the exact
   request lines (escaping of quotes, backslashes, newlines and tabs in F# code; args; timeouts), exit status,
   PNG decoding, and refusal of a socket in a directory others can read.
