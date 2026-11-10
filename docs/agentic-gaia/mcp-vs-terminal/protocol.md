@@ -131,3 +131,6 @@ server instructions) at start and loads a tool's full definition when the agent 
   reading was fresh (`stale_s` 0). Weekly use read 91 % before every run.
   Clean statement of the above (the second correction's wording is muddled): runs 1-5 had fresh readings; bounce-T-r2
   and rows-M-r2 used the 02:48 reading (263 s and 495 s old); rows-T-r2 to rows-T-r3 had fresh readings.
+- 11 Nov 03:13 HKT, timestamp note: amendment 2 is labelled 02:30 but was written at about 02:23, before the first
+  Gaia launch (02:24:03 in `gpu-gate.log`); amendment 3 is labelled 02:29 but was written at about 02:28. Both were
+  still written before the runs they govern. Later labels match the logs to within a minute.

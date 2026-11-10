@@ -1,6 +1,8 @@
-# MCP vs a plain terminal command for Gaia's agent tools: report (11 Nov 2026, 03:20 HKT)
+# MCP vs a plain terminal command for Gaia's agent tools: report (11 Nov 2026, 03:13 HKT)
 
-**In short.**
+**In short.** A completed pilot **with protocol deviations** (section 2): not exact compliance with the frozen
+protocol, and not broad acceptance of either route. The orchestrator's outcome review (11 Nov) checked the
+artifacts: 12/12 oracle passes and 58/58 live checks.
 - Python is now optional. A bash command, `gaia`, uses only bash, netcat and coreutils. It works against a live
   Gaia on the NVIDIA GPU: 58 of 58 live checks pass.
 - Its screenshots are pixel-identical to the MCP server's, and the same assert gives the same result through
@@ -164,9 +166,19 @@ streams and diffs: `pilot/runs/`.
 3. **A strictly shell-free terminal route** (a hook or deny rules for every non-`gaia` command) if that matters for
    the claim.
 4. **Optional:** a terminal output mode that trims replies like MCP, then compare tokens again.
-5. Publish to the wiki. Publication is approved, but two things stand in the way:
-   - GitHub creates a wiki's repository only when its first page is made in the web interface;
-   - publishing is a push, and this allocation says no push.
+5. **Wiki publication (approved; blocked by a sign-in step).** Re-checked at about 03:11 HKT (one check; not repeated):
+   - The fork's wiki is switched on, but its git repository answers "Repository not found" (`git ls-remote` and a
+     dry-run push).
+   - GitHub creates that repository only when a first page is saved on the website, and it has no API for wiki
+     pages. The `gh` login can't do it, and the server's browser is signed out of GitHub.
+   - So a signed-in person must click "Create the first page" once; NEEDS-HUMAN.md has the steps. Publication
+     itself is already approved (D4); no further approval is needed.
+   - Meanwhile the new results are a page in the prepared local wiki (`~/workspace/nu-gaia-agentic-wiki`, one local
+     commit on top of the unchanged `f1e1adb`; its hash is in NEEDS-HUMAN.md), so one push publishes everything.
+   - Its file links point at commit 12b2cf412a on the `agentic-gaia` branch, which is not on the fork. Following the
+     outcome review (no publishing of newer unreviewed code), the branch's upstream setting was removed so the
+     nightly backup job does not push it; undo with `git branch -u fork/agentic-gaia agentic-gaia` once the code
+     is reviewed. Until then those links will not resolve, so the wiki page should be pushed with or after that code.
 
 All items in the frozen protocol are done. Items 1–4 are new experiments; they need a new protocol and time
-allocation, not a decision. Item 5 needs that first wiki page and a push approval.
+allocation, not a decision. Item 5 waits only on the one-time first wiki page (a GitHub sign-in).
