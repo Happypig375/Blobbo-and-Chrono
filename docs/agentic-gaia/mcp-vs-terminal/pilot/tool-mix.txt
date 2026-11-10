@@ -1,0 +1,8 @@
+M tools {'Read': 12, 'mcp__gaia__gaia_eval': 9, 'ToolSearch': 7, 'mcp__gaia__gaia_assert': 7, 'Glob': 6, 'Edit': 6, 'mcp__gaia__gaia_reload_code': 6, 'mcp__gaia__gaia_advance': 5, 'mcp__gaia__gaia_status': 4, 'mcp__gaia__gaia_hierarchy': 1}
+T tools {'Bash': 66, 'Read': 7, 'Edit': 6}
+T gaia subcommands (first in command) {'eval': 31, 'reload_code;': 6, 'assert': 6, 'hierarchy': 1, 'symbol': 1}
+T other shell commands (first word) {'ls;': 6, 'cat': 5, 'sed': 4, 'for': 3, 'grep': 2, 'cd': 1}
+cost_usd_reported total 2.06 {'M': 0.84, 'T': 1.23}
+T gaia invocations per run (incl. chained; commands truncated at 200 chars, so a floor) {'bounce-T-r1': 21, 'rows-T-r1': 18, 'bounce-T-r2': 14, 'rows-T-r2': 22, 'bounce-T-r3': 14, 'rows-T-r3': 20}
+T shell tool calls per run {'bounce-T-r1': 13, 'rows-T-r1': 10, 'bounce-T-r2': 9, 'rows-T-r2': 13, 'bounce-T-r3': 10, 'rows-T-r3': 11}
+M gaia tool calls per run {'bounce-M-r1': 6, 'rows-M-r1': 5, 'bounce-M-r2': 7, 'rows-M-r2': 3, 'bounce-M-r3': 7, 'rows-M-r3': 4}

@@ -1,0 +1,24 @@
+{
+ "mcpServers": {
+  "gaia": {
+   "command": "/usr/bin/python3",
+   "args": [
+    "-I",
+    "/home/happypig375/workspace/nu-gaia-agentic/docs/agentic-gaia/ablation/../prototype/gaia_mcp.py"
+   ],
+   "env": {
+    "NU_GAIA_AGENT_SOCKET": "/run/user/1375/nu-gaia-agent.sock",
+    "DISPLAY": ":91",
+    "XAUTHORITY": "/run/user/1375/nu-gaia-logs/xauth",
+    "NU_XML_DOC": "/home/happypig375/workspace/nu-gaia-agentic/Nu/Nu/bin/Debug/net10.0/Nu.xml",
+    "NU_GAIA_TOOLSET": "frames",
+    "NU_GAIA_INSTRUCTIONS": "1",
+    "NU_GAIA_SHOT_DIR": "/run/user/1375/nu-gaia-ablation-shots",
+    "XDG_RUNTIME_DIR": "/run/user/1375",
+    "PATH": "/home/happypig375/.config/orca/cli/bin:/home/happypig375/.local/bin:/home/happypig375/.config/orca/cli/bin:/home/happypig375/.local/bin:/tmp/.mount_orca-lPJJhiJ:/tmp/.mount_orca-lPJJhiJ/usr/sbin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games:/usr/local/games:/snap/bin",
+    "HOME": "/home/happypig375",
+    "GAIA_GPU_SHARE": "1"
+   }
+  }
+ }
+}

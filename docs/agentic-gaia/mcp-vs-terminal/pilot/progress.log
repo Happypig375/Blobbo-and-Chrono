@@ -1,0 +1,18 @@
+quota read: {'status': 'unavailable', 'http_status': 429} (try 1)
+quota read: {'status': 'unavailable', 'http_status': 429} (try 2)
+quota read: {'status': 'unavailable', 'http_status': 429} (try 3)
+quota read: {'status': 'unavailable', 'http_status': 429} (try 4)
+bounce-T-r2: passed=True stage=oracle 74.4s turns=12 tools=11 out=2662 seen/made=0/0 denials=1
+quota read: {'status': 'unavailable', 'http_status': 429} (try 1)
+quota read: {'status': 'unavailable', 'http_status': 429} (try 2)
+quota read: {'status': 'unavailable', 'http_status': 429} (try 3)
+quota read: {'status': 'unavailable', 'http_status': 429} (try 4)
+rows-M-r2: passed=True stage=oracle 50.7s turns=9 tools=8 out=1383 seen/made=0/0 denials=0
+quota read: {'status': 'unavailable', 'http_status': 429} (try 1)
+quota read: {'status': 'unavailable', 'http_status': 429} (try 2)
+rows-T-r2: passed=True stage=oracle 97.7s turns=16 tools=15 out=3506 seen/made=0/0 denials=0
+bounce-M-r3: passed=True stage=oracle 61.9s turns=13 tools=12 out=2354 seen/made=0/0 denials=0
+bounce-T-r3: passed=True stage=oracle 66.0s turns=13 tools=12 out=2470 seen/made=0/0 denials=1
+rows-M-r3: passed=True stage=oracle 43.2s turns=10 tools=9 out=1460 seen/made=0/0 denials=0
+rows-T-r3: passed=True stage=oracle 69.8s turns=15 tools=14 out=2982 seen/made=2/0 denials=0
+PLAN COMPLETE

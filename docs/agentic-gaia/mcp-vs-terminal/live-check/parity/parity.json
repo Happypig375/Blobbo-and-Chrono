@@ -1,0 +1,60 @@
+{
+ "advancing_before": false,
+ "editor": {
+  "cli_size": [
+   1280,
+   720
+  ],
+  "mcp_size": [
+   1280,
+   720
+  ],
+  "cli_vs_mcp": {
+   "same_size": true,
+   "identical": true,
+   "differing_pixels": 0,
+   "diff_bbox": null
+  },
+  "cli_vs_cli": {
+   "same_size": true,
+   "identical": true,
+   "differing_pixels": 0,
+   "diff_bbox": null
+  },
+  "mcp_default_size": [
+   1280,
+   720
+  ]
+ },
+ "game": {
+  "cli_size": [
+   1280,
+   720
+  ],
+  "mcp_size": [
+   1280,
+   720
+  ],
+  "cli_vs_mcp": {
+   "same_size": true,
+   "identical": true,
+   "differing_pixels": 0,
+   "diff_bbox": null
+  },
+  "cli_vs_cli": {
+   "same_size": true,
+   "identical": true,
+   "differing_pixels": 0,
+   "diff_bbox": null
+  },
+  "mcp_default_size": [
+   1280,
+   720
+  ]
+ },
+ "mcp_frames_sheet_size": [
+  1440,
+  270
+ ],
+ "passed": true
+}

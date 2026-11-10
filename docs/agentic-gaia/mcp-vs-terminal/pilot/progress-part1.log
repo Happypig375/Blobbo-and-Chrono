@@ -1,0 +1,12 @@
+bounce-M-r1: passed=True stage=oracle 65.0s turns=12 tools=11 out=2182 seen/made=0/0 denials=0
+bounce-T-r1: passed=True stage=oracle 91.8s turns=16 tools=15 out=2782 seen/made=0/0 denials=3
+rows-M-r1: passed=True stage=oracle 52.9s turns=11 tools=10 out=1539 seen/made=0/0 denials=0
+rows-T-r1: passed=True stage=oracle 77.1s turns=13 tools=12 out=2596 seen/made=0/0 denials=0
+bounce-M-r2: passed=True stage=oracle 68.0s turns=14 tools=13 out=2388 seen/made=0/0 denials=0
+Traceback (most recent call last):
+  File "/home/happypig375/workspace/nu-gaia-agentic/.orchestration/mcp-terminal-comparison-20261111/run_pilot.py", line 224, in <module>
+    main(sys.argv)
+  File "/home/happypig375/workspace/nu-gaia-agentic/.orchestration/mcp-terminal-comparison-20261111/run_pilot.py", line 187, in main
+    five, week = q["five_hour"]["utilization"], q["seven_day"]["utilization"]
+KeyError: 'five_hour'
+exit=1

@@ -1,0 +1,76 @@
+{
+ "advancing_before": false,
+ "screen": "Game/Gameplay",
+ "assert_cli": {
+  "passed": false,
+  "checkedFrames": 1,
+  "failedAtFrame": 1,
+  "updateTimeAtFailure": 80,
+  "probe": "<50.860992, -93.113945, 0>"
+ },
+ "assert_mcp": {
+  "passed": false,
+  "checkedFrames": 1,
+  "failedAtFrame": 1,
+  "updateTimeAtFailure": 80,
+  "probe": "<50.860992, -93.113945, 0>"
+ },
+ "assert_same": true,
+ "editor": {
+  "cli_size": [
+   1280,
+   720
+  ],
+  "mcp_size": [
+   1280,
+   720
+  ],
+  "cli_vs_mcp": {
+   "same_size": true,
+   "identical": true,
+   "differing_pixels": 0,
+   "diff_bbox": null
+  },
+  "cli_vs_cli": {
+   "same_size": true,
+   "identical": true,
+   "differing_pixels": 0,
+   "diff_bbox": null
+  },
+  "mcp_default_size": [
+   1280,
+   720
+  ]
+ },
+ "game": {
+  "cli_size": [
+   1280,
+   720
+  ],
+  "mcp_size": [
+   1280,
+   720
+  ],
+  "cli_vs_mcp": {
+   "same_size": true,
+   "identical": true,
+   "differing_pixels": 0,
+   "diff_bbox": null
+  },
+  "cli_vs_cli": {
+   "same_size": true,
+   "identical": true,
+   "differing_pixels": 0,
+   "diff_bbox": null
+  },
+  "mcp_default_size": [
+   1280,
+   720
+  ]
+ },
+ "mcp_frames_sheet_size": [
+  1440,
+  270
+ ],
+ "passed": true
+}

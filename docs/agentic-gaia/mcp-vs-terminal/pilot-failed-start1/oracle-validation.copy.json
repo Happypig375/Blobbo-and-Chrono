@@ -1,0 +1,30 @@
+[
+ {
+  "task": "bounce",
+  "pristine": {
+   "passed": false,
+   "stage": "oracle",
+   "detail": "passed=False failedAt=1 velocity=<60.016304, -137.47015, 0>"
+  },
+  "reference": {
+   "passed": true,
+   "stage": "oracle",
+   "detail": "passed=True failedAt=None velocity=<0, 150, 0>"
+  },
+  "valid": true
+ },
+ {
+  "task": "rows",
+  "pristine": {
+   "passed": false,
+   "stage": "oracle",
+   "detail": "bricks+broken=30 rows=6 gaps=[16.0] topEdge=152.0"
+  },
+  "reference": {
+   "passed": true,
+   "stage": "oracle",
+   "detail": "bricks+broken=35 rows=7 gaps=[16.0] topEdge=168.0"
+  },
+  "valid": true
+ }
+]

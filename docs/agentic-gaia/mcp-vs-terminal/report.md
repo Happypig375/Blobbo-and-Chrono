@@ -1,73 +1,168 @@
-# MCP vs plain terminal command for Gaia's agent tools: phase 1 report (11 Nov 2026, 00:30 HKT)
+# MCP vs a plain terminal command for Gaia's agent tools: report (11 Nov 2026, 03:20 HKT)
 
-**In short.** Python is now optional for using Gaia's agent tools. A new command, `gaia`, uses only bash, netcat
-and coreutils, and talks to the same bridge inside Gaia. It covers every bridge operation that the MCP server
-(`gaia_mcp.py`, Python) offers. It passes an 18-point check against a stand-in bridge, but it has **not yet been
-run against a live Gaia**: that needs the GPU, which is reserved by Nu-value's trial. The first measurement, the
-cost of connected-but-unused tools, is done:
+**In short.**
+- Python is now optional. A bash command, `gaia`, uses only bash, netcat and coreutils. It works against a live
+  Gaia on the NVIDIA GPU: 58 of 58 live checks pass.
+- Its screenshots are pixel-identical to the MCP server's, and the same assert gives the same result through
+  either route.
+- In a matched pilot (2 tasks × 3 runs × 2 routes, Opus 5.5), **all 12 runs passed**. So this pilot shows no
+  difference in success.
+- The MCP route was a little faster and used fewer tokens:
+  - median time: bounce 65 s vs 74 s, rows 51 s vs 77 s;
+  - whole-run prompt tokens: 168k vs 205k (bounce) and 108k vs 238k (rows).
+- Connected but never used, MCP costs less context than the terminal route (+1,072 vs +2,520 prompt tokens), because
+  Claude Code defers MCP tool definitions by default.
+- Two tasks and three runs per route are a pilot. They do not support a general claim that either route is better.
 
-| Configuration (one `claude -p` call each, Opus 5.5, same prompt) | Prompt tokens | vs file tools only |
-| --- | --- | --- |
-| I0: file tools only | 6,145 | 0 |
-| IT: terminal: + Bash tool + `gaia` usage text and advice | 8,665 | +2,520 |
-| IM: MCP, tool search on (Claude Code's default) | 7,217 | +1,072 |
-| IMF: MCP, tool search off (`ENABLE_TOOL_SEARCH=false`) | 9,481 | +3,336 |
+Terms:
+- **MCP** (Model Context Protocol) is the standard way an agent gets tools from a separate server process. Here that
+  process is `gaia_mcp.py` (Python).
+- **Terminal route**: the agent runs `gaia ...` through its Bash tool.
+- **Bridge**: the socket inside Gaia that both routes talk to. It is unchanged.
+- **Prompt tokens**: input + cache-creation + cache-read tokens. This is the whole prompt, summed over every turn of a
+  run.
 
-The task comparison (does the agent do the work as well?) has not been run. Nothing here says one route gives
-better results.
+## 1. Measured
 
-## Measured
-- **Idle context** (protocol condition 1, folder `idle-run2/`, summary in `idle-run2/summary.json`). "Prompt tokens"
-  means input + cache creation + cache read. This is the whole prompt, so it does not depend on cache luck. It is
-  fixed for a given configuration, and one call per configuration measures it. All four calls replied `OK` in
-  4.2–4.9 s, using 4 output tokens each.
-  - **MCP schemas do not all enter the prompt by default.** With tool search on (the default), the init message
-    lists all 19 `mcp__gaia__*` tools as available, but only their names, the server instructions and the
-    `ToolSearch` tool definition go into the prompt (+1,072). Turning tool search off puts all 19 definitions in
-    upfront (+3,336, and `ToolSearch` disappears from the tool list). This matches the current Claude Code docs
-    ("Scale with MCP tool search": "Only tool names and server instructions load at session start"; tool search
-    is on by default; `ENABLE_TOOL_SEARCH=false` loads all upfront). Claude Code version: `idle-run2/claude-version.txt`.
-  - **The terminal route's cost is mostly the Bash tool, not the `gaia` text.** The usage text plus advice is
-    2,461 characters, roughly 600 tokens (estimated from characters, not measured). The rest of the +2,520 is the
-    Bash tool's own definition. An agent that already has Bash for other work pays only the usage text. One
-    with no shell otherwise, like the 2 Nov study's agents, pays for both. A separate "Bash without usage text"
-    call would split the two exactly; it was not run in this phase (limit of one experiment).
-  - Offline sizes: the MCP `tools/list` reply is 7,528 bytes of JSON for 19 tools; the server instructions are
-    381 characters.
-  - The old 2 Nov study gave its agents `ToolSearch`, so its MCP tools were deferred too: its 75 saved agent streams contain 83 `ToolSearch` calls (counted
-    in `ablation/agent-streams.tar.gz`). Its token numbers include that loading step.
-- **CLI check** (`docs/agentic-gaia/prototype/check_gaia_cli.sh`, CPU only): 18/18 pass. It checks the exact
-  request lines (escaping of quotes, backslashes, newlines and tabs in F# code; args; timeouts), exit status,
-  PNG decoding, and refusal of a socket in a directory others can read.
+### 1a. Connected-but-unused cost (idle context; one call each; same prompt "Reply with exactly the word OK")
 
-## Failures (kept)
-- `idle-run1/`: the two MCP configurations failed in 0.2 s ("MCP config file not found"). The script used a
-  relative output path after changing directory. The script was fixed and all four calls were rerun as
-  `idle-run2/`. This was a harness bug, not a change after seeing results. In total this phase made 6 model calls
-  instead of the planned 4; the 2 failed ones never reached the model.
-- While the check was being written, the CLI returned exit code 1 instead of 2 when the socket guard refused. This
-  was fixed before commit.
+| Configuration | Prompt tokens | Extra over file tools only | Folder |
+| --- | --- | --- | --- |
+| I0: file tools only | 6,145 | 0 | idle-run2 |
+| IB: + Bash tool, no `gaia` text | 7,694 | +1,549 | idle-run3 |
+| IT: + Bash tool + `gaia` usage text and advice | 8,665 | +2,520 | idle-run2 |
+| IM: MCP, tool search on (Claude Code default) | 7,217 | +1,072 | idle-run2 |
+| IMF: MCP, tool search off (`ENABLE_TOOL_SEARCH=false`) | 9,481 | +3,336 | idle-run2 |
 
-## Implementation: dependencies
-- `docs/agentic-gaia/prototype/gaia` (bash script): needs bash, OpenBSD netcat (`nc` with `-U -N`; Ubuntu's
-  default `netcat-openbsd`), base64, stat, tr, sed, grep, awk. No Python, no extra server process. Each call
-  opens one connection, sends one JSON line, and half-closes; the bridge answers and closes. (The bridge handles
-  one request at a time per connection; checked in `GaiaAgentBridge.fs` `handleConnection`.)
-- Coverage: ping, status, eval (argument or stdin), advance, hierarchy, inspect, log, symbol, resolve_exception,
-  undo/redo, reload_code, checkpoint/diff/assert, capture (engine readback to PNG; game view), frames (separate
-  PNGs), restart (same safety checks as MCP: pid must be Nu.Gaia.dll bound to our socket), docs (grep over
-  Nu.xml), raw (any op).
-- Known differences from MCP (recorded in the protocol, not hidden): images are files the agent must `Read`
-  (MCP sends them inline); no 1280 px downsizing; frames are separate files, not one contact sheet; docs search
-  is plain grep (no scoring); no X-screenshot mode; replies are raw bridge JSON (MCP trims some fields). A bad
-  number argument is reported but the request still goes out and fails at the bridge (exit 1).
-- The Python MCP server, client and old results are unchanged.
+- **Split of the terminal cost** (now measured, not estimated): the Bash tool is +1,549 and the `gaia` usage text
+  is +971. Phase 1 estimated the text at about 600 tokens from its length; that estimate was too low.
+  - An agent that already has Bash pays only the +971.
+  - An agent without a shell pays both.
+- **Deferred loading:** with tool search on, the 19 MCP tool definitions do not enter the prompt; only their names,
+  the server instructions and the `ToolSearch` tool do. Turning tool search off adds all 19 up front.
+  - Checked against Claude Code's current docs ("Scale with MCP tool search").
+  - In the pilot, every MCP run actually loaded tools through `ToolSearch`: 1–2 searches per run, 7 in total.
+- Same Claude Code version (2.1.322) in idle-run2, idle-run3 and the pilot.
 
-## Still needed
-1. **GPU gate:** wait until Nu-value's GPU trial ends. Their verdict was "scored rounds running", and their Xvfb
-   :94 was up at 00:22 HKT.
-2. Live validation of every `gaia` command against Gaia on the NVIDIA GPU, including a capture that matches MCP's
-   capture of the same frame (protocol, "Validation").
-3. Optional: one extra idle call, Bash without the usage text, to split the terminal cost exactly.
-4. Task pilot (protocol condition 2): `bounce` and `rows`, 3 runs per arm, Opus 5.5. Each costly stage needs a
-   fresh quota check (90% weekly at 00:26 HKT).
+### 1b. Live check of the `gaia` command (Gaia on the NVIDIA GPU, Vulkan, own Xvfb)
+- `prototype/check_gaia_cli_live.sh`: every subcommand, with the expected exit codes written in the script before
+  running.
+  - Final run: **58 of 58 pass** (`live-check/cli-check3.log`).
+  - Coverage: ping, status, eval (value, quotes/backslashes/tabs, stdin, compile error, runtime error), hierarchy,
+    inspect, advance, checkpoint save/restore/delete, diff, assert (pass, fail, no-advance, compile error), capture
+    (editor and game view), frames, undo, redo, reload_code, log, symbol, docs, raw, unknown command, bad number,
+    restart.
+- **Image parity** (`prototype/check_capture_parity.py`): game time halted; editor and game views; at the splash
+  screen and in gameplay.
+  - The CLI capture and MCP `gaia_screenshot` (`max_width=0`) are **pixel-identical**: 0 differing pixels.
+  - Two CLI captures in a row are identical too, as a control.
+  - The images are 1280×720 on this display, so MCP's default 1280 px limit changed nothing. MCP's `gaia_frames`
+    sheet for 3 frames is 1440×270 (480 px per frame).
+  - I looked at one gameplay frame myself: bricks, ball, paddle and score are drawn correctly
+    (`live-check/parity-gameplay/game-cli-1.png`).
+- **Behaviour parity:** the same `assert` from the same checkpoint gave the same reply through both routes: passed,
+  frames checked, failing frame, update time and probe value (`live-check/parity-gameplay/parity.json`).
+  - My predicate happened to fail at frame 1 in both. So this shows that the two routes agree, not that a passing
+    multi-frame assert was compared.
+
+### 1c. Task pilot (protocol condition 2; `pilot/`; Opus 5.5; 6 runs per route)
+Both oracles were re-validated on the GPU first (`pilot/oracle-validation.json`): the untouched code fails and the
+reference fix passes, for both tasks.
+
+| Task, route | Passed | Median time | Median turns | Median tool calls | Median prompt tokens | Median output tokens |
+| --- | --- | --- | --- | --- | --- | --- |
+| bounce (bug fix), MCP | 3/3 | 65 s | 13 | 12 | 167,675 | 2,354 |
+| bounce, terminal | 3/3 | 74 s | 13 | 12 | 204,625 | 2,662 |
+| rows (feature), MCP | 3/3 | 51 s | 10 | 9 | 108,262 | 1,460 |
+| rows, terminal | 3/3 | 77 s | 15 | 14 | 237,922 | 2,982 |
+
+Per-run numbers: `pilot/analysis.txt`, `pilot/summary.json`. Raw records: `pilot/results.jsonl`. Full agent
+streams and diffs: `pilot/runs/`.
+
+- **Success and quality.** 12 of 12 passed the automatic oracle, which checks the game's behaviour after loading
+  the saved sources into a fresh Gaia. Both routes passed everything, so this pilot cannot rank them on success.
+  Quality beyond the oracle (diff size, style) was not scored; the diffs are kept.
+- **Time and tokens.** The MCP route was faster and used fewer tokens in every pairing:
+  - median time 65 vs 74 s (bounce) and 51 vs 77 s (rows);
+  - prompt tokens about 1.2× and 2.2× as many on the terminal route.
+  - Most prompt tokens are cache reads: the agent re-reads its conversation every turn. Terminal-route tool output
+    is raw bridge JSON (MCP trims some fields), and terminal agents pipe it through `head` or `grep`, so their
+    turns carry more text.
+  - The reported notional cost was $0.84 for MCP and $1.23 for terminal, all 12 runs on the included account. This
+    figure is computed by Claude Code, not billed.
+- **How the routes were used.**
+  - MCP: 3–7 Gaia tool calls per run, mostly eval, assert, reload_code, advance and status.
+  - Terminal: 9–13 shell calls per run, chaining at least 14–22 `gaia` invocations. This is a floor: the commands
+    were stored cut at 200 characters.
+- **Images.**
+  - No MCP run took a screenshot.
+  - One terminal run (rows-T-r3) made 4 captures and looked at 1 of them; counted from the image blocks actually
+    returned to the agent.
+  - Neither route needed images for these tasks: assert and eval did the checking.
+- **Startup.** The first stream line arrived after 0.7–0.9 s in both routes. This measures only the time to Claude
+  Code's init line, not the MCP server's handshake on its own.
+- **Dependencies.** MCP route: Python 3 and Pillow, plus a long-running server process per agent. Terminal route:
+  bash, netcat (OpenBSD), base64 and coreutils, and no extra process.
+
+## 2. Deviations, failures and fixes (all kept)
+- **The terminal route was not shell-free.** `Bash(gaia:*)` does not block Claude Code's built-in read-only commands.
+  - Terminal agents also ran `ls`, `cat`, `grep` and `head` (2–6 such commands per run).
+  - Writes and loops were denied: `sed -i` and `for` loops, 5 denials in all.
+  - These reads give no access that Read, Glob and Grep don't already give both routes. Still, the frozen protocol
+    said "no other shell command" (protocol amendment 5).
+- **Prompt wording asymmetry (known before running).** The unchanged task prompt mentions "tools named gaia_*".
+  The terminal route learns `gaia` from the appended system prompt instead.
+- **Live-check bugs found and fixed in the CLI.** The stand-in bridge test had missed both.
+  - The bridge's JSON encoder writes "+" in the base64 PNG as `+`, so capture failed to decode.
+  - Bash's own pattern matching on the 0.5 MB capture reply took 86 s per capture. With grep and prefix checks it
+    takes 0.57 s and gives a byte-identical PNG.
+  - The first two check runs are kept: `live-check/cli-check.log` has 45 pass and 13 fail; `cli-check2.log` has
+    58 pass but slow.
+  - Three of the first failures were my test expectations, not the CLI:
+    - JSON writes a quote as `"`;
+    - `failwith` needs a type;
+    - the property is `GetExists`.
+  - The first restart failed because my environment lacked `GAIA_GPU_SHARE=1`.
+- **Harness failures:**
+  - The first pilot start used a relative path, the same mistake as idle-run1, and the first run never reached the
+    model (`pilot-failed-start1/`).
+  - A crash on HTTP 429 from the usage endpoint lost no run.
+  - Two runs used a 4–8-minute-old quota reading.
+  - The image counters in the harness were wrong (one missed chained captures, one double-counted a PNG Read); the
+    analysis recounts from the streams.
+  - The protocol notes one claimed restart that did not happen, and corrects it (amendments 4–7).
+- **The GPU gate was made concrete** (amendment 2). An idle labmate service, `buildinggpt-rag` (4.6 GB, 0 %), is
+  always on the GPU, so launches use `GAIA_GPU_SHARE=1` after `gpu_gate.sh` checks three things:
+  - no other Gaia is running;
+  - utilisation is under 10 %;
+  - no other GPU process is present.
+
+  At first the gate wrongly counted a Nu-value CPU build (amendment 3). The log is `gpu-gate.log`.
+- **Quota:** weekly use was 90 % before this allocation and 91 % before and after the pilot. Five-hour use went from
+  6 % to 17 %.
+  - Model calls this allocation: 1 idle call (IB) and 12 pilot runs, with no failed model calls. The failed first
+    start never reached the model.
+
+## 3. Exploratory (not measured claims)
+- The token gap between routes looks like it comes from verbose tool output plus more turns on the terminal
+  route, not from definitions. Idle cost differs by only about 1,450 tokens, while whole runs differ by
+  37k–130k. A terminal output mode that trims the JSON like MCP does might close much of the gap. This was not
+  tested.
+- Terminal agents chained many `gaia` calls into one shell call. This needs fewer tool calls per bridge operation,
+  but did not make the runs shorter here.
+
+## 4. Still needed
+1. **A harder or more varied task set.** Both of these tasks hit the ceiling (12/12), so the pilot cannot tell the
+   routes apart on success. Tasks where the 2 Nov study saw failures are candidates, or tasks that need images.
+   These must be chosen and frozen before running.
+2. **More runs per route** to tell a real time or token difference from run-to-run noise. Three per cell is a
+   pilot.
+3. **A strictly shell-free terminal route** (a hook or deny rules for every non-`gaia` command) if that matters for
+   the claim.
+4. **Optional:** a terminal output mode that trims replies like MCP, then compare tokens again.
+5. Publish to the wiki. Publication is approved, but two things stand in the way:
+   - GitHub creates a wiki's repository only when its first page is made in the web interface;
+   - publishing is a push, and this allocation says no push.
+
+All items in the frozen protocol are done. Items 1–4 are new experiments; they need a new protocol and time
+allocation, not a decision. Item 5 needs that first wiki page and a push approval.

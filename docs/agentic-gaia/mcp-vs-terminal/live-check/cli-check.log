@@ -1,0 +1,59 @@
+PASS ping rc=0 (want 0) 0.16s {"id":"1","ok":true,"frame":276,"msSinceFrame":1,"busyOp":"","busyId":"","busyMs":0,"queued":0,"inFlight":0,"unresponsive":false,"pendingException":null} 
+PASS ping-fields ("ok":true)
+PASS status rc=0 (want 0) 0.11s {"id":"1","ok":true,"frame":284,"updateTime":0,"advancing":false,"imperative":false,"projectDllPath":"/home/happypig375/workspace/nu-gaia-agentic/Projects/Break
+PASS status-screen (selectedScreen present)
+PASS eval-ok rc=0 (want 0) 3.33s {"id":"1","ok":true,"kind":"ok","output":"val it: int = 3","warnings":"","exception":"","diagnostics":[],"frame":289,"updateTime":0,"advancing":false,"imperativ
+PASS eval-ok-value (val it: int = 3)
+PASS eval-quotes rc=0 (want 0) 0.32s {"id":"1","ok":true,"kind":"ok","output":"val it: string = \u0022a\u0022b\\c\t1\u0022\n\n","warnings":"","exception":"","diagnostics":[],"frame":296,"updateTime
+FAIL eval-quotes-value (escaped string round trip)
+PASS eval-stdin rc=0 (want 0) 0.09s {"id":"1","ok":true,"kind":"ok","output":"val x: int = 40\nval it: int = 42\n\n","warnings":"","exception":"","diagnostics":[],"frame":301,"updateTime":0,"advan
+PASS eval-stdin-value (val it: int = 42)
+PASS eval-compile-error rc=1 (want 1) 0.11s {"id":"1","ok":true,"kind":"compile_error","output":"","warnings":"","exception":"","diagnostics":[{"Severity":"Error","Code":"FS1141","File":"input.fsx","Start
+PASS eval-compile-kind (kind compile_error)
+PASS eval-runtime-error rc=1 (want 1) 0.08s {"id":"1","ok":true,"kind":"compile_error","output":"","warnings":"","exception":"","diagnostics":[{"Severity":"Error","Code":"FS0030","File":"input.fsx","Start
+FAIL eval-runtime-kind (exception reported)
+PASS hierarchy rc=0 (want 0) 0.06s {"id":"1","ok":true,"screens":[{"path":"Game/Splash","dispatcher":"ScreenDispatcher","groups":[{"path":"Game/Splash/SlideGroup","dispatcher":"GroupDispatcher","
+PASS hierarchy-splash (Splash screen listed)
+PASS inspect-screen rc=0 (want 0) 0.05s {"id":"1","ok":true,"path":"Game","properties":[{"name":"Model","type":"RuntimeType","value":"[]"},{"name":"SelectedScreenOpt","type":"RuntimeType","value":"[So
+PASS eval-to-gameplay rc=0 (want 0) 0.47s {"id":"1","ok":true,"kind":"ok","output":"val it: unit = ()\n\n","warnings":"","exception":"","diagnostics":[],"frame":324,"updateTime":0,"advancing":false,"imp
+PASS advance rc=0 (want 0) 1.29s {"id":"1","ok":true,"advancedFrames":60,"frame":387,"updateTime":60,"advancing":false,"imperative":false,"projectDllPath":"/home/happypig375/workspace/nu-gaia-a
+PASS advance-gameplay (Game/Gameplay selected)
+PASS inspect-ball rc=0 (want 0) 0.09s {"id":"1","ok":true,"path":"Game/Gameplay/Scene/Ball","properties":[{"name":"Name","type":"RuntimeType","value":"Ball"},{"name":"Model","type":"RuntimeType","va
+PASS inspect-ball-velocity (LinearVelocity listed)
+PASS checkpoint-save rc=0 (want 0) 0.12s {"id":"1","ok":true,"checkpoint":"c1","simulants":64,"checkpoints":["c1"]} 
+PASS advance-30 rc=0 (want 0) 0.57s {"id":"1","ok":true,"advancedFrames":30,"frame":433,"updateTime":90,"advancing":false,"imperative":false,"projectDllPath":"/home/happypig375/workspace/nu-gaia-a
+PASS diff rc=0 (want 0) 0.14s {"id":"1","ok":true,"from":"c1","added":[],"removed":[],"changed":[{"path":"Game/Gameplay/Scene/Ball","property":"Position","before":"[-49.91312 -93.452126 0]",
+PASS diff-changed (Ball position changed)
+FAIL assert-pass rc=1 (want 0) 0.23s {"id":"1","ok":true,"passed":false,"kind":"compile_error","message":"Operation could not be completed due to earlier error","diagnostics":[{"Severity":"Error","
+FAIL assert-pass-probe (probe value returned)
+PASS assert-fail rc=1 (want 1) 0.25s {"id":"1","ok":true,"passed":false,"failedAtFrame":1,"checkedFrames":1,"updateTimeAtFailure":90,"probe":null,"frame":453,"updateTime":90,"advancing":false,"impe
+PASS assert-fail-frame (failedAtFrame reported)
+PASS assert-noadvance rc=0 (want 0) 0.09s {"id":"1","ok":true,"passed":true,"checkedFrames":1,"probe":null,"frame":458,"updateTime":90,"advancing":false,"imperative":false,"projectDllPath":"/home/happyp
+PASS assert-compile-error rc=1 (want 1) 0.05s {"id":"1","ok":true,"passed":false,"kind":"compile_error","message":"Operation could not be completed due to earlier error","diagnostics":[{"Severity":"Error","
+PASS checkpoint-restore rc=0 (want 0) 0.09s {"id":"1","ok":true,"restored":"c1","frame":467,"updateTime":60,"advancing":false,"imperative":false,"projectDllPath":"/home/happypig375/workspace/nu-gaia-agent
+PASS checkpoint-delete rc=0 (want 0) 0.06s {"id":"1","ok":true,"deleted":true,"checkpoints":[]} 
+FAIL capture-editor rc=2 (want 0) 5.97s 
+FAIL capture-editor-png (valid PNG)
+FAIL capture-game rc=2 (want 0) 90.48s 
+FAIL capture-game-png (valid PNG)
+PASS status-after-capture rc=0 (want 0) 0.07s {"id":"1","ok":true,"frame":6294,"updateTime":60,"advancing":false,"imperative":false,"projectDllPath":"/home/happypig375/workspace/nu-gaia-agentic/Projects/Bre
+FAIL frames rc=2 (want 0) 91.11s 
+FAIL frames-files (3 valid PNGs)
+PASS undo rc=0 (want 0) 0.06s {"id":"1","ok":true,"undone":true,"frame":11796,"updateTime":90,"advancing":false,"imperative":false,"projectDllPath":"/home/happypig375/workspace/nu-gaia-agent
+PASS redo rc=0 (want 0) 0.05s {"id":"1","ok":true,"redone":true,"frame":11800,"updateTime":60,"advancing":false,"imperative":false,"projectDllPath":"/home/happypig375/workspace/nu-gaia-agent
+PASS reload-code rc=0 (want 0) 3.15s {"id":"1","ok":true,"log":"2026-11-11 02:27:30.517 \u002B08:00|Info|Inspecting directory /home/happypig375/workspace/nu-gaia-agentic/Projects/Breakout ImSim/bin
+PASS reload-code-log (Code updated.)
+PASS log rc=0 (want 0) 0.04s {"id":"1","ok":true,"log":"2026-11-11 02:24:08.958 \u002B08:00|Info|Agent bridge listening on /run/user/1375/nu-gaia-agent.sock\n2026-11-11 02:27:30.517 \u002B0
+PASS log-nonempty (log text)
+PASS symbol rc=0 (want 0) 0.61s {"id":"1","ok":true,"overloads":[{"signature":"static member World.getEntities: group: Group -\u003E world: World -\u003E Entity seq","doc":"Get all the entitie
+PASS symbol-decl (declaration returned)
+PASS docs rc=0 (want 0) 0.16s T:Nu.SetBodyLinearVelocityMessage A message to the physics system to set the linear velocity of a body.  M:Nu.PhysicsEngine.GetBodyLinearVelocity(Nu.BodyId) Get
+PASS docs-hit (LinearVelocity member found)
+PASS docs-none rc=1 (want 1) 0.15s no matches 
+PASS raw-status rc=0 (want 0) 0.06s {"id":"1","ok":true,"frame":11837,"updateTime":60,"advancing":false,"imperative":false,"projectDllPath":"/home/happypig375/workspace/nu-gaia-agentic/Projects/Br
+PASS unknown-op rc=2 (want 2) 0.02s 
+PASS bad-number rc=1 (want 1) 0.07s {"id":"","ok":false,"error":"Bad request: \u0027}\u0027 is an invalid start of a value. LineNumber: 0 | BytePositionInLine: 42."} 
+FAIL restart rc=2 (want 0) 0.59s 
+FAIL restart-new-pid (stopped the old pid and relaunched)
+FAIL ping-after-restart rc=2 (want 0) 0.04s 
+SUMMARY pass=45 fail=13
