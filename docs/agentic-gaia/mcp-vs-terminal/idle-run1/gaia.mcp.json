@@ -1,0 +1,2 @@
+{"mcpServers": {"gaia": {"command": "/usr/bin/python3", "args": ["-I", "/home/happypig375/workspace/nu-gaia-agentic/docs/agentic-gaia/prototype/gaia_mcp.py"],
+  "env": {"XDG_RUNTIME_DIR": "/run/user/1375/idle-ctx.2FofWB/rt", "NU_GAIA_AGENT_SOCKET": "/run/user/1375/idle-ctx.2FofWB/rt/agent.sock", "HOME": "/home/happypig375"}}}}

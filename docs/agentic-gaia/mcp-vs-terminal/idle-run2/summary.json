@@ -1,0 +1,243 @@
+{
+ "configs": [
+  {
+   "label": "I0",
+   "rc": 0,
+   "wall_s": 4.82,
+   "tools": [
+    "Edit",
+    "Glob",
+    "Grep",
+    "Read",
+    "Write"
+   ],
+   "mcp_servers": [],
+   "input": 2,
+   "cache_creation": 2336,
+   "cache_read": 3807,
+   "output": 4,
+   "prompt_total": 6145,
+   "reply": "OK",
+   "turns": 1,
+   "cost_usd_reported": 0.0195374,
+   "model_usage": {
+    "claude-opus-5-5": {
+     "inputTokens": 2,
+     "outputTokens": 4,
+     "cacheReadInputTokens": 3807,
+     "cacheCreationInputTokens": 2336,
+     "webSearchRequests": 0,
+     "costUSD": 0.0195374,
+     "contextWindow": 1000000,
+     "maxOutputTokens": 128000,
+     "thinkingTokens": 0,
+     "cacheCreationEphemeral5mInputTokens": 0,
+     "cacheCreationEphemeral1hInputTokens": 2336,
+     "canonicalModel": "claude-opus-5-5",
+     "provider": "firstParty",
+     "costBasis": "list"
+    }
+   },
+   "prompt_minus_I0": 0
+  },
+  {
+   "label": "IT",
+   "rc": 0,
+   "wall_s": 4.91,
+   "tools": [
+    "Bash",
+    "Edit",
+    "Glob",
+    "Grep",
+    "Read",
+    "Write"
+   ],
+   "mcp_servers": [],
+   "input": 2,
+   "cache_creation": 3506,
+   "cache_read": 5157,
+   "output": 4,
+   "prompt_total": 8665,
+   "reply": "OK",
+   "turns": 1,
+   "cost_usd_reported": 0.0291674,
+   "model_usage": {
+    "claude-opus-5-5": {
+     "inputTokens": 2,
+     "outputTokens": 4,
+     "cacheReadInputTokens": 5157,
+     "cacheCreationInputTokens": 3506,
+     "webSearchRequests": 0,
+     "costUSD": 0.0291674,
+     "contextWindow": 1000000,
+     "maxOutputTokens": 128000,
+     "thinkingTokens": 0,
+     "cacheCreationEphemeral5mInputTokens": 0,
+     "cacheCreationEphemeral1hInputTokens": 3506,
+     "canonicalModel": "claude-opus-5-5",
+     "provider": "firstParty",
+     "costBasis": "list"
+    }
+   },
+   "prompt_minus_I0": 2520
+  },
+  {
+   "label": "IM",
+   "rc": 0,
+   "wall_s": 4.42,
+   "tools": [
+    "Edit",
+    "Glob",
+    "Grep",
+    "Read",
+    "ToolSearch",
+    "Write",
+    "mcp__gaia__gaia_advance",
+    "mcp__gaia__gaia_assert",
+    "mcp__gaia__gaia_checkpoint",
+    "mcp__gaia__gaia_diff",
+    "mcp__gaia__gaia_eval",
+    "mcp__gaia__gaia_frames",
+    "mcp__gaia__gaia_hierarchy",
+    "mcp__gaia__gaia_inspect",
+    "mcp__gaia__gaia_log",
+    "mcp__gaia__gaia_ping",
+    "mcp__gaia__gaia_redo",
+    "mcp__gaia__gaia_reload_code",
+    "mcp__gaia__gaia_resolve_exception",
+    "mcp__gaia__gaia_restart",
+    "mcp__gaia__gaia_screenshot",
+    "mcp__gaia__gaia_status",
+    "mcp__gaia__gaia_symbol",
+    "mcp__gaia__gaia_undo",
+    "mcp__gaia__nu_docs"
+   ],
+   "mcp_servers": [
+    {
+     "name": "gaia",
+     "status": "connected",
+     "source": "dynamic"
+    }
+   ],
+   "input": 2,
+   "cache_creation": 2873,
+   "cache_read": 4342,
+   "output": 4,
+   "prompt_total": 7217,
+   "reply": "OK",
+   "turns": 1,
+   "cost_usd_reported": 0.0239404,
+   "model_usage": {
+    "claude-opus-5-5": {
+     "inputTokens": 2,
+     "outputTokens": 4,
+     "cacheReadInputTokens": 4342,
+     "cacheCreationInputTokens": 2873,
+     "webSearchRequests": 0,
+     "costUSD": 0.0239404,
+     "contextWindow": 1000000,
+     "maxOutputTokens": 128000,
+     "thinkingTokens": 0,
+     "cacheCreationEphemeral5mInputTokens": 0,
+     "cacheCreationEphemeral1hInputTokens": 2873,
+     "canonicalModel": "claude-opus-5-5",
+     "provider": "firstParty",
+     "costBasis": "list"
+    }
+   },
+   "prompt_minus_I0": 1072
+  },
+  {
+   "label": "IMF",
+   "rc": 0,
+   "wall_s": 4.21,
+   "tools": [
+    "Edit",
+    "Glob",
+    "Grep",
+    "Read",
+    "Write",
+    "mcp__gaia__gaia_advance",
+    "mcp__gaia__gaia_assert",
+    "mcp__gaia__gaia_checkpoint",
+    "mcp__gaia__gaia_diff",
+    "mcp__gaia__gaia_eval",
+    "mcp__gaia__gaia_frames",
+    "mcp__gaia__gaia_hierarchy",
+    "mcp__gaia__gaia_inspect",
+    "mcp__gaia__gaia_log",
+    "mcp__gaia__gaia_ping",
+    "mcp__gaia__gaia_redo",
+    "mcp__gaia__gaia_reload_code",
+    "mcp__gaia__gaia_resolve_exception",
+    "mcp__gaia__gaia_restart",
+    "mcp__gaia__gaia_screenshot",
+    "mcp__gaia__gaia_status",
+    "mcp__gaia__gaia_symbol",
+    "mcp__gaia__gaia_undo",
+    "mcp__gaia__nu_docs"
+   ],
+   "mcp_servers": [
+    {
+     "name": "gaia",
+     "status": "connected",
+     "source": "dynamic"
+    }
+   ],
+   "input": 2,
+   "cache_creation": 9479,
+   "cache_read": 0,
+   "output": 4,
+   "prompt_total": 9481,
+   "reply": "OK",
+   "turns": 1,
+   "cost_usd_reported": 0.07592,
+   "model_usage": {
+    "claude-opus-5-5": {
+     "inputTokens": 2,
+     "outputTokens": 4,
+     "cacheReadInputTokens": 0,
+     "cacheCreationInputTokens": 9479,
+     "webSearchRequests": 0,
+     "costUSD": 0.07592,
+     "contextWindow": 1000000,
+     "maxOutputTokens": 128000,
+     "thinkingTokens": 0,
+     "cacheCreationEphemeral5mInputTokens": 0,
+     "cacheCreationEphemeral1hInputTokens": 9479,
+     "canonicalModel": "claude-opus-5-5",
+     "provider": "firstParty",
+     "costBasis": "list"
+    }
+   },
+   "prompt_minus_I0": 3336
+  }
+ ],
+ "offline": {
+  "instructions_chars": 381,
+  "tools": 19,
+  "tools_list_json_bytes": 7528,
+  "tool_names": [
+   "gaia_status",
+   "gaia_eval",
+   "gaia_ping",
+   "gaia_resolve_exception",
+   "gaia_restart",
+   "gaia_undo",
+   "gaia_redo",
+   "gaia_advance",
+   "gaia_hierarchy",
+   "gaia_inspect",
+   "gaia_screenshot",
+   "gaia_frames",
+   "gaia_reload_code",
+   "gaia_log",
+   "gaia_symbol",
+   "gaia_checkpoint",
+   "gaia_diff",
+   "gaia_assert",
+   "nu_docs"
+  ],
+  "terminal_usage_chars": 2461
+ }
+}
