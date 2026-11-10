@@ -42,6 +42,10 @@ Terms:
   the server instructions and the `ToolSearch` tool do. Turning tool search off adds all 19 up front.
   - Checked against Claude Code's current docs ("Scale with MCP tool search").
   - In the pilot, every MCP run actually loaded tools through `ToolSearch`: 1–2 searches per run, 7 in total.
+  - **Advertised, discovered, loaded:** the server advertises 19 tools (`tools/list`, 7,528 bytes of JSON), and all 19
+    are listed by name at session start. Each pilot run then loaded only 4–6 full definitions, chosen by name
+    (`select:` queries for reload_code, eval, assert, status, advance and once hierarchy). The other 13–15 were
+    never loaded. The terminal route has no such step: its whole usage text is in the prompt from the start.
 - Same Claude Code version (2.1.322) in idle-run2, idle-run3 and the pilot.
 
 ### 1b. Live check of the `gaia` command (Gaia on the NVIDIA GPU, Vulkan, own Xvfb)
