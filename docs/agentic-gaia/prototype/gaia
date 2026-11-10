@@ -59,9 +59,11 @@ request() {
   [ -n "$reply" ] || die "Gaia closed the bridge connection without a reply"
   printf '%s\n' "$reply"
 }
-ok() { [[ "$1" == *'"ok":true'* ]]; }
-field() { # crude: value of a top-level string field (enough for "png", "kind", "mode"); no nesting
-  local v="${1#*\"$2\":\"}"; [ "$v" != "$1" ] || return 1; printf '%s' "${v%%\"*}"
+# Replies can be large (a capture is ~0.5-2 MB of base64). Bash's own ${x#*pat} and [[ x == *pat* ]] are very slow
+# on such strings (86 s for one capture), so matching goes through grep, and the flags sit at the start of the reply.
+ok() { [[ "${1:0:64}" == *'"ok":true'* ]]; }   # the bridge writes {"id":"N","ok":... first
+field() { # crude: value of the first string field NAME (enough for "png", "kind", "mode"); no nesting
+  printf '%s' "$1" | grep -o -m1 "\"$2\":\"[^\"]*\"" | head -n1 | sed 's/^"[^"]*":"//; s/"$//'
 }
 emit() { printf '%s\n' "$1"; ok "$1"; }
 emitr() { local r; r="$(request "$@")" || exit $?; emit "$r"; }
@@ -74,7 +76,8 @@ capture() { # OUT VIEW(editor|game)
   if [ "$view" = game ]; then request view_mode '{"mode":"normal"}' >/dev/null || true; fi
   [ $status -eq 0 ] && ok "$reply" || { printf '%s\n' "$reply" >&2; return 1; }
   mkdir -p -m 700 "$(dirname "$out")"
-  field "$reply" png | base64 -d >"$out" || die "could not decode the PNG"
+  # the bridge's JSON encoder escapes "+" (and may escape "/" or "=") inside the base64 text
+  field "$reply" png | sed 's/\\u002[Bb]/+/g; s/\\u003[Dd]/=/g; s#\\/#/#g' | base64 -d >"$out" || die "could not decode the PNG"
   echo "$out"
 }
 
@@ -101,7 +104,7 @@ case "$op" in
     pred="${1:?usage: gaia assert PREDICATE [FRAMES] [PROBE] [noadvance]}"; [ "$pred" = - ] && pred="$(cat)"
     f="$(num "${2:-1}")"; a="{\"predicate\":$(jstr "$pred"),\"frames\":$f"
     [ -n "${3:-}" ] && a="$a,\"probe\":$(jstr "$3")"; [ "${4:-}" = noadvance ] && a="$a,\"advance\":false"
-    r="$(request assert "$a}" "$(frames_timeout "$f")")" || exit $?; printf '%s\n' "$r"; ok "$r" && [[ "$r" == *'"passed":true'* ]] ;;
+    r="$(request assert "$a}" "$(frames_timeout "$f")")" || exit $?; printf '%s\n' "$r"; ok "$r" && [[ "${r:0:64}" == *'"passed":true'* ]] ;;
   capture)
     out="${1:-}"; view="${2:-editor}"; [ "$out" = game ] && { out=""; view=game; }
     [ -n "$out" ] || out="$SHOT_DIR/shot-$(date +%s%N).png"
