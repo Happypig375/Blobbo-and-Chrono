@@ -175,10 +175,11 @@ streams and diffs: `pilot/runs/`.
      itself is already approved (D4); no further approval is needed.
    - Meanwhile the new results are a page in the prepared local wiki (`~/workspace/nu-gaia-agentic-wiki`, one local
      commit on top of the unchanged `f1e1adb`; its hash is in NEEDS-HUMAN.md), so one push publishes everything.
-   - Its file links point at commit 12b2cf412a on the `agentic-gaia` branch, which is not on the fork. Following the
-     outcome review (no publishing of newer unreviewed code), the branch's upstream setting was removed so the
-     nightly backup job does not push it; undo with `git branch -u fork/agentic-gaia agentic-gaia` once the code
-     is reviewed. Until then those links will not resolve, so the wiki page should be pushed with or after that code.
+   - Its file links point at the `agentic-gaia` branch on the fork. Update, 11 Nov evening: that code was reviewed
+     (CLI fixes, numbers against `pilot/summary.json`, parity files, timestamps; offline CLI check 18/18) and pushed
+     to the fork's `agentic-gaia` branch as a fast-forward. Before the push, the published copy of `gpu-gate.log` was
+     redacted: three lines had quoted other processes' full command lines (other projects' sessions); only their PID
+     and program name are kept.
 
 All items in the frozen protocol are done. Items 1–4 are new experiments; they need a new protocol and time
 allocation, not a decision. Item 5 waits only on the one-time first wiki page (a GitHub sign-in).

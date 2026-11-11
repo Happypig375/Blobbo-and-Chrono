@@ -22,7 +22,9 @@
 #   gaia frames COUNT EVERY [OUTDIR] [editor]   COUNT captures, advancing EVERY frames between them; prints paths
 #   gaia restart                          stop the Gaia that run_gaia_headless.sh started and launch it again
 #   gaia raw OP ['{"json":"args"}']       any other bridge op with raw JSON args
-# Exit status: 0 when the reply has "ok":true (and, for eval/assert, the code compiled and ran/passed), else 1.
+# Exit status: 0 when the reply has "ok":true (and, for eval/assert, the code compiled and ran/passed), else 1;
+# 2 for a usage error, or when the bridge cannot be reached or closes without a reply.
+# "ok" and "passed" are read from the first 64 characters of the reply, where the bridge writes them.
 set -uo pipefail
 
 die() { echo "gaia: $*" >&2; exit 2; }
