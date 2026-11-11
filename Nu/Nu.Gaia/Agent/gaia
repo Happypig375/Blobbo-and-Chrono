@@ -1,0 +1,145 @@
+#!/usr/bin/env bash
+# gaia: talk to Gaia's agent bridge from a terminal. No Python needed: bash, netcat (OpenBSD `nc`, with -U and -N)
+# and coreutils (base64, stat, grep) only.
+#
+# The bridge is a Unix socket ($NU_GAIA_AGENT_SOCKET, default $XDG_RUNTIME_DIR/nu-gaia-agent.sock). Each request is
+# one JSON line {"id","op","args"[, "timeout_s"]}; each reply is one JSON line, printed as is.
+#
+# Usage:
+#   gaia ping | status | hierarchy | undo | redo | reload_code      one request, print the JSON reply
+#   gaia eval 'F# CODE' [TIMEOUT_S]       run F# in the live editor; "-" reads the code from stdin
+#   gaia advance FRAMES                   step the game FRAMES frames (at most 600)
+#   gaia inspect [ENTITY_PATH]            properties of an entity (no path: the selected screen)
+#   gaia log [SINCE]                      editor log
+#   gaia symbol NAME                      F# declaration of a Nu symbol
+#   gaia docs WORD...                     search Nu's XML docs (Nu.xml; set NU_XML_DOC) for members matching all words
+#   gaia checkpoint NAME [restore|delete] save / restore / delete a named world checkpoint
+#   gaia diff FROM [LIMIT]                what changed since checkpoint FROM
+#   gaia assert 'PREDICATE' [FRAMES] [PROBE] [noadvance]   run the game FRAMES frames; check an F# bool each frame
+#   gaia resolve_exception CHOICE         answer a pending editor exception (as gaia_resolve_exception)
+#   gaia capture [OUT.png] [game]         read the next frame back from the renderer into a PNG; prints the path.
+#                                         "game" captures the game view without editor panels.
+#   gaia frames COUNT EVERY [OUTDIR] [editor]   COUNT captures, advancing EVERY frames between them; prints paths
+#   gaia restart                          stop the Gaia that run_gaia_headless.sh started and launch it again
+#   gaia raw OP ['{"json":"args"}']       any other bridge op with raw JSON args
+# Exit status: 0 when the reply has "ok":true (and, for eval/assert, the code compiled and ran/passed), else 1;
+# 2 for a usage error, or when the bridge cannot be reached or closes without a reply.
+# "ok" and "passed" are read from the first 64 characters of the reply, where the bridge writes them.
+set -uo pipefail
+
+die() { echo "gaia: $*" >&2; exit 2; }
+
+HERE="$(cd "$(dirname "$(readlink -f "$0")")" && pwd)"
+[ -n "${XDG_RUNTIME_DIR:-}" ] || die "XDG_RUNTIME_DIR is not set; refusing to use a shared directory for the bridge"
+SOCK="${NU_GAIA_AGENT_SOCKET:-$XDG_RUNTIME_DIR/nu-gaia-agent.sock}"
+SHOT_DIR="${NU_GAIA_SHOT_DIR:-$XDG_RUNTIME_DIR/nu-gaia-shots}"
+LOG_DIR="${GAIA_LOG_DIR:-$XDG_RUNTIME_DIR/nu-gaia-logs}"
+command -v nc >/dev/null || die "netcat (nc) is missing"
+
+# Only send code to a socket we own in a private directory (same rule as gaia_bridge.py's check_private).
+private() { # PATH dir|file
+  [ -e "$1" ] || die "$1 does not exist (is Gaia running with NU_GAIA_AGENT_SOCKET set?)"
+  [ ! -L "$1" ] && [ "$(stat -c %u "$1")" = "$(id -u)" ] || die "$1 is a symlink or not owned by this user"
+  if [ "$2" = dir ]; then [ $(( 0$(stat -c %a "$1") & 077 )) -eq 0 ] || die "$1 must be mode 0700"; fi
+}
+
+# JSON string literal from arbitrary text (control characters other than \n \r \t are dropped).
+jstr() {
+  local s; s="$(printf '%s' "$1" | tr -d '\000-\010\013\014\016-\037'; printf x)"; s="${s%x}"
+  s="${s//\\/\\\\}"; s="${s//\"/\\\"}"; s="${s//$'\n'/\\n}"; s="${s//$'\r'/\\r}"; s="${s//$'\t'/\\t}"
+  printf '"%s"' "$s"
+}
+num() { [[ "$1" =~ ^[0-9]+([.][0-9]+)?$ ]] || die "not a number: $1"; printf '%s' "$1"; }
+
+ID=0
+# request OP ARGS_JSON [TIMEOUT_S] -> reply line on stdout. The bridge answers, then closes when we half-close.
+request() {
+  private "$(dirname "$SOCK")" dir; private "$SOCK" file
+  ID=$((ID + 1))
+  local msg="{\"id\":\"$ID\",\"op\":$(jstr "$1"),\"args\":${2:-{\}}${3:+,\"timeout_s\":$3}}"
+  local reply; reply="$(printf '%s\n' "$msg" | nc -N -U "$SOCK")" || die "could not reach the bridge at $SOCK"
+  [ -n "$reply" ] || die "Gaia closed the bridge connection without a reply"
+  printf '%s\n' "$reply"
+}
+# Replies can be large (a capture is ~0.5-2 MB of base64). Bash's own ${x#*pat} and [[ x == *pat* ]] are very slow
+# on such strings (86 s for one capture), so matching goes through grep, and the flags sit at the start of the reply.
+ok() { [[ "${1:0:64}" == *'"ok":true'* ]]; }   # the bridge writes {"id":"N","ok":... first
+field() { # crude: value of the first string field NAME (enough for "png", "kind", "mode"); no nesting
+  printf '%s' "$1" | grep -o -m1 "\"$2\":\"[^\"]*\"" | head -n1 | sed 's/^"[^"]*":"//; s/"$//'
+}
+emit() { printf '%s\n' "$1"; ok "$1"; }
+emitr() { local r; r="$(request "$@")" || exit $?; emit "$r"; }
+frames_timeout() { local f=$1; echo $(( f / 30 + 60 > 600 ? 600 : f / 30 + 60 )); }
+
+capture() { # OUT VIEW(editor|game)
+  local out="$1" view="$2" reply status=0
+  if [ "$view" = game ]; then ok "$(request view_mode '{"mode":"capture"}')" || die "view_mode capture failed"; fi
+  reply="$(request capture '{"settle":2}')" || status=1
+  if [ "$view" = game ]; then request view_mode '{"mode":"normal"}' >/dev/null || true; fi
+  [ $status -eq 0 ] && ok "$reply" || { printf '%s\n' "$reply" >&2; return 1; }
+  mkdir -p -m 700 "$(dirname "$out")"
+  # the bridge's JSON encoder escapes "+" (and may escape "/" or "=") inside the base64 text
+  field "$reply" png | sed 's/\\u002[Bb]/+/g; s/\\u003[Dd]/=/g; s#\\/#/#g' | base64 -d >"$out" || die "could not decode the PNG"
+  echo "$out"
+}
+
+op="${1:-}"; [ -n "$op" ] || { sed -n '2,/^set -uo/p' "$0" | sed '$d; s/^# \{0,1\}//'; exit 2; }
+shift
+case "$op" in
+  -h|--help|help) sed -n '2,/^set -uo/p' "$0" | sed '$d; s/^# \{0,1\}//' ;;
+  ping|status|hierarchy|undo|redo|reload_code) emitr "$op" ;;
+  eval)
+    code="${1:?usage: gaia eval CODE [TIMEOUT_S]}"; [ "$code" = - ] && code="$(cat)"
+    r="$(request eval "{\"code\":$(jstr "$code")}" "$(num "${2:-${NU_GAIA_EVAL_TIMEOUT_S:-120}}")")" || exit $?
+    printf '%s\n' "$r"; ok "$r" && [ "$(field "$r" kind)" = ok ] ;;
+  advance) f="$(num "${1:?usage: gaia advance FRAMES}")"; emitr advance "{\"frames\":$f}" "$(frames_timeout "$f")" ;;
+  inspect) emitr inspect "{\"path\":$(jstr "${1:-}")}" ;;
+  log) emitr log "{\"since\":$(num "${1:-0}")}" ;;
+  symbol) emitr symbol "{\"name\":$(jstr "${1:?usage: gaia symbol NAME}")}" ;;
+  resolve_exception) emitr resolve_exception "{\"choice\":$(jstr "${1:?usage: gaia resolve_exception CHOICE}")}" ;;
+  checkpoint)
+    name="${1:?usage: gaia checkpoint NAME [restore|delete]}"; restore=false; delete=false
+    case "${2:-}" in restore) restore=true ;; delete) delete=true ;; "") ;; *) die "checkpoint: restore or delete" ;; esac
+    emitr checkpoint "{\"name\":$(jstr "$name"),\"restore\":$restore,\"delete\":$delete}" ;;
+  diff) emitr diff "{\"from\":$(jstr "${1:?usage: gaia diff FROM [LIMIT]}"),\"limit\":$(num "${2:-200}")}" ;;
+  assert)
+    pred="${1:?usage: gaia assert PREDICATE [FRAMES] [PROBE] [noadvance]}"; [ "$pred" = - ] && pred="$(cat)"
+    f="$(num "${2:-1}")"; a="{\"predicate\":$(jstr "$pred"),\"frames\":$f"
+    [ -n "${3:-}" ] && a="$a,\"probe\":$(jstr "$3")"; [ "${4:-}" = noadvance ] && a="$a,\"advance\":false"
+    r="$(request assert "$a}" "$(frames_timeout "$f")")" || exit $?; printf '%s\n' "$r"; ok "$r" && [[ "${r:0:64}" == *'"passed":true'* ]] ;;
+  capture)
+    out="${1:-}"; view="${2:-editor}"; [ "$out" = game ] && { out=""; view=game; }
+    [ -n "$out" ] || out="$SHOT_DIR/shot-$(date +%s%N).png"
+    capture "$out" "$view" ;;
+  frames)
+    count="$(num "${1:?usage: gaia frames COUNT EVERY [OUTDIR] [editor]}")"; every="$(num "${2:?}")"
+    dir="${3:-$SHOT_DIR/frames-$(date +%s%N)}"; view="${4:-game}"
+    for ((i = 0; i < count; i++)); do
+      if [ "$i" -gt 0 ]; then ok "$(request advance "{\"frames\":$every}" "$(frames_timeout "$every")")" || die "advance failed"; fi
+      capture "$(printf '%s/frame-%02d.png' "$dir" "$i")" "$view" || exit 1
+    done ;;
+  restart)
+    private "$LOG_DIR" dir
+    pid="$(cat "$LOG_DIR/gaia.pid" 2>/dev/null || true)"; stopped=null
+    if [[ "$pid" =~ ^[0-9]+$ ]] && tr '\0' '\n' <"/proc/$pid/cmdline" 2>/dev/null | grep -q 'Nu.Gaia.dll' \
+       && tr '\0' '\n' <"/proc/$pid/environ" 2>/dev/null | grep -qxF "NU_GAIA_AGENT_SOCKET=$SOCK"; then
+      kill -TERM "$pid" 2>/dev/null; for _ in $(seq 50); do [ -e "/proc/$pid" ] || break; sleep 0.1; done
+      [ -e "/proc/$pid" ] && { kill -KILL "$pid" 2>/dev/null; sleep 0.5; }
+      stopped="$pid"
+    fi
+    project="$(cat "$LOG_DIR/gaia.project" 2>/dev/null || true)"
+    launched="$(timeout 240 "${GAIA_LAUNCHER:-$HERE/run_gaia_headless.sh}" ${project:+"$project"} 2>&1)" \
+      || { printf '%s\n' "$launched" >&2; die "relaunch failed"; }
+    printf '{"stopped":%s,"launcher":%s}\n' "$stopped" "$(jstr "$launched")"; emitr status ;;
+  docs)
+    [ $# -gt 0 ] || die "usage: gaia docs WORD..."
+    xml="${NU_XML_DOC:-}"; [ -f "$xml" ] || die "Nu.xml not found; set NU_XML_DOC to Nu/Nu/bin/<config>/<tfm>/Nu.xml"
+    # one member per line: name, then its summary text without tags
+    hits="$(tr '\n' ' ' <"$xml" | sed 's#<member #\n<member #g' | grep '^<member ' \
+      | sed -E 's#^<member name="([^"]*)">#\1\t#; s#<[^>]*>##g; s#[[:space:]]+# #g')"
+    for w in "$@"; do hits="$(printf '%s\n' "$hits" | grep -i -- "$w")" || { echo "no matches"; exit 1; }; done
+    printf '%s\n' "$hits" | awk -F'\t' '{print length($1) "\t" $0}' | sort -n | cut -f2- | head -n "${NU_DOCS_LIMIT:-15}" \
+      | sed 's#\t#\n    #' ;;
+  raw) emitr "${1:?usage: gaia raw OP [JSON_ARGS]}" "${2:-}" ;;
+  *) die "unknown command '$op' (gaia --help lists them)" ;;
+esac
